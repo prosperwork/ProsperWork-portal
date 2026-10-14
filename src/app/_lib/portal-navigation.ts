@@ -1,5 +1,5 @@
 import {
-  Activity, AlertCircle, BookOpen, BriefcaseBusiness, CalendarDays, ClipboardList,
+  Activity, BookOpen, BriefcaseBusiness, CalendarDays, ClipboardList,
   FileText, GraduationCap, Heart, LayoutDashboard, MessageSquare,
   Music2, Settings2, ShieldCheck, Users, Wallet,
 } from "lucide-react";
@@ -55,7 +55,6 @@ export const portalNavigation: PortalNavigationItem[] = [
   { href: "/workflows", label: "Workflows", icon: Activity, roles: ["super_admin", "general_manager", "head_admin", "admin", "teacher", "qc"] },
   { href: "/operations", label: "Operations", icon: ClipboardList, roles: ["super_admin", "general_manager", "head_admin", "admin", "teacher", "qc", "finance", "sales_marketing", "social_media"] },
   { href: "/management", label: "Management", icon: ShieldCheck, roles: ["super_admin", "general_manager", "head_admin", "admin", "hr", "qc", "sales_marketing"] },
-  { href: "/complaints", label: "Complaints & Support", icon: AlertCircle, roles: ["super_admin", "general_manager", "head_admin", "admin", "qc"] },
   { href: "/accounts", label: "Accounts", icon: Users, roles: ["super_admin"] },
   { href: "/documents", label: "Invoices & receipts", icon: FileText, roles: ["super_admin", "general_manager", "head_admin", "admin", "finance", "parent"] },
   { href: "/policies", label: "Policies", icon: ShieldCheck, roles: ["super_admin", "general_manager", "head_admin", "admin", "hr"] },

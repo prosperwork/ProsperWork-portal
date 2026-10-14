@@ -6,7 +6,6 @@ import {
   CalendarDays,
   ChevronRight,
   MessageCircle,
-  MessageSquare,
   ShieldCheck,
   UserCheck,
   X,
@@ -137,11 +136,6 @@ export default function FamiliesView({
       <div className="toolbar">
         {searchBar("Find a student, family or instrument")}
         {adminAccess && headerActions("Enroll student", "student")}
-        {adminAccess && (
-          <a className="btn secondary" href="/complaints">
-            <MessageSquare size={14} /> Complaints &amp; Support
-          </a>
-        )}
         {parentAccess && (
           <button
             className="btn secondary"

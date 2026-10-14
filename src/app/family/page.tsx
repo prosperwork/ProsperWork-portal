@@ -299,7 +299,9 @@ export default function FamilyPage() {
       setComplaintMessage("");
       setComplaintStudentId("");
       setFeedback(
-        `Your inquiry has been submitted under ticket #${data.complaint?.ticket_number || "reference"}. Academy administration has been notified.`
+        `Your inquiry has been submitted under ticket #${
+          data.complaint?.ticket_number || "reference"
+        }. Academy administration has been notified.`
       );
     } catch (err) {
       setComplaintError(
@@ -684,7 +686,8 @@ export default function FamilyPage() {
                         setShowComplaintModal(true);
                       }}
                     >
-                      <MessageSquare size={14} aria-hidden="true" /> Raise a complaint
+                      <MessageSquare size={14} aria-hidden="true" /> Raise a
+                      complaint
                     </button>
                     {canManageChildren && (
                       <button
@@ -1259,19 +1262,35 @@ export default function FamilyPage() {
                     </div>
                   </section>
 
-                  <section className="family-card" aria-labelledby="complaints-title">
+                  <section
+                    className="family-card"
+                    aria-labelledby="complaints-title"
+                  >
                     <div className="family-card-head">
                       <div>
-                        <h2 id="complaints-title">Academy Support & Grievances</h2>
+                        <h2 id="complaints-title">
+                          Academy Support & Grievances
+                        </h2>
                         <p>
-                          Raise any lesson, teacher, attendance, or billing concern directly to school leadership.
+                          Raise any lesson, teacher, attendance, or billing
+                          concern directly to school leadership.
                         </p>
                       </div>
-                      <MessageSquare size={17} color="#135b45" aria-hidden="true" />
+                      <MessageSquare
+                        size={17}
+                        color="#135b45"
+                        aria-hidden="true"
+                      />
                     </div>
                     <div className="family-card-body">
                       {complaints.length > 0 ? (
-                        <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+                        <div
+                          style={{
+                            display: "flex",
+                            flexDirection: "column",
+                            gap: 12,
+                          }}
+                        >
                           {complaints.map((c) => {
                             const u = urgencyBadge(c.urgency);
                             const s = statusBadge(c.status);
@@ -1309,11 +1328,17 @@ export default function FamilyPage() {
                                     #{c.ticket_number}
                                   </span>
                                   <div style={{ display: "flex", gap: 4 }}>
-                                    <span className={u.className}>{u.label}</span>
-                                    <span className={s.className}>{s.label}</span>
+                                    <span className={u.className}>
+                                      {u.label}
+                                    </span>
+                                    <span className={s.className}>
+                                      {s.label}
+                                    </span>
                                   </div>
                                 </div>
-                                <strong style={{ fontSize: 13, color: "#0a2e22" }}>
+                                <strong
+                                  style={{ fontSize: 13, color: "#0a2e22" }}
+                                >
                                   {c.subject}
                                 </strong>
                                 <div
@@ -1325,7 +1350,9 @@ export default function FamilyPage() {
                                     flexWrap: "wrap",
                                   }}
                                 >
-                                  <span>Category: {categoryLabel(c.category)}</span>
+                                  <span>
+                                    Category: {categoryLabel(c.category)}
+                                  </span>
                                   {c.student_name && (
                                     <span>• Student: {c.student_name}</span>
                                   )}
@@ -1419,7 +1446,8 @@ export default function FamilyPage() {
                             setShowComplaintModal(true);
                           }}
                         >
-                          <MessageSquare size={14} /> Raise a Complaint / Inquiry
+                          <MessageSquare size={14} /> Raise a Complaint /
+                          Inquiry
                         </button>
                       </div>
                     </div>
@@ -1927,7 +1955,9 @@ export default function FamilyPage() {
               </div>
 
               <div className="family-field">
-                <label htmlFor="complaint-message">Detailed Description *</label>
+                <label htmlFor="complaint-message">
+                  Detailed Description *
+                </label>
                 <textarea
                   id="complaint-message"
                   required
@@ -1939,7 +1969,8 @@ export default function FamilyPage() {
                   onChange={(e) => setComplaintMessage(e.target.value)}
                 />
                 <small>
-                  Your ticket will be routed directly to academy leadership, school administrators, and quality control.
+                  Your ticket will be routed directly to academy leadership,
+                  school administrators, and quality control.
                 </small>
               </div>
 
@@ -1971,7 +2002,8 @@ export default function FamilyPage() {
                 >
                   {complaintBusy ? (
                     <>
-                      <LoaderCircle size={14} className="spinning" /> Submitting…
+                      <LoaderCircle size={14} className="spinning" />{" "}
+                      Submitting…
                     </>
                   ) : (
                     <>
