@@ -119,7 +119,9 @@ export default function ResetPasswordPage() {
                   <div className="auth-overline">
                     {isInvite ? "Account activated" : "Password updated"}
                   </div>
-                  <h2>{isInvite ? "Welcome to ProsperWork!" : "You’re all set."}</h2>
+                  <h2>
+                    {isInvite ? "Welcome to ProsperWork!" : "You’re all set."}
+                  </h2>
                   <p>
                     {isInvite
                       ? "Your account password has been created. Redirecting to sign in…"
@@ -141,10 +143,14 @@ export default function ResetPasswordPage() {
               <>
                 <header className="auth-panel-heading">
                   <div className="auth-overline">
-                    {isInvite ? "Academy invitation" : "Secure account recovery"}
+                    {isInvite
+                      ? "Academy invitation"
+                      : "Secure account recovery"}
                   </div>
                   <h2>
-                    {isInvite ? "Create your password" : "Choose a new password"}
+                    {isInvite
+                      ? "Create your password"
+                      : "Choose a new password"}
                   </h2>
                   <p>
                     {isInvite
