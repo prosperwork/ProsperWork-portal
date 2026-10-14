@@ -17,7 +17,11 @@ export async function proxy(request: NextRequest) {
   const { data: { user } } = await client.auth.getUser();
   if (["/", "/schedule", "/students", "/leads", "/finance", "/people", "/curriculum", "/reports", "/homework", "/workflows", "/accounts", "/settings", "/classroom", "/payroll","/learning","/documents","/family","/policies","/onboarding","/kid","/studio","/leave","/hiring","/operations","/profile"].includes(request.nextUrl.pathname)) {
     let destination: string | null = null;
-    if (!user) destination = "/login";
+    if (!user) {
+      destination = request.nextUrl.pathname !== "/"
+        ? `/login?next=${encodeURIComponent(request.nextUrl.pathname + request.nextUrl.search)}`
+        : "/login";
+    }
     else {
       const { data } = await client.from("pw_profiles").select("status,role").eq("id", user.id).single();
       if (!data || (!["active", "on_leave"].includes(data.status)&&!(request.nextUrl.pathname==="/hiring"&&data.status==="applicant"&&!["parent","student"].includes(data.role)))) destination = "/access-pending";

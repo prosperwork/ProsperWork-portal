@@ -26,7 +26,18 @@ export default function WelcomePage() {
           throw new Error(result.error || "Your workspace could not be opened.");
         }
 
-        const next = ["active", "on_leave"].includes(result.profile.status) ? "/" : "/access-pending";
+        const params = new URLSearchParams(window.location.search);
+        const nextParam = params.get("next");
+        const safeNextParam = nextParam && nextParam.startsWith("/") && !nextParam.startsWith("//") ? nextParam : null;
+
+        let next = "/";
+        if (result.profile.status === "policy_required") {
+          next = "/onboarding";
+        } else if (["active", "on_leave"].includes(result.profile.status)) {
+          next = safeNextParam || "/";
+        } else {
+          next = "/access-pending";
+        }
         if (cancelled) return;
         setName(typeof result.profile.name === "string" ? result.profile.name.trim() : "");
         setGreetingReady(true);

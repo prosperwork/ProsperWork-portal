@@ -217,6 +217,7 @@ export async function POST(request: Request) {
           payload: {
             name: target.name || "",
             roleTitle,
+            role: target.role,
           },
         }, publicAppUrl("/").origin);
       } catch (emailErr) {

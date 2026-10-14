@@ -103,8 +103,12 @@ export function emailText(job, appUrl) {
     case "marketing_update":
       if(typeof p.body!=="string"||!p.body.trim()||typeof p.unsubscribeToken!=="string"||!/^[a-f0-9-]{36}$/i.test(p.unsubscribeToken))throw Object.assign(new Error("Invalid marketing message."),{code:"EMESSAGE"});
       return `${p.body}\n\nYou received this academy update because marketing email consent was recorded.\nStop marketing emails: ${appUrl}/unsubscribe?token=${encodeURIComponent(p.unsubscribeToken)}\nOperational class and billing reminders are separate.${signature}`;
-    case "account_activated":
-      return `Hello ${p.name || "there"},\n\nGreat news! Your ProsperWork Music Academy account has been reviewed and activated by our administration.\n\nYou now have full access to your lessons, classroom, practice schedule, and academy workspace.\n\nSign in to your portal:\n${appUrl}/login\n\nIf you have any questions or need assistance getting started, please reply to this email or contact support@prosperworkmusic.com.${signature}`;
+    case "account_activated": {
+      const isOnboardingRole = ["parent", "student"].includes(p.role);
+      const targetPath = isOnboardingRole ? "/onboarding" : "/";
+      const actionText = isOnboardingRole ? "Complete your academy onboarding" : "Sign in to your portal";
+      return `Hello ${p.name || "there"},\n\nGreat news! Your ProsperWork Music Academy account has been reviewed and activated by our administration.\n\n${isOnboardingRole ? "To complete your setup and access family and lesson records, please review and acknowledge the academy policies:" : "You now have full access to your lessons, classroom, practice schedule, and academy workspace."}\n\n${actionText}:\n${appUrl}${targetPath}\n\nIf you have any questions or need assistance getting started, please reply to this email or contact support@prosperworkmusic.com.${signature}`;
+    }
     default: throw Object.assign(new Error("Unknown email template."), { code: "EMESSAGE" });
   }
 }
@@ -114,6 +118,9 @@ export function emailHtml(job, appUrl) {
   if (job.template === "account_activated") {
     const name = p.name || "there";
     const roleTitle = typeof p.roleTitle === "string" ? p.roleTitle : "Academy Member";
+    const isOnboardingRole = ["parent", "student"].includes(p.role);
+    const targetUrl = isOnboardingRole ? `${appUrl}/onboarding` : `${appUrl}/login`;
+    const buttonLabel = isOnboardingRole ? "Complete Academy Onboarding &rarr;" : "Sign in to Portal &rarr;";
     return `<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -158,14 +165,14 @@ export function emailHtml(job, appUrl) {
               <table role="presentation" border="0" cellspacing="0" cellpadding="0" style="margin: 28px 0;">
                 <tr>
                   <td align="center" style="border-radius: 10px; background-color: #135b45;">
-                    <a href="${appUrl}/login" target="_blank" style="display: inline-block; padding: 13px 28px; font-size: 14px; font-weight: 600; color: #ffffff; text-decoration: none; border-radius: 10px; background-color: #135b45; letter-spacing: 0.1px;">
-                      Sign in to Portal &rarr;
+                    <a href="${targetUrl}" target="_blank" style="display: inline-block; padding: 13px 28px; font-size: 14px; font-weight: 600; color: #ffffff; text-decoration: none; border-radius: 10px; background-color: #135b45; letter-spacing: 0.1px;">
+                      ${buttonLabel}
                     </a>
                   </td>
                 </tr>
               </table>
               <div style="padding: 14px 16px; background-color: #f7faf8; border-left: 3px solid #135b45; border-radius: 4px; font-size: 12.5px; line-height: 1.55; color: #5a6e64;">
-                <strong>Next Steps:</strong> When you sign in, you can view your private dashboard, confirm any policy acknowledgements, explore your schedule, and access live classroom resources.
+                <strong>Next Steps:</strong> ${isOnboardingRole ? "Please review and acknowledge the academy policies to complete your onboarding and open your family workspace." : "When you sign in, you can view your private dashboard, explore your schedule, and access live classroom resources."}
               </div>
             </td>
           </tr>

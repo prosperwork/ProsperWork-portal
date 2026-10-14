@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { AlertCircle, ArrowLeft, Check, FileText, LoaderCircle, RefreshCw, ShieldCheck } from "lucide-react";
+import { AlertCircle, ArrowLeft, ArrowRight, Check, FileText, LoaderCircle, RefreshCw, ShieldCheck } from "lucide-react";
 import type { PolicyVersion } from "@/lib/academy/family";
 
 type OnboardingResponse = {
@@ -105,12 +105,17 @@ export default function OnboardingPage() {
   return (
     <main className="pw-family">
       <div className="family-topline" />
-      <header className="family-header">
-        <Link href="/" className="family-brand" aria-label="ProsperWork Academy home"><img src="/favicon-192x192.png" alt="" /><span className="family-brand-copy"><strong>ProsperWork</strong><small>Music Academy</small></span></Link>
-        <nav className="family-nav" aria-label="Onboarding navigation"><Link href="/family"><ArrowLeft size={14} /> Family</Link><Link href="/policies">Policy library</Link><Link href="/learning">Lessons</Link><button type="button" onClick={() => void load()} disabled={refreshing}><RefreshCw size={14} /> Reload</button></nav>
-      </header>
       <section className="family-content">
-        <div className="family-heading"><div><div className="family-eyebrow"><i /> FAMILY ONBOARDING</div><h1>Review the academy policies</h1><p>Open each current, approved PDF and acknowledge each version individually. Only the published documents listed here can be accepted.</p></div>{data && <div className="family-profile"><span className="family-avatar">{data.profile.name.split(/\s+/).map(part => part[0] ?? "").slice(0, 2).join("").toUpperCase()}</span><span className="family-profile-copy"><strong>{data.profile.name}</strong><small>{data.profile.role} · {data.profile.status}</small></span></div>}</div>
+        <div className="family-heading">
+          <div>
+            <div className="family-eyebrow"><i /> FAMILY ONBOARDING</div>
+            <h1>Review the academy policies</h1>
+            <p>Open each current, approved PDF and acknowledge each version individually. Only the published documents listed here can be accepted.</p>
+          </div>
+          <button type="button" className="family-button subtle" onClick={() => void load()} disabled={refreshing}>
+            <RefreshCw size={14} aria-hidden="true" /> {refreshing ? "Reloading…" : "Reload"}
+          </button>
+        </div>
         {error && <div className="family-alert" role="alert"><AlertCircle size={16} /><p>{error}</p>{stale && <button className="family-button subtle" type="button" onClick={() => void load()}>Reload current versions</button>}</div>}
         {message && <div className="family-alert success" role="status"><Check size={16} /><p>{message}</p></div>}
         {data?.setupRequired && <div className="family-alert info" role="status"><ShieldCheck size={16} /><div><strong>Owner setup required — onboarding is blocked</strong><p>An Owner must publish approved PDF documents for every required policy key before acknowledgement can continue. Missing: {(data.missingKeys ?? []).join(", ") || "required policy versions not confirmed"}.</p><p><Link href="/policies">View policy setup status</Link></p></div></div>}
@@ -137,7 +142,14 @@ export default function OnboardingPage() {
                   : <div className="family-form-actions"><button type="button" className="family-button primary" onClick={() => void acceptCurrent()} disabled={!canAccept || !allChecked || allAccepted || stale || busy}>
                     {busy ? <><LoaderCircle size={14} /> Recording…</> : allAccepted ? <><Check size={14} /> Already acknowledged</> : "Acknowledge all current versions"}
                   </button></div>}
-                {allAccepted && <p className="family-upload-note" role="status">The policy API confirms all current versions are acknowledged. No social or media consent is included in this step.</p>}
+                {allAccepted && (
+                  <div style={{ marginTop: "1rem" }}>
+                    <p className="family-upload-note" role="status">The policy API confirms all current versions are acknowledged. No social or media consent is included in this step.</p>
+                    <Link href="/family" className="family-button primary" style={{ marginTop: "0.75rem", display: "inline-flex", alignItems: "center", gap: "6px" }}>
+                      <span>Continue to Family Workspace</span> <ArrowRight size={14} />
+                    </Link>
+                  </div>
+                )}
               </div>
             </section>
             <aside className="family-stack">

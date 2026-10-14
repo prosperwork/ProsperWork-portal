@@ -13,6 +13,7 @@ import {
   X,
   Eye,
   ShieldAlert,
+  ShieldCheck,
   ArrowLeft,
 } from "lucide-react";
 import type { Role } from "@/lib/types";
@@ -53,6 +54,7 @@ function roleTitle(role?: Role) {
     .replace(/\b\w/g, (letter) => letter.toUpperCase());
 }
 function pageLabel(path: string) {
+  if (path === "/onboarding") return "Academy Onboarding";
   return (
     portalNavigation.find((item) => path === item.href)?.label || "Workspace"
   );
@@ -253,13 +255,22 @@ export default function PortalShell({
     };
   }, [accountMenuOpen]);
 
-  const visibleNav = useMemo(
-    () =>
-      profile
-        ? portalNavigation.filter((item) => item.roles.includes(profile.role))
-        : [],
-    [profile]
-  );
+  const visibleNav = useMemo(() => {
+    if (!profile) return [];
+    const nav = portalNavigation.filter((item) => item.roles.includes(profile.role));
+    if (profile.status === "policy_required" || pathname === "/onboarding") {
+      return [
+        {
+          href: "/onboarding",
+          label: "Onboarding",
+          icon: ShieldCheck,
+          roles: [profile.role],
+        },
+        ...nav,
+      ];
+    }
+    return nav;
+  }, [profile, pathname]);
   const activeLabel = pageLabel(pathname);
   const activeNavPath = portalNavigation.find((item) => item.href === pathname);
 
