@@ -20,7 +20,7 @@ export interface AccountListProps {
   onRetry: () => void;
   onStartViewAs: (target: Account) => Promise<void>;
   onSelectStatusChange: (account: Account, next: AccountStatus) => void;
-  onRequestDelete: (account: Account) => void;
+  onRequestDelete?: (account: Account) => void;
 }
 
 export default function AccountList({
@@ -34,7 +34,6 @@ export default function AccountList({
   onRetry,
   onStartViewAs,
   onSelectStatusChange,
-  onRequestDelete,
 }: AccountListProps) {
   return (
     <section
@@ -238,25 +237,6 @@ export default function AccountList({
                             ))}
                         </select>
                       </label>
-                      <button
-                        type="button"
-                        className="pw-text-button"
-                        style={{
-                          padding: "4px 8px",
-                          fontSize: "12px",
-                          fontWeight: 600,
-                          borderRadius: "6px",
-                          border: "1px solid #fecaca",
-                          background: "#fef2f2",
-                          color: "#991b1b",
-                          cursor: "pointer",
-                          whiteSpace: "nowrap",
-                        }}
-                        onClick={() => onRequestDelete(account)}
-                        title={`Permanently purge account for ${account.name} (guarded)`}
-                      >
-                        Delete
-                      </button>
                     </>
                   )}
                 </div>

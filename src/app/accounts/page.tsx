@@ -2,11 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { Role } from "@/lib/types";
-import {
-  labelFor,
-  type Account,
-  type AccountStatus,
-} from "./accounts-types";
+import { labelFor, type Account, type AccountStatus } from "./accounts-types";
 import { AccountIcon } from "./components/AccountIcon";
 import AccountInviteForm from "./components/AccountInviteForm";
 import AccountList from "./components/AccountList";
@@ -38,9 +34,6 @@ export default function AccountsPage() {
     next: AccountStatus;
   } | null>(null);
   const [viewAsPendingId, setViewAsPendingId] = useState<string | null>(null);
-  const [accountToDelete, setAccountToDelete] = useState<Account | null>(null);
-  const [deletePending, setDeletePending] = useState(false);
-  const [deleteBlockers, setDeleteBlockers] = useState<string[] | null>(null);
 
   const startViewAs = async (target: Account) => {
     setViewAsPendingId(String(target.id));
@@ -208,59 +201,17 @@ export default function AccountsPage() {
     }
   }
 
-  async function applyPermanentDelete(reason: string) {
-    if (!accountToDelete || accountToDelete.role === "super_admin") return;
-    setMutationError("");
-    setDeleteBlockers(null);
-    setDeletePending(true);
-    try {
-      const response = await fetch("/api/accounts", {
-        method: "POST",
-        credentials: "include",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          action: "delete",
-          id: accountToDelete.id,
-          reason: reason.trim(),
-        }),
-      });
-      const result = await response.json().catch(() => ({}));
-      if (!response.ok || result.error || result.ok !== true) {
-        if (result.blockers && Array.isArray(result.blockers)) {
-          setDeleteBlockers(result.blockers);
-        }
-        throw new Error(
-          result.error || "The account deletion could not be completed."
-        );
-      }
-      setSuccessMessage(
-        result.message ||
-          `Account for ${accountToDelete.name} was permanently purged.`
-      );
-      setAccountToDelete(null);
-      setDeleteBlockers(null);
-      await loadAccounts();
-    } catch (error) {
-      setMutationError(
-        error instanceof Error ? error.message : "Account deletion failed."
-      );
-    } finally {
-      setDeletePending(false);
-    }
-  }
-
   useEffect(() => {
-    if (!statusChange && !accountToDelete) return;
+    if (!statusChange) return;
     const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape" && !statusPending && !deletePending) {
+      if (event.key === "Escape" && !statusPending) {
         setStatusChange(null);
-        setAccountToDelete(null);
         setMutationError("");
       }
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [statusChange, accountToDelete, statusPending, deletePending]);
+  }, [statusChange, statusPending]);
 
   const activeCount = accounts.filter(
     (account) => account.status === "active"
@@ -373,11 +324,6 @@ export default function AccountsPage() {
                 onSelectStatusChange={(account, next) =>
                   setStatusChange({ account, next })
                 }
-                onRequestDelete={(account) => {
-                  setAccountToDelete(account);
-                  setMutationError("");
-                  setDeleteBlockers(null);
-                }}
               />
             </div>
           </>
@@ -394,21 +340,12 @@ export default function AccountsPage() {
       <AccountModals
         statusChange={statusChange}
         statusPending={statusPending}
+        mutationError={mutationError}
         onCancelStatusChange={() => {
           setStatusChange(null);
           setMutationError("");
         }}
         onConfirmStatusChange={applyStatusChange}
-        accountToDelete={accountToDelete}
-        deletePending={deletePending}
-        deleteBlockers={deleteBlockers}
-        mutationError={mutationError}
-        onCancelDelete={() => {
-          setAccountToDelete(null);
-          setMutationError("");
-          setDeleteBlockers(null);
-        }}
-        onConfirmDelete={applyPermanentDelete}
       />
     </main>
   );
