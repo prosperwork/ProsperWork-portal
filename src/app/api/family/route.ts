@@ -180,7 +180,6 @@ export async function POST(request:Request){
      parentEmail:user.email||profile.email,
      consent:d.consent===true,
      rank:d.experience==="Advanced"?"Amateur":d.experience==="Intermediate"?"Novice":"Beginner",
-     status:"enrolled",
      status:"inactive",
      admissionStatus:"pending_review",
      teacherName:"Unassigned (Pending Review)",
@@ -232,8 +231,6 @@ export async function POST(request:Request){
        actor_role:profile.role,
        entity_type:"pw_students",
        entity_id:studentId,
-       action:"student_added_by_guardian",
-       changed_fields:[`name:${d.name}`,`instrument:${d.instrument}`,`dob:${d.dob}`]
        action:"student_submitted_for_review",
        changed_fields:[`name:${d.name}`,`instrument:${d.instrument}`,`duration:${d.lessonDuration||"1 hour"}`,`preferredDays:${d.preferredDays||"flexible"}`]
      });
@@ -241,7 +238,6 @@ export async function POST(request:Request){
      // audit failure non-fatal
    }
 
-   return reply({ok:true,id:studentId,username:linkedUsername});
    // 1. Dispatch admissions review notification to school admins
    try {
      await deliverEmail({

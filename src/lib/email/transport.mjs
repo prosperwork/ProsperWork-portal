@@ -148,36 +148,53 @@ export function emailText(job, appUrl) {
         `• Lesson Duration: ${p.lessonDuration || "1 hour (Standard)"}\n\n` +
         `You can now access your family portal, view your lessons, and prepare for class:\n` +
         `${appUrl}/family${signature}`;
+    case "parent_complaint_alert":
+      return `Attention Academy Administration & Quality Team,\n\n` +
+        `A new parent complaint / issue ticket has been raised in the Family Portal.\n\n` +
+        `Ticket Reference: ${p.ticketNumber}\n` +
+        `Urgency: ${p.urgency?.toUpperCase() || "NORMAL"}\n` +
+        `Category: ${p.categoryLabel || p.category}\n` +
+        `Subject: ${p.subject}\n\n` +
+        `Guardian: ${p.parentName} (${p.parentEmail})\n` +
+        (p.studentName ? `Student: ${p.studentName}\n` : "") +
+        `\nComplaint Details:\n${p.message}\n\n` +
+        `Review and resolve this ticket in the Academy Complaints Portal:\n` +
+        `${appUrl}/complaints${signature}`;
+    case "parent_complaint_acknowledgement":
+      return `Hello ${p.parentName || "Guardian"},\n\n` +
+        `We have received your complaint regarding "${p.subject}".\n\n` +
+        `Ticket Reference: ${p.ticketNumber}\n` +
+        `Urgency: ${p.urgency?.toUpperCase() || "NORMAL"}\n` +
+        `Category: ${p.categoryLabel || p.category}\n\n` +
+        `Our administrative and quality assurance leadership has been notified and is currently looking into this matter. We take every parent concern very seriously and will update you promptly once investigated.\n\n` +
+        `You can track the live status of this ticket in your Family Portal:\n` +
+        `${appUrl}/family${signature}`;
+    case "parent_complaint_resolved":
+      return `Hello ${p.parentName || "Guardian"},\n\n` +
+        `This is an update regarding your complaint ticket #${p.ticketNumber}: "${p.subject}".\n\n` +
+        `Status: ${p.status === "resolved" ? "RESOLVED" : "UNDER REVIEW"}\n` +
+        (p.resolvedByName ? `Handled By: ${p.resolvedByName}\n` : "") +
+        `\nAcademy Response & Resolution Notes:\n${p.resolutionNotes}\n\n` +
+        `You can review your complete inquiry and resolution history in your Family Portal:\n` +
+        `${appUrl}/family${signature}`;
     default: throw Object.assign(new Error("Unknown email template."), { code: "EMESSAGE" });
   }
 }
 
-export function emailHtml(job, appUrl) {
-  const p = job.payload;
-  if (job.template === "account_activated") {
-    const name = p.name || "there";
-    const roleTitle = typeof p.roleTitle === "string" ? p.roleTitle : "Academy Member";
-    const isOnboardingRole = ["parent", "student"].includes(p.role);
-    const targetUrl = isOnboardingRole ? `${appUrl}/onboarding` : `${appUrl}/login`;
-    const buttonLabel = isOnboardingRole ? "Complete Academy Onboarding &rarr;" : "Sign in to Portal &rarr;";
-    return `<!DOCTYPE html>
 function emailWrapper({ title, badge, heading, bodyHtml, buttonLabel, buttonUrl, noteHtml }) {
   return `<!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Your Academy Account is Active</title>
   <title>${title}</title>
 </head>
 <body style="margin: 0; padding: 0; background-color: #f3f7f4; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; color: #1e2924;">
   <table role="presentation" width="100%" border="0" cellspacing="0" cellpadding="0" style="background-color: #f3f7f4; padding: 40px 15px;">
     <tr>
       <td align="center">
-        <table role="presentation" width="100%" border="0" cellspacing="0" cellpadding="0" style="max-width: 560px; background-color: #ffffff; border-radius: 16px; border: 1px solid #dce6df; box-shadow: 0 4px 24px rgba(10, 46, 34, 0.05); overflow: hidden;">
         <table role="presentation" width="100%" border="0" cellspacing="0" cellpadding="0" style="max-width: 580px; background-color: #ffffff; border-radius: 16px; border: 1px solid #dce6df; box-shadow: 0 4px 24px rgba(10, 46, 34, 0.05); overflow: hidden;">
           <tr>
-            <td style="background-color: #0d3527; padding: 28px 32px; text-align: left;">
             <td style="background-color: #0d3527; padding: 26px 32px; text-align: left;">
               <table role="presentation" border="0" cellspacing="0" cellpadding="0">
                 <tr>
@@ -188,7 +205,6 @@ function emailWrapper({ title, badge, heading, bodyHtml, buttonLabel, buttonUrl,
                   </td>
                   <td style="vertical-align: middle;">
                     <span style="display: block; color: #ffffff; font-size: 17px; font-weight: 700; letter-spacing: -0.3px; line-height: 1.2;">ProsperWork</span>
-                    <span style="display: block; color: #8fcaab; font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 1.2px; margin-top: 2px;">Music Academy Portal</span>
                     <span style="display: block; color: #8fcaab; font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 1.2px; margin-top: 2px;">Music Academy</span>
                   </td>
                 </tr>
@@ -196,60 +212,40 @@ function emailWrapper({ title, badge, heading, bodyHtml, buttonLabel, buttonUrl,
             </td>
           </tr>
           <tr>
-            <td style="padding: 36px 32px 28px;">
-              <div style="display: inline-block; padding: 4px 10px; background-color: #edf6f1; border-radius: 16px; font-size: 11px; font-weight: 700; color: #1c7a5d; text-transform: uppercase; letter-spacing: 0.8px; margin-bottom: 14px;">
-                Account Verified
-              </div>
-              <h1 style="margin: 0 0 16px; color: #0a2e22; font-size: 22px; font-weight: 700; letter-spacing: -0.5px; line-height: 1.3;">
-                Your academy account has been activated
             <td style="padding: 34px 32px 28px;">
               ${badge ? `<div style="display: inline-block; padding: 4px 10px; background-color: #edf6f1; border-radius: 16px; font-size: 11px; font-weight: 700; color: #1c7a5d; text-transform: uppercase; letter-spacing: 0.8px; margin-bottom: 14px;">${badge}</div>` : ""}
               <h1 style="margin: 0 0 16px; color: #0a2e22; font-size: 21px; font-weight: 700; letter-spacing: -0.4px; line-height: 1.3;">
                 ${heading}
               </h1>
               <div style="font-size: 14.5px; line-height: 1.65; color: #374740; margin-bottom: 22px;">
-                Hello <strong>${name}</strong>,<br><br>
-                Great news! Your <strong>${roleTitle}</strong> account has been approved and activated by the ProsperWork administration. You now have full access to your academy workspace.
                 ${bodyHtml}
               </div>
-              <table role="presentation" border="0" cellspacing="0" cellpadding="0" style="margin: 28px 0;">
               ${buttonLabel && buttonUrl ? `
               <table role="presentation" border="0" cellspacing="0" cellpadding="0" style="margin: 24px 0;">
                 <tr>
                   <td align="center" style="border-radius: 10px; background-color: #135b45;">
-                    <a href="${targetUrl}" target="_blank" style="display: inline-block; padding: 13px 28px; font-size: 14px; font-weight: 600; color: #ffffff; text-decoration: none; border-radius: 10px; background-color: #135b45; letter-spacing: 0.1px;">
                     <a href="${buttonUrl}" target="_blank" style="display: inline-block; padding: 13px 26px; font-size: 14px; font-weight: 600; color: #ffffff; text-decoration: none; border-radius: 10px; background-color: #135b45; letter-spacing: 0.1px;">
                       ${buttonLabel}
                     </a>
                   </td>
                 </tr>
-              </table>
               </table>` : ""}
               ${noteHtml ? `
               <div style="padding: 14px 16px; background-color: #f7faf8; border-left: 3px solid #135b45; border-radius: 4px; font-size: 12.5px; line-height: 1.55; color: #5a6e64;">
-                <strong>Next Steps:</strong> ${isOnboardingRole ? "Please review and acknowledge the academy policies to complete your onboarding and open your family workspace." : "When you sign in, you can view your private dashboard, explore your schedule, and access live classroom resources."}
-              </div>
                 ${noteHtml}
               </div>` : ""}
             </td>
           </tr>
           <tr>
-            <td style="background-color: #f7faf8; padding: 26px 32px; border-top: 1px solid #e6ede8;">
             <td style="background-color: #f7faf8; padding: 24px 32px; border-top: 1px solid #e6ede8;">
               <table role="presentation" width="100%" border="0" cellspacing="0" cellpadding="0">
                 <tr>
                   <td style="font-size: 11.5px; line-height: 1.6; color: #62756b;">
                     <strong style="color: #0a2e22; font-size: 12px;">ProsperWork Music Academy</strong><br>
-                    Official Portal: <a href="https://portal.prosperworkmusic.com" style="color: #135b45; text-decoration: none; font-weight: 600;">portal.prosperworkmusic.com</a><br>
-                    Website: <a href="https://www.prosperworkmusic.com" style="color: #135b45; text-decoration: none;">www.prosperworkmusic.com</a>
                     Official Portal: <a href="https://portal.prosperworkmusic.com" style="color: #135b45; text-decoration: none; font-weight: 600;">portal.prosperworkmusic.com</a> &bull; <a href="https://www.prosperworkmusic.com" style="color: #135b45; text-decoration: none;">www.prosperworkmusic.com</a>
                   </td>
                 </tr>
                 <tr>
-                  <td style="padding-top: 14px; font-size: 11px; line-height: 1.5; color: #7f9187; border-top: 1px solid #eaf0ec; margin-top: 14px;">
-                    <strong>Inquiries & Support:</strong> <a href="mailto:info@prosperworkmusic.com" style="color: #135b45; text-decoration: none;">info@prosperworkmusic.com</a> &bull; <a href="mailto:support@prosperworkmusic.com" style="color: #135b45; text-decoration: none;">support@prosperworkmusic.com</a><br>
-                    <strong>Admissions:</strong> <a href="mailto:admissions@prosperworkmusic.com" style="color: #135b45; text-decoration: none;">admissions@prosperworkmusic.com</a> &bull; <strong>Accounts & Fees:</strong> <a href="mailto:fees@prosperworkmusic.com" style="color: #135b45; text-decoration: none;">fees@prosperworkmusic.com</a><br><br>
-                    <em>This is an official automated notification from ProsperWork Music Academy.</em>
                   <td style="padding-top: 12px; font-size: 11px; line-height: 1.5; color: #7f9187; border-top: 1px solid #eaf0ec; margin-top: 12px;">
                     <strong>Admissions:</strong> <a href="mailto:admissions@prosperworkmusic.com" style="color: #135b45; text-decoration: none;">admissions@prosperworkmusic.com</a> &bull; <strong>Support:</strong> <a href="mailto:support@prosperworkmusic.com" style="color: #135b45; text-decoration: none;">support@prosperworkmusic.com</a><br><br>
                     <em>ProsperWork Music Academy — Developing Musical Excellence.</em>
@@ -346,6 +342,82 @@ export function emailHtml(job, appUrl) {
       buttonLabel: "Open Family Portal &rarr;",
       buttonUrl: targetUrl,
       noteHtml: "If you have any questions before classes begin, our support desk is ready to help at support@prosperworkmusic.com."
+    });
+  }
+
+  if (job.template === "parent_complaint_alert") {
+    const targetUrl = `${appUrl}/complaints`;
+    const urgencyColor = p.urgency === "urgent" ? "#dc2626" : p.urgency === "high" ? "#d97706" : "#2563eb";
+    const bodyHtml = `A parent has submitted a formal complaint / support ticket through the Family Portal and is awaiting administrative resolution.<br><br>
+      <div style="background-color: #fef2f2; border-left: 4px solid ${urgencyColor}; padding: 12px 16px; margin-bottom: 16px; border-radius: 4px;">
+        <strong style="color: #991b1b; font-size: 14px;">Ticket #${p.ticketNumber} &bull; Urgency: ${p.urgency?.toUpperCase() || "NORMAL"}</strong>
+      </div>
+      <table style="width: 100%; border-collapse: collapse; font-size: 13.5px; margin-top: 10px;">
+        <tr style="border-bottom: 1px solid #eef2ef;"><td style="padding: 8px 4px; font-weight: 600; color: #5a6e64; width: 34%;">Subject</td><td style="padding: 8px 4px; color: #0a2e22; font-weight: 700;">${p.subject}</td></tr>
+        <tr style="border-bottom: 1px solid #eef2ef;"><td style="padding: 8px 4px; font-weight: 600; color: #5a6e64;">Category</td><td style="padding: 8px 4px; color: #2a3d34;">${p.categoryLabel || p.category}</td></tr>
+        <tr style="border-bottom: 1px solid #eef2ef;"><td style="padding: 8px 4px; font-weight: 600; color: #5a6e64;">Guardian</td><td style="padding: 8px 4px; color: #2a3d34;">${p.parentName} (<a href="mailto:${p.parentEmail}" style="color: #135b45;">${p.parentEmail}</a>)</td></tr>
+        ${p.studentName ? `<tr style="border-bottom: 1px solid #eef2ef;"><td style="padding: 8px 4px; font-weight: 600; color: #5a6e64;">Student</td><td style="padding: 8px 4px; color: #2a3d34; font-weight: 600;">${p.studentName}</td></tr>` : ""}
+      </table>
+      <div style="margin-top: 16px; padding: 14px; background-color: #f7faf8; border-radius: 6px; border: 1px solid #dce6df;">
+        <strong style="color: #0a2e22; font-size: 13px; display: block; margin-bottom: 6px;">Complaint Description:</strong>
+        <p style="margin: 0; white-space: pre-line; color: #2a3d34; font-size: 13px; line-height: 1.5;">${p.message}</p>
+      </div>`;
+    return emailWrapper({
+      title: `[${p.ticketNumber}] ${p.subject}`,
+      badge: `${p.urgency?.toUpperCase() || "NORMAL"} URGENCY`,
+      heading: `Parent Complaint: ${p.subject}`,
+      bodyHtml,
+      buttonLabel: "Open Complaints Desk &rarr;",
+      buttonUrl: targetUrl,
+      noteHtml: "Please review and take prompt corrective action. Updating this ticket will automatically notify the family."
+    });
+  }
+
+  if (job.template === "parent_complaint_acknowledgement") {
+    const targetUrl = `${appUrl}/family`;
+    const bodyHtml = `Hello <strong>${p.parentName || "Guardian"}</strong>,<br><br>
+      Thank you for contacting ProsperWork Music Academy. We have logged your complaint regarding <strong>${p.subject}</strong> under ticket reference <strong>#${p.ticketNumber}</strong>.<br><br>
+      <div style="background-color: #f7faf8; padding: 16px; border-radius: 8px; border: 1px solid #dce6df; margin: 16px 0;">
+        <strong style="color: #0a2e22; font-size: 14px;">Ticket Summary</strong><br>
+        &bull; <strong>Reference:</strong> #${p.ticketNumber}<br>
+        &bull; <strong>Category:</strong> ${p.categoryLabel || p.category}<br>
+        &bull; <strong>Urgency:</strong> ${p.urgency?.toUpperCase() || "NORMAL"}<br>
+        ${p.studentName ? `&bull; <strong>Student:</strong> ${p.studentName}<br>` : ""}
+        &bull; <strong>Status:</strong> Under Review by Academy Administration
+      </div>
+      Our administrative and quality assurance leadership has been notified and is actively investigating your report. We aim to address all parent concerns promptly and with the utmost care.`;
+    return emailWrapper({
+      title: "Complaint Received",
+      badge: "Inquiry Logged",
+      heading: `We've received your inquiry #${p.ticketNumber}`,
+      bodyHtml,
+      buttonLabel: "View Family Dashboard &rarr;",
+      buttonUrl: targetUrl,
+      noteHtml: "You can track the progress of this ticket at any time in your Family Portal. You will receive an email once resolved."
+    });
+  }
+
+  if (job.template === "parent_complaint_resolved") {
+    const targetUrl = `${appUrl}/family`;
+    const isResolved = p.status === "resolved";
+    const bodyHtml = `Hello <strong>${p.parentName || "Guardian"}</strong>,<br><br>
+      We are writing to provide an update regarding your complaint ticket <strong>#${p.ticketNumber}</strong> (<em>${p.subject}</em>).<br><br>
+      <div style="background-color: ${isResolved ? "#f0fdf4" : "#eff6ff"}; padding: 16px; border-radius: 8px; border: 1px solid ${isResolved ? "#bbf7d0" : "#bfdbfe"}; margin: 16px 0;">
+        <strong style="color: ${isResolved ? "#166534" : "#1e40af"}; font-size: 14px;">Resolution Update: ${isResolved ? "RESOLVED" : "IN PROGRESS"}</strong><br>
+        ${p.resolvedByName ? `<span style="font-size: 12px; color: #5a6e64;">Handled by ${p.resolvedByName}</span><br><br>` : "<br>"}
+        <div style="white-space: pre-line; color: #1e2924; font-size: 13.5px; line-height: 1.55;">
+          ${p.resolutionNotes}
+        </div>
+      </div>
+      Thank you for bringing this matter to our attention and for your partnership as we continuously uphold the highest standard of music education.`;
+    return emailWrapper({
+      title: `Complaint Update #${p.ticketNumber}`,
+      badge: isResolved ? "Resolved" : "Under Review",
+      heading: `Update on Ticket #${p.ticketNumber}`,
+      bodyHtml,
+      buttonLabel: "Open Family Portal &rarr;",
+      buttonUrl: targetUrl,
+      noteHtml: "If you have any further questions or follow-up regarding this matter, please feel free to reach out to complaints@prosperworkmusic.com."
     });
   }
   return null;

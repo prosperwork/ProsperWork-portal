@@ -1,12 +1,12 @@
 "use client";
 
-import type { ReactNode } from "react";
 import { useState, type ReactNode } from "react";
 import {
   AlertCircle,
   CalendarDays,
   ChevronRight,
   MessageCircle,
+  MessageSquare,
   ShieldCheck,
   UserCheck,
   X,
@@ -64,7 +64,9 @@ export default function FamiliesView({
   qcAssignmentError?: string;
   qcAssignmentLoading?: boolean;
 }) {
-  const [approvingStudent, setApprovingStudent] = useState<Student | null>(null);
+  const [approvingStudent, setApprovingStudent] = useState<Student | null>(
+    null
+  );
   const [assignTeacherName, setAssignTeacherName] = useState("");
   const [approvalBusy, setApprovalBusy] = useState(false);
   const [approvalError, setApprovalError] = useState("");
@@ -112,7 +114,9 @@ export default function FamiliesView({
       approvingStudent.admissionStatus = "approved";
       approvingStudent.teacherName = teacherName;
       setApprovingStudent(null);
-      notify(`Admission confirmed for ${approvingStudent.name}! Notification email sent to ${approvingStudent.parentName}.`);
+      notify(
+        `Admission confirmed for ${approvingStudent.name}! Notification email sent to ${approvingStudent.parentName}.`
+      );
     } catch {
       setApprovalError("Network error. Try again.");
     } finally {
@@ -133,6 +137,11 @@ export default function FamiliesView({
       <div className="toolbar">
         {searchBar("Find a student, family or instrument")}
         {adminAccess && headerActions("Enroll student", "student")}
+        {adminAccess && (
+          <a className="btn secondary" href="/complaints">
+            <MessageSquare size={14} /> Complaints &amp; Support
+          </a>
+        )}
         {parentAccess && (
           <button
             className="btn secondary"
@@ -159,7 +168,8 @@ export default function FamiliesView({
               {pendingReviewStudents.length} New Student Registration
               {pendingReviewStudents.length > 1 ? "s" : ""} Awaiting Review
             </strong>
-            Review submitted schedule availability, lesson duration, and assign a qualified instructor to activate enrollment.
+            Review submitted schedule availability, lesson duration, and assign
+            a qualified instructor to activate enrollment.
           </div>
         </div>
       )}
@@ -218,8 +228,6 @@ export default function FamiliesView({
                     {student.instrument} · {student.parentName}
                   </small>
                 </span>
-                <Pill tone={student.status === "active" ? "green" : "amber"}>
-                  {student.status}
                 <Pill
                   tone={
                     student.admissionStatus === "pending_review" ||
@@ -248,7 +256,6 @@ export default function FamiliesView({
                     <h3>{selected.name}</h3>
                     <span className="page-subtitle">
                       {selected.instrument} · {selected.rank} ·{" "}
-                      {selected.status}
                       {selected.admissionStatus === "pending_review" ||
                       selected.teacherName?.includes("Pending Review")
                         ? "Pending Admission Review"
@@ -301,16 +308,27 @@ export default function FamiliesView({
                   </div>
                   <div className="profile-field">
                     <span>Lesson duration</span>
-                    <strong>{selected.lessonDuration || "1 hour (Standard)"}</strong>
+                    <strong>
+                      {selected.lessonDuration || "1 hour (Standard)"}
+                    </strong>
                   </div>
                   <div className="profile-field">
                     <span>Preferred schedule</span>
-                    <strong>{selected.preferredDays || "Flexible / Not specified"}</strong>
+                    <strong>
+                      {selected.preferredDays || "Flexible / Not specified"}
+                    </strong>
                   </div>
                   {selected.extraTimeNotes && (
-                    <div className="profile-field" style={{ gridColumn: "1 / -1" }}>
-                      <span style={{ color: "#d97706" }}>Extra time request details</span>
-                      <strong style={{ color: "#92400e" }}>{selected.extraTimeNotes}</strong>
+                    <div
+                      className="profile-field"
+                      style={{ gridColumn: "1 / -1" }}
+                    >
+                      <span style={{ color: "#d97706" }}>
+                        Extra time request details
+                      </span>
+                      <strong style={{ color: "#92400e" }}>
+                        {selected.extraTimeNotes}
+                      </strong>
                     </div>
                   )}
                   {selected.learningGoals && (
@@ -359,7 +377,6 @@ export default function FamiliesView({
                     )}
                   </div>
                   {adminAccess && (
-                    <div className="row-actions" style={{ marginTop: 12 }}>
                     <div
                       className="row-actions"
                       style={{
@@ -372,7 +389,8 @@ export default function FamiliesView({
                     >
                       {(selected.admissionStatus === "pending_review" ||
                         selected.teacherName?.includes("Pending Review") ||
-                        (selected.status === "inactive" && !selected.teacherName)) && (
+                        (selected.status === "inactive" &&
+                          !selected.teacherName)) && (
                         <button
                           type="button"
                           className="btn primary small"
@@ -529,9 +547,10 @@ export default function FamiliesView({
                   lineHeight: 1.5,
                 }}
               >
-                Confirm enrollment for <strong>{approvingStudent.name}</strong> (
-                {approvingStudent.instrument}). Assigning an instructor activates their
-                lesson calendar and sends an official confirmation email to{" "}
+                Confirm enrollment for <strong>{approvingStudent.name}</strong>{" "}
+                ({approvingStudent.instrument}). Assigning an instructor
+                activates their lesson calendar and sends an official
+                confirmation email to{" "}
                 <strong>{approvingStudent.parentEmail}</strong>.
               </p>
 
@@ -636,7 +655,9 @@ export default function FamiliesView({
                     color: "#ffffff",
                   }}
                 >
-                  {approvalBusy ? "Confirming & Sending…" : "Confirm Admission & Notify"}
+                  {approvalBusy
+                    ? "Confirming & Sending…"
+                    : "Confirm Admission & Notify"}
                 </button>
               </div>
             </form>

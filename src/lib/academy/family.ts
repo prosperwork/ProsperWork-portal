@@ -26,7 +26,6 @@ export const familyAction=z.discriminatedUnion("action",[
  z.object({action:z.literal("pin"),pin,password:z.string().min(1).max(128)}).strict(),
  z.object({action:z.literal("enter_kid"),childId:child}).strict(),
  z.object({action:z.literal("exit_kid"),pin}).strict(),
- z.object({action:z.literal("media_consent"),childId:child,consent:z.boolean()}).strict(),
   z.object({action:z.literal("media_consent"),childId:child,consent:z.boolean()}).strict(),
   z.object({
     action: z.literal("approve_student"),

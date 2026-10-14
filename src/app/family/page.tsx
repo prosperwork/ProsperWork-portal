@@ -19,8 +19,10 @@ import {
   KeyRound,
   LoaderCircle,
   LockKeyhole,
+  MessageSquare,
   Plus,
   RefreshCw,
+  Send,
   ShieldCheck,
   UserRoundPlus,
   X,
@@ -29,6 +31,15 @@ import type { FamilyResponse } from "@/lib/academy/family";
 import type { LearningResponse } from "@/lib/academy/learning";
 import BrandEmblem from "@/app/_components/BrandEmblem";
 import ProfileAvatar from "@/app/_components/ProfileAvatar";
+import {
+  COMPLAINT_CATEGORIES,
+  categoryLabel,
+  urgencyBadge,
+  statusBadge,
+  type ComplaintRecord,
+  type ComplaintCategory,
+  type ComplaintUrgency,
+} from "@/lib/academy/complaints";
 
 type StudentForm = { password: string };
 type ActionResult = Record<string, unknown>;
@@ -131,6 +142,19 @@ export default function FamilyPage() {
   const [addBusy, setAddBusy] = useState(false);
   const [addError, setAddError] = useState("");
 
+  // Academy Support & Complaints State
+  const [complaints, setComplaints] = useState<ComplaintRecord[]>([]);
+  const [showComplaintModal, setShowComplaintModal] = useState(false);
+  const [complaintCategory, setComplaintCategory] =
+    useState<ComplaintCategory>("lesson_quality");
+  const [complaintStudentId, setComplaintStudentId] = useState("");
+  const [complaintUrgency, setComplaintUrgency] =
+    useState<ComplaintUrgency>("normal");
+  const [complaintSubject, setComplaintSubject] = useState("");
+  const [complaintMessage, setComplaintMessage] = useState("");
+  const [complaintBusy, setComplaintBusy] = useState(false);
+  const [complaintError, setComplaintError] = useState("");
+
   const role = normalizedRole(family?.profile.role ?? "");
   const active = family?.profile.status.trim().toLowerCase() === "active";
   const isParent = role === "parent";
@@ -202,6 +226,21 @@ export default function FamilyPage() {
         setLearning(null);
         setLearningError(await apiError(learningResponse, learningResult));
       }
+
+      // Fetch family complaints/inquiries
+      try {
+        const cRes = await fetch("/api/complaints", {
+          credentials: "include",
+          cache: "no-store",
+        });
+        const cData = await cRes.json().catch(() => ({}));
+        if (cRes.ok && Array.isArray(cData.complaints)) {
+          setComplaints(cData.complaints);
+        }
+      } catch {
+        // Non-blocking
+      }
+
       return result;
     } catch (cause) {
       setError(
@@ -219,6 +258,57 @@ export default function FamilyPage() {
   useEffect(() => {
     void load();
   }, [load]);
+
+  const handleRaiseComplaint = async (e: FormEvent) => {
+    e.preventDefault();
+    if (!complaintSubject.trim() || complaintMessage.trim().length < 10) {
+      setComplaintError(
+        "Please provide a clear subject and at least 10 characters describing the issue."
+      );
+      return;
+    }
+    setComplaintBusy(true);
+    setComplaintError("");
+    try {
+      const studentObj = family?.children.find(
+        (c) => c.id === complaintStudentId
+      );
+      const res = await fetch("/api/complaints", {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "create",
+          category: complaintCategory,
+          studentId: complaintStudentId || null,
+          studentName: studentObj?.name || null,
+          urgency: complaintUrgency,
+          subject: complaintSubject.trim(),
+          message: complaintMessage.trim(),
+        }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        throw new Error(data.error || "Could not submit complaint.");
+      }
+      if (data.complaint) {
+        setComplaints((prev) => [data.complaint, ...prev]);
+      }
+      setShowComplaintModal(false);
+      setComplaintSubject("");
+      setComplaintMessage("");
+      setComplaintStudentId("");
+      setFeedback(
+        `Your inquiry has been submitted under ticket #${data.complaint?.ticket_number || "reference"}. Academy administration has been notified.`
+      );
+    } catch (err) {
+      setComplaintError(
+        err instanceof Error ? err.message : "Could not submit complaint."
+      );
+    } finally {
+      setComplaintBusy(false);
+    }
+  };
 
   const postAction = useCallback(async (body: Record<string, unknown>) => {
     const response = await fetch("/api/family", {
@@ -586,6 +676,16 @@ export default function FamilyPage() {
                   <div
                     style={{ display: "flex", gap: 10, alignItems: "center" }}
                   >
+                    <button
+                      type="button"
+                      className="family-button secondary"
+                      onClick={() => {
+                        setComplaintError("");
+                        setShowComplaintModal(true);
+                      }}
+                    >
+                      <MessageSquare size={14} aria-hidden="true" /> Raise a complaint
+                    </button>
                     {canManageChildren && (
                       <button
                         type="button"
@@ -628,7 +728,6 @@ export default function FamilyPage() {
                                   size={37}
                                 />
                                 <div>
-                                  <h3>{child.name}</h3>
                                   <div
                                     style={{
                                       display: "flex",
@@ -679,27 +778,9 @@ export default function FamilyPage() {
                                   </p>
                                 </div>
                               </div>
-                              {isParent && active && (
-                                <button
-                                  type="button"
-                                  className="family-button primary"
-                                  onClick={() => void enterKidMode(child.id)}
-                                  disabled={
-                                    actionBusy === `kid:${child.id}` ||
-                                    !family.pinConfigured
-                                  }
-                                >
-                                  {actionBusy === `kid:${child.id}` ? (
-                                    <>
-                                      <LoaderCircle size={14} /> Opening…
-                                    </>
-                                  ) : (
-                                    <>
-                                      <LockKeyhole size={14} /> Enter Kid Mode
-                                    </>
-                                  )}
-                                </button>
-                                isPending ? (
+                              {isParent &&
+                                active &&
+                                (isPending ? (
                                   <div
                                     style={{
                                       display: "inline-flex",
@@ -736,8 +817,7 @@ export default function FamilyPage() {
                                       </>
                                     )}
                                   </button>
-                                )
-                              )}
+                                ))}
                             </div>
                             {isPending && (
                               <div
@@ -770,11 +850,14 @@ export default function FamilyPage() {
                                   >
                                     Registration Awaiting Academy Confirmation
                                   </strong>
-                                  We have received {child.name}&apos;s registration for{" "}
-                                  {child.instrument || "lessons"}. The academy administration has
-                                  been notified and is reviewing your schedule (
-                                  {child.preferredDays || "flexible"}) to match a qualified teacher.
-                                  You will receive an email once confirmed.
+                                  We have received {child.name}&apos;s
+                                  registration for{" "}
+                                  {child.instrument || "lessons"}. The academy
+                                  administration has been notified and is
+                                  reviewing your schedule (
+                                  {child.preferredDays || "flexible"}) to match
+                                  a qualified teacher. You will receive an email
+                                  once confirmed.
                                 </div>
                               </div>
                             )}
@@ -822,7 +905,8 @@ export default function FamilyPage() {
                               <div className="family-fact">
                                 <small>Instructor</small>
                                 <strong>
-                                  {child.teacherName && !child.teacherName.includes("Pending")
+                                  {child.teacherName &&
+                                  !child.teacherName.includes("Pending")
                                     ? child.teacherName
                                     : "Matching instructor…"}
                                 </strong>
@@ -1172,6 +1256,172 @@ export default function FamilyPage() {
                           </div>
                         </form>
                       )}
+                    </div>
+                  </section>
+
+                  <section className="family-card" aria-labelledby="complaints-title">
+                    <div className="family-card-head">
+                      <div>
+                        <h2 id="complaints-title">Academy Support & Grievances</h2>
+                        <p>
+                          Raise any lesson, teacher, attendance, or billing concern directly to school leadership.
+                        </p>
+                      </div>
+                      <MessageSquare size={17} color="#135b45" aria-hidden="true" />
+                    </div>
+                    <div className="family-card-body">
+                      {complaints.length > 0 ? (
+                        <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+                          {complaints.map((c) => {
+                            const u = urgencyBadge(c.urgency);
+                            const s = statusBadge(c.status);
+                            const isResolved = c.status === "resolved";
+                            return (
+                              <div
+                                key={c.id}
+                                style={{
+                                  padding: 12,
+                                  border: "1px solid #dce8df",
+                                  borderRadius: 8,
+                                  background: "#fdfefe",
+                                  display: "flex",
+                                  flexDirection: "column",
+                                  gap: 6,
+                                }}
+                              >
+                                <div
+                                  style={{
+                                    display: "flex",
+                                    flexWrap: "wrap",
+                                    justifyContent: "space-between",
+                                    alignItems: "center",
+                                    gap: 6,
+                                  }}
+                                >
+                                  <span
+                                    style={{
+                                      fontFamily: "monospace",
+                                      fontSize: 11,
+                                      fontWeight: 700,
+                                      color: "#135b45",
+                                    }}
+                                  >
+                                    #{c.ticket_number}
+                                  </span>
+                                  <div style={{ display: "flex", gap: 4 }}>
+                                    <span className={u.className}>{u.label}</span>
+                                    <span className={s.className}>{s.label}</span>
+                                  </div>
+                                </div>
+                                <strong style={{ fontSize: 13, color: "#0a2e22" }}>
+                                  {c.subject}
+                                </strong>
+                                <div
+                                  style={{
+                                    fontSize: 11.5,
+                                    color: "#5a6e64",
+                                    display: "flex",
+                                    gap: 8,
+                                    flexWrap: "wrap",
+                                  }}
+                                >
+                                  <span>Category: {categoryLabel(c.category)}</span>
+                                  {c.student_name && (
+                                    <span>• Student: {c.student_name}</span>
+                                  )}
+                                  <span>
+                                    •{" "}
+                                    {new Date(c.created_at).toLocaleDateString(
+                                      "en-GB",
+                                      { day: "numeric", month: "short" }
+                                    )}
+                                  </span>
+                                </div>
+                                <p
+                                  style={{
+                                    margin: "4px 0 0",
+                                    fontSize: 12,
+                                    color: "#374a40",
+                                    whiteSpace: "pre-wrap",
+                                    lineHeight: 1.45,
+                                  }}
+                                >
+                                  {c.message}
+                                </p>
+                                {c.resolution_notes && (
+                                  <div
+                                    style={{
+                                      marginTop: 6,
+                                      padding: "8px 10px",
+                                      borderRadius: 6,
+                                      background: isResolved
+                                        ? "#f0fdf4"
+                                        : "#eff6ff",
+                                      border: `1px solid ${
+                                        isResolved ? "#bbf7d0" : "#bfdbfe"
+                                      }`,
+                                      fontSize: 11.5,
+                                    }}
+                                  >
+                                    <strong
+                                      style={{
+                                        color: isResolved
+                                          ? "#166534"
+                                          : "#1e40af",
+                                        display: "block",
+                                        marginBottom: 2,
+                                      }}
+                                    >
+                                      {isResolved
+                                        ? "✓ School Resolution:"
+                                        : "⚙ Academy Update:"}
+                                    </strong>
+                                    <span
+                                      style={{
+                                        color: "#1e2924",
+                                        whiteSpace: "pre-wrap",
+                                      }}
+                                    >
+                                      {c.resolution_notes}
+                                    </span>
+                                    {c.resolved_by_name && (
+                                      <small
+                                        style={{
+                                          display: "block",
+                                          marginTop: 4,
+                                          color: "#5a6e64",
+                                        }}
+                                      >
+                                        Updated by {c.resolved_by_name}
+                                      </small>
+                                    )}
+                                  </div>
+                                )}
+                              </div>
+                            );
+                          })}
+                        </div>
+                      ) : (
+                        <p className="family-upload-note" style={{ margin: 0 }}>
+                          No inquiries or complaints logged. If you ever have a
+                          concern regarding a class, teacher punctuality, or
+                          billing, submit a ticket for prompt attention.
+                        </p>
+                      )}
+
+                      <div style={{ marginTop: 14 }}>
+                        <button
+                          type="button"
+                          className="family-button secondary"
+                          style={{ width: "100%", justifyContent: "center" }}
+                          onClick={() => {
+                            setComplaintError("");
+                            setShowComplaintModal(true);
+                          }}
+                        >
+                          <MessageSquare size={14} /> Raise a Complaint / Inquiry
+                        </button>
+                      </div>
                     </div>
                   </section>
                 </aside>
@@ -1562,6 +1812,170 @@ export default function FamilyPage() {
                   ) : (
                     <>
                       <UserRoundPlus size={14} /> Add student
+                    </>
+                  )}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {showComplaintModal && (
+        <div
+          className="family-modal-scrim"
+          onClick={(e) => {
+            if (e.target === e.currentTarget) setShowComplaintModal(false);
+          }}
+        >
+          <div
+            className="family-modal-dialog"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="complaint-modal-title"
+          >
+            <div className="family-modal-header">
+              <h2 id="complaint-modal-title" className="family-modal-title">
+                Raise a Complaint or Inquiry
+              </h2>
+              <button
+                type="button"
+                className="family-modal-close"
+                onClick={() => setShowComplaintModal(false)}
+                aria-label="Close dialog"
+              >
+                <X size={18} />
+              </button>
+            </div>
+            <form onSubmit={handleRaiseComplaint} className="family-modal-form">
+              {complaintError && (
+                <div
+                  className="family-alert"
+                  role="alert"
+                  style={{ margin: 0 }}
+                >
+                  <AlertCircle size={16} />
+                  <p>{complaintError}</p>
+                </div>
+              )}
+
+              <div className="family-modal-row">
+                <div className="family-field">
+                  <label htmlFor="complaint-category">Issue Category *</label>
+                  <select
+                    id="complaint-category"
+                    value={complaintCategory}
+                    onChange={(e) =>
+                      setComplaintCategory(e.target.value as ComplaintCategory)
+                    }
+                  >
+                    {COMPLAINT_CATEGORIES.map((c) => (
+                      <option key={c.value} value={c.value}>
+                        {c.label}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div className="family-field">
+                  <label htmlFor="complaint-student">
+                    Concerning Child / Student
+                  </label>
+                  <select
+                    id="complaint-student"
+                    value={complaintStudentId}
+                    onChange={(e) => setComplaintStudentId(e.target.value)}
+                  >
+                    <option value="">General / Entire Family Concern</option>
+                    {family?.children.map((child) => (
+                      <option key={child.id} value={child.id}>
+                        {child.name} ({child.instrument || "Student"})
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+
+              <div className="family-modal-row">
+                <div className="family-field">
+                  <label htmlFor="complaint-urgency">Urgency Level *</label>
+                  <select
+                    id="complaint-urgency"
+                    value={complaintUrgency}
+                    onChange={(e) =>
+                      setComplaintUrgency(e.target.value as ComplaintUrgency)
+                    }
+                  >
+                    <option value="normal">Standard / Normal</option>
+                    <option value="high">High Priority</option>
+                    <option value="urgent">Urgent / Critical Attention</option>
+                  </select>
+                </div>
+
+                <div className="family-field">
+                  <label htmlFor="complaint-subject">Subject / Summary *</label>
+                  <input
+                    id="complaint-subject"
+                    required
+                    minLength={3}
+                    maxLength={200}
+                    placeholder="e.g. Teacher late for lesson / Billing discrepancy"
+                    value={complaintSubject}
+                    onChange={(e) => setComplaintSubject(e.target.value)}
+                  />
+                </div>
+              </div>
+
+              <div className="family-field">
+                <label htmlFor="complaint-message">Detailed Description *</label>
+                <textarea
+                  id="complaint-message"
+                  required
+                  minLength={10}
+                  maxLength={5000}
+                  rows={4}
+                  placeholder="Please describe what happened, dates/times of lessons if applicable, and any context that will help our administrative and quality control team investigate and resolve this quickly."
+                  value={complaintMessage}
+                  onChange={(e) => setComplaintMessage(e.target.value)}
+                />
+                <small>
+                  Your ticket will be routed directly to academy leadership, school administrators, and quality control.
+                </small>
+              </div>
+
+              <div
+                className="family-form-actions"
+                style={{
+                  marginTop: 16,
+                  display: "flex",
+                  justifyContent: "flex-end",
+                  gap: 10,
+                }}
+              >
+                <button
+                  type="button"
+                  className="family-button secondary"
+                  onClick={() => setShowComplaintModal(false)}
+                  disabled={complaintBusy}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="family-button primary"
+                  disabled={
+                    complaintBusy ||
+                    !complaintSubject.trim() ||
+                    complaintMessage.trim().length < 10
+                  }
+                >
+                  {complaintBusy ? (
+                    <>
+                      <LoaderCircle size={14} className="spinning" /> Submitting…
+                    </>
+                  ) : (
+                    <>
+                      <Send size={14} /> Submit Complaint
                     </>
                   )}
                 </button>
