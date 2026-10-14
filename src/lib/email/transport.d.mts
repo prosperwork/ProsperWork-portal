@@ -13,4 +13,5 @@ export const replyToAliases: Readonly<Record<string, string>>;
 export function smtpTransport(): Transporter;
 export function safeEmailError(error: unknown): string;
 export function emailText(job: EmailJob, appUrl: string): string;
+export function emailHtml(job: EmailJob, appUrl: string): string | null;
 export function deliverEmail(job: EmailJob, appUrl: string): Promise<void>;

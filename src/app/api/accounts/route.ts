@@ -4,6 +4,7 @@ import { z } from "zod";
 import { identity } from "@/lib/supabase/identity";
 import { provisioningClient, sameOrigin } from "@/lib/supabase/server";
 import { accountSchema } from "@/lib/academy/schemas";
+import { deliverEmail } from "@/lib/email/transport.mjs";
 
 export const dynamic = "force-dynamic";
 export async function GET() {
@@ -186,11 +187,44 @@ export async function POST(request: Request) {
     }).strict().safeParse(body);
     if (!parsed.success) return NextResponse.json({ error: "Invalid account action." }, { status: 400 });
     if (parsed.data.id === profile.id && parsed.data.status !== "active") return NextResponse.json({ error: "You cannot deactivate your own owner account." }, { status: 400 });
-    const { data: target, error: targetError } = await admin.from("pw_profiles").select("id,role").eq("id", parsed.data.id).single();
+    const { data: target, error: targetError } = await admin.from("pw_profiles").select("id,name,email,role,status").eq("id", parsed.data.id).single();
     if (targetError || !target) return NextResponse.json({ error: "Account not found." }, { status: 404 });
     if (target.role === "super_admin") return NextResponse.json({ error: "Owner status requires a separate safeguarded workflow." }, { status: 403 });
+    const previousStatus = target.status;
     const { error } = await admin.rpc("pw_set_account", { actor: profile.id, target: parsed.data.id, new_status: parsed.data.status });
     if (error) throw error;
+
+    // When an account is activated (and was not active before), notify the user via SMTP
+    if (parsed.data.status === "active" && previousStatus !== "active" && target.email) {
+      const roleTitles: Record<string, string> = {
+        parent: "Parent & Guardian",
+        student: "Student",
+        teacher: "Instructor",
+        head_admin: "Head of Operations",
+        billing_admin: "Finance & Accounts",
+        quality_control: "Academic Quality Control",
+        sales_marketing: "Admissions & Marketing",
+      };
+      const roleTitle = roleTitles[target.role] || "Academy Member";
+      try {
+        await deliverEmail({
+          id: crypto.randomUUID(),
+          lease_id: crypto.randomUUID(),
+          email: target.email,
+          category: "automated",
+          subject: "Your ProsperWork Music Academy Account is Active",
+          template: "account_activated",
+          payload: {
+            name: target.name || "",
+            roleTitle,
+          },
+        }, publicAppUrl("/").origin);
+      } catch (emailErr) {
+        // Log email dispatch issue without rolling back database activation
+        console.error("Failed to send account activation email:", emailErr);
+      }
+    }
+
     return NextResponse.json({ ok: true });
   } catch (err: any) {
     return NextResponse.json({ error: err?.message || "Account changes could not be completed. Reload before retrying." }, { status: 503 });
