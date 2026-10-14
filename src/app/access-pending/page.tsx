@@ -10,6 +10,7 @@ type Profile = {
   role: string;
   status: string;
   timezone: string;
+  impersonated?: boolean;
 };
 
 function BrandMark() {
@@ -67,6 +68,26 @@ export default function AccessPendingPage() {
   useEffect(() => {
     void refreshStatus();
   }, [refreshStatus]);
+
+  async function exitViewAs() {
+    setPending(true);
+    setError("");
+    try {
+      const res = await fetch("/api/accounts", {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "exit_view_as" }),
+      });
+      if (res.ok) {
+        window.location.assign("/accounts");
+      } else {
+        window.location.reload();
+      }
+    } catch {
+      window.location.reload();
+    }
+  }
 
   async function signOut() {
     setPending(true);
@@ -237,6 +258,17 @@ export default function AccessPendingPage() {
                 </svg>
                 {loading ? "Checking…" : "Refresh access status"}
               </button>
+              {profile?.impersonated && (
+                <button
+                  className="auth-submit"
+                  type="button"
+                  style={{ background: "#b45309", borderColor: "#b45309" }}
+                  onClick={() => void exitViewAs()}
+                  disabled={pending}
+                >
+                  Exit Preview &amp; Return to Accounts
+                </button>
+              )}
               <button
                 className="auth-secondary"
                 type="button"

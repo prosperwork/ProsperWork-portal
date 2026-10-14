@@ -37,7 +37,9 @@ export async function POST(request: Request) {
     if (action === "logout") {
       const { error } = await client.auth.signOut();
       if (error) throw error;
-      return NextResponse.json({ ok: true, redirect: "/login" });
+      const res = NextResponse.json({ ok: true, redirect: "/login" });
+      res.cookies.set("pw_view_as", "", { path: "/", maxAge: 0 });
+      return res;
     }
     if (action === "login") {
       if (!password) return NextResponse.json({ error: "Enter your password." }, { status: 400 });
@@ -50,7 +52,9 @@ export async function POST(request: Request) {
       const { error } = await client.auth.signInWithPassword({ email: loginEmail, password });
       if (error) return NextResponse.json({ error: "Sign-in failed. Check your details and email verification." }, { status: 401 });
       // Root proxy runs account/role validation after establishing the session.
-      return NextResponse.json({ ok: true, redirect: "/welcome" });
+      const res = NextResponse.json({ ok: true, redirect: "/welcome" });
+      res.cookies.set("pw_view_as", "", { path: "/", maxAge: 0 });
+      return res;
     }
     if (action === "register") {
       if (!name) return NextResponse.json({ error: "Enter your full name." }, { status: 400 });
