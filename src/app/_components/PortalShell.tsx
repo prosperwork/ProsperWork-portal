@@ -376,7 +376,7 @@ export default function PortalShell({
             <span>ProsperWork Music Academy</span>
           </div>
           <div className="portal-sidebar-foot-meta">
-            <span>v1.0.0</span>
+            <span>v2.5.0</span>
             <span className="portal-sidebar-foot-dot">·</span>
             <span>Portal Platform</span>
           </div>
