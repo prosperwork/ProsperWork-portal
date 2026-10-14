@@ -6,7 +6,11 @@ import { hiringRoles } from "../../lib/academy/hiring";
 type Profile = { id: string | number; name: string; email: string; role: string; status: string; timezone: string };
 
 function BrandMark() {
-  return <span className="auth-brand-mark" aria-hidden="true"><svg viewBox="0 0 32 32" fill="none"><path d="M6 20.5 16 7l10 13.5M9 24h14M13 24v-5.5h6V24" stroke="currentColor" strokeWidth="2.1" strokeLinecap="round" strokeLinejoin="round"/><circle cx="16" cy="10" r="1.5" fill="currentColor"/></svg></span>;
+  return (
+    <span className="auth-brand-mark" aria-hidden="true">
+      <img src="/favicon-192x192.png" alt="" width={36} height={36} />
+    </span>
+  );
 }
 
 export default function AccessPendingPage() {
