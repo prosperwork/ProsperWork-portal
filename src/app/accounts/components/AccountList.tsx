@@ -103,11 +103,7 @@ export default function AccountList({
           </div>
           <strong>Couldn’t load accounts</strong>
           <p>Retry the directory request to continue.</p>
-          <button
-            type="button"
-            className="pw-text-button"
-            onClick={onRetry}
-          >
+          <button type="button" className="pw-text-button" onClick={onRetry}>
             Retry directory
           </button>
         </div>

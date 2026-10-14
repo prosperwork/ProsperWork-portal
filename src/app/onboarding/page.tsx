@@ -248,17 +248,21 @@ export default function OnboardingPage() {
           <div className="family-alert info" role="status">
             <ShieldCheck size={16} />
             <div>
-              <strong>Owner setup required — onboarding is blocked</strong>
+              <strong>
+                {isParent
+                  ? "Academy policies are being prepared"
+                  : "Owner setup required — onboarding is blocked"}
+              </strong>
               <p>
-                An Owner must publish approved PDF documents for every required
-                policy key before acknowledgement can continue. Missing:{" "}
-                {(data.missingKeys ?? []).join(", ") ||
-                  "required policy versions not confirmed"}
-                .
+                {isParent
+                  ? "The academy administration is currently finalizing the official policy documents. You will be able to review and acknowledge them here as soon as they are published."
+                  : `An Owner must publish approved PDF documents for every required policy key before acknowledgement can continue. Missing: ${(data.missingKeys ?? []).join(", ") || "required policy versions not confirmed"}.`}
               </p>
-              <p>
-                <Link href="/policies">View policy setup status</Link>
-              </p>
+              {!isParent && (
+                <p>
+                  <Link href="/policies">View policy setup status</Link>
+                </p>
+              )}
             </div>
           </div>
         )}

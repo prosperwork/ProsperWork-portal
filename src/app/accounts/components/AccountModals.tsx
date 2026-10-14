@@ -22,7 +22,6 @@ export default function AccountModals({
   onCancelStatusChange,
   onConfirmStatusChange,
 }: AccountModalsProps) {
-
   return (
     <>
       {statusChange && (
