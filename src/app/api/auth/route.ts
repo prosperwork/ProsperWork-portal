@@ -3,6 +3,7 @@ import { z } from "zod";
 import { provisioningClient, sameOrigin, sessionClient } from "@/lib/supabase/server";
 import{publicAppUrl}from"@/lib/supabase/app-url.mjs";
 import { PARENT_TERMS_VERSION, PRIVACY_POLICY_VERSION } from "@/lib/legal/consent-versions";
+import { ensureParentPoliciesAccepted } from "@/lib/academy/policy-sync";
 
 const fields = z.object({
   action: z.enum(["login", "register", "reset", "updatePassword", "logout"]),
@@ -75,6 +76,7 @@ export async function POST(request: Request) {
           await admin.auth.admin.deleteUser(createdUser.id).catch(() => undefined);
           return NextResponse.json({ error: "Registration could not be completed. Try again later or contact the academy." }, { status: 503 });
         }
+        await ensureParentPoliciesAccepted(createdUser.id);
       }
       return NextResponse.json({ ok: true, message: "Check your email to confirm your account. Academy access requires activation." });
     }

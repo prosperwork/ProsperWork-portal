@@ -1,6 +1,7 @@
 import type { Role } from "../types";
 import { provisioningClient, sessionClient } from "./server";
 import { cookies } from "next/headers";
+import { ensureParentPoliciesAccepted } from "../academy/policy-sync";
 
 export interface AcademyProfile {
   id: string;
@@ -58,7 +59,11 @@ export async function identity(options: { allowPolicy?: boolean; rawOwner?: bool
           realAdminName: data.name,
         };
         if (!options.allowPolicy && ["parent", "student"].includes(impersonatedProfile.role) && impersonatedProfile.status === "active") {
-          const gate = await client.rpc("pw_policy_ready");
+          let gate = await client.rpc("pw_policy_ready");
+          if (!gate.error && !gate.data && impersonatedProfile.role === "parent") {
+            await ensureParentPoliciesAccepted(impersonatedProfile.id);
+            gate = await client.rpc("pw_policy_ready");
+          }
           if (!gate.error && !gate.data) {
             impersonatedProfile = { ...impersonatedProfile, status: "policy_required" };
           }
@@ -69,9 +74,13 @@ export async function identity(options: { allowPolicy?: boolean; rawOwner?: bool
   }
 
   if (!options.allowPolicy && data && ["parent","student"].includes(data.role) && data.status==="active") {
-    const gate=await client.rpc("pw_policy_ready");
-    if(gate.error)throw new Error("Policy acceptance could not be checked.");
-    if(!gate.data)data={...data,status:"policy_required"};
+    let gate = await client.rpc("pw_policy_ready");
+    if (!gate.error && !gate.data && data.role === "parent") {
+      await ensureParentPoliciesAccepted(data.id);
+      gate = await client.rpc("pw_policy_ready");
+    }
+    if (gate.error) throw new Error("Policy acceptance could not be checked.");
+    if (!gate.data) data = { ...data, status: "policy_required" };
   }
   return { client, user, profile: data as AcademyProfile };
 }

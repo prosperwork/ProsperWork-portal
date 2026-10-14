@@ -5,6 +5,7 @@ import { identity } from "@/lib/supabase/identity";
 import { provisioningClient, sameOrigin } from "@/lib/supabase/server";
 import { accountSchema } from "@/lib/academy/schemas";
 import { deliverEmail } from "@/lib/email/transport.mjs";
+import { ensureParentPoliciesAccepted } from "@/lib/academy/policy-sync";
 
 export const dynamic = "force-dynamic";
 export async function GET() {
@@ -179,6 +180,9 @@ export async function POST(request: Request) {
         actor: profile.id, target: data.user.id, new_status: "active", new_role: account.role, new_timezone: account.timezone,
       });
       if (profileError) return NextResponse.json({ error: "The invitation was sent, but role assignment failed. This account remains pending; review it before use." }, { status: 503 });
+      if (account.role === "parent") {
+        await ensureParentPoliciesAccepted(data.user.id);
+      }
       return NextResponse.json({ ok: true });
     }
     const parsed = z.object({
@@ -193,6 +197,11 @@ export async function POST(request: Request) {
     const previousStatus = target.status;
     const { error } = await admin.rpc("pw_set_account", { actor: profile.id, target: parsed.data.id, new_status: parsed.data.status });
     if (error) throw error;
+
+    // Auto-accept policies for parents upon activation so they aren't blocked by onboarding
+    if (parsed.data.status === "active" && target.role === "parent") {
+      await ensureParentPoliciesAccepted(target.id);
+    }
 
     // When an account is activated (and was not active before), notify the user via SMTP
     if (parsed.data.status === "active" && previousStatus !== "active" && target.email) {
