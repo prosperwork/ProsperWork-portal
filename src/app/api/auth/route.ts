@@ -148,7 +148,7 @@ export async function POST(request: Request) {
         ok: true,
         message: isMaxReached
           ? "Password reset email sent. You have reached the limit of 5 requests for this hour. Please wait 1 hour before requesting another."
-          : `If an account exists, a password reset email will be sent (${nextCount}/5 requests used this hour). Check your inbox and spam folder.`,
+          : "If an account exists, a password reset email will be sent. Check your inbox and spam folder.",
         retryAfter: isMaxReached ? 3600 : 120,
         maxAttemptsReached: isMaxReached,
       });
