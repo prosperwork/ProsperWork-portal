@@ -25,8 +25,8 @@ export async function POST(request: Request) {
   const { action, email, password, name, legalAcceptance } = parsed.data;
   if(["register","reset"].includes(action)&&!z.string().email().safeParse(email).success)return NextResponse.json({error:"Enter a valid email address."},{status:400});
   if (["login", "register", "reset"].includes(action) && !email) return NextResponse.json({ error: "Enter your email address." }, { status: 400 });
-  if (["register", "updatePassword"].includes(action) && (!password || password.length < 12)) {
-    return NextResponse.json({ error: "Choose a password with at least 12 characters." }, { status: 400 });
+  if (["register", "updatePassword"].includes(action) && (!password || password.length < 8)) {
+    return NextResponse.json({ error: "Choose a password with at least 8 characters." }, { status: 400 });
   }
   if (action === "register" && !legalAcceptance) {
     return NextResponse.json({ error: "Accept the Parent Terms and Privacy Policy before creating an account." }, { status: 400 });

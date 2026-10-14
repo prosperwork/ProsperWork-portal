@@ -32,7 +32,7 @@ export async function GET(){
 export async function POST(request:Request){
  if(!sameOrigin(request))return reply({error:"Invalid request origin."},403);
  const parsed=familyAction.safeParse(await request.json().catch(()=>null));
- if(!parsed.success)return reply({error:"Check the form. Passwords need at least 12 characters and the family PIN must be exactly four digits."},400);
+ if(!parsed.success)return reply({error:"Check the form. Passwords need at least 8 characters and the family PIN must be exactly four digits."},400);
  try{
   const d=parsed.data,{client,user,profile}=await identity({allowPolicy:parsed.data.action==="exit_kid"});
   if(!profile||profile.status!=="active"||!user)return reply({error:"Active family account required."},403);

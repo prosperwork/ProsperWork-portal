@@ -164,8 +164,8 @@ export default function ProfilePage() {
     setPasswordError("");
     setPasswordSuccess("");
 
-    if (newPassword.length < 12) {
-      setPasswordError("Password must be at least 12 characters.");
+    if (newPassword.length < 8) {
+      setPasswordError("Password must be at least 8 characters.");
       return;
     }
     if (newPassword !== confirmPassword) {
@@ -378,7 +378,7 @@ export default function ProfilePage() {
                     <h2 id="profile-password-title">Security &amp; Password</h2>
                     <p>
                       Change the sign-in password for your account. Must be at
-                      least 12 characters.
+                      least 8 characters.
                     </p>
                   </div>
                 </div>
@@ -406,11 +406,11 @@ export default function ProfilePage() {
                       <input
                         type="password"
                         autoComplete="new-password"
-                        minLength={12}
+                        minLength={8}
                         required
                         value={newPassword}
                         onChange={(event) => setNewPassword(event.target.value)}
-                        placeholder="At least 12 characters"
+                        placeholder="At least 8 characters"
                       />
                       <small>
                         Use letters, numbers, and symbols for high security.
@@ -421,7 +421,7 @@ export default function ProfilePage() {
                       <input
                         type="password"
                         autoComplete="new-password"
-                        minLength={12}
+                        minLength={8}
                         required
                         value={confirmPassword}
                         onChange={(event) =>
@@ -438,7 +438,7 @@ export default function ProfilePage() {
                       type="submit"
                       disabled={
                         passwordSaving ||
-                        newPassword.length < 12 ||
+                        newPassword.length < 8 ||
                         newPassword !== confirmPassword
                       }
                     >

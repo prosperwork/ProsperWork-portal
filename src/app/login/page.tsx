@@ -165,10 +165,10 @@ export default function LoginPage() {
       return;
     }
     if (mode === "register") {
-      if (password.length < 12) {
+      if (password.length < 8) {
         setFeedback({
           kind: "error",
-          text: "Choose a password with at least 12 characters.",
+          text: "Choose a password with at least 8 characters.",
         });
         return;
       }
@@ -450,10 +450,10 @@ export default function LoginPage() {
                           }
                           placeholder={
                             mode === "register"
-                              ? "At least 12 characters"
+                              ? "At least 8 characters"
                               : "Enter your password"
                           }
-                          minLength={mode === "register" ? 12 : undefined}
+                          minLength={mode === "register" ? 8 : undefined}
                           required
                           value={password}
                           onChange={(event) => setPassword(event.target.value)}
@@ -471,7 +471,7 @@ export default function LoginPage() {
                       </div>
                       {mode === "register" && (
                         <p className="auth-helper">
-                          Use at least 12 characters for a stronger password.
+                          Use at least 8 characters for a stronger password.
                         </p>
                       )}
                     </div>
@@ -486,7 +486,7 @@ export default function LoginPage() {
                         type={showPassword ? "text" : "password"}
                         autoComplete="new-password"
                         placeholder="Enter your password again"
-                        minLength={12}
+                        minLength={8}
                         required
                         value={confirm}
                         onChange={(event) => setConfirm(event.target.value)}

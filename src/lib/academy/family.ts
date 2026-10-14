@@ -1,8 +1,8 @@
 import {z} from "zod";
 const child=z.string().regex(/^[a-zA-Z0-9_-]{1,100}$/),pin=z.string().regex(/^\d{4}$/);
 export const familyAction=z.discriminatedUnion("action",[
- z.object({action:z.literal("student_account"),childId:child,password:z.string().min(12).max(128)}).strict(),
- z.object({action:z.literal("student_password"),childId:child,password:z.string().min(12).max(128)}).strict(),
+ z.object({action:z.literal("student_account"),childId:child,password:z.string().min(8).max(128)}).strict(),
+ z.object({action:z.literal("student_password"),childId:child,password:z.string().min(8).max(128)}).strict(),
  z.object({action:z.literal("pin"),pin,password:z.string().min(1).max(128)}).strict(),
  z.object({action:z.literal("enter_kid"),childId:child}).strict(),
  z.object({action:z.literal("exit_kid"),pin}).strict(),
