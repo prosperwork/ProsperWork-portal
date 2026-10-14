@@ -1,7 +1,12 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { AlertCircle, CheckCircle2, RefreshCw, ShieldCheck } from "lucide-react";
+import {
+  AlertCircle,
+  CheckCircle2,
+  RefreshCw,
+  ShieldCheck,
+} from "lucide-react";
 import { operationsAction } from "@/lib/academy/operations";
 import { useCurrencies } from "@/lib/academy/use-currencies";
 import { readJson, apiErrorMessage } from "@/lib/academy/web-client";
@@ -12,10 +17,7 @@ import OpsAcademyView from "./views/OpsAcademyView";
 import OpsTeamView from "./views/OpsTeamView";
 import OpsLeadsView from "./views/OpsLeadsView";
 import OpsRecordsView from "./views/OpsRecordsView";
-import {
-  type OperationsData,
-  type OperationsView,
-} from "./ops-types";
+import { type OperationsData, type OperationsView } from "./ops-types";
 
 export default function OperationsPage() {
   const [data, setData] = useState<OperationsData | null>(null);
@@ -57,17 +59,27 @@ export default function OperationsPage() {
         return null;
       }
       if (!response.ok) {
-        throw new Error(apiErrorMessage(result, response.status, "Operations could not be loaded"));
+        throw new Error(
+          apiErrorMessage(
+            result,
+            response.status,
+            "Operations could not be loaded"
+          )
+        );
       }
       if (typeof result.error === "string" && result.error.trim()) {
         throw new Error(result.error);
       }
-      const payload = (result.data && typeof result.data === "object" ? result.data : result) as OperationsData;
+      const payload = (
+        result.data && typeof result.data === "object" ? result.data : result
+      ) as OperationsData;
       setData(payload);
       return payload;
     } catch (cause) {
       setError(
-        cause instanceof Error ? cause.message : "Operations could not be loaded."
+        cause instanceof Error
+          ? cause.message
+          : "Operations could not be loaded."
       );
       return null;
     } finally {
@@ -107,11 +119,15 @@ export default function OperationsPage() {
     const list: { id: OperationsView; title: string }[] = [];
     if (canBilling) list.push({ id: "finance", title: "Finance" });
     if (canSchedule) list.push({ id: "academy", title: "Academy" });
-    if (canAvailability || canReadQuality) list.push({ id: "team", title: "Team" });
+    if (canAvailability || canReadQuality)
+      list.push({ id: "team", title: "Team" });
     if (canReadLeads) list.push({ id: "leads", title: "Leads" });
-    if (canBilling || canSeeEvents) list.push({ id: "records", title: "Records" });
-    if (isOwner || isFinance || isSales) list.push({ id: "referrals", title: "Referrals" });
-    if (isSocial || isTeacher || isQc || isAdmin || isHead) list.push({ id: "media", title: "Media Studio" });
+    if (canBilling || canSeeEvents)
+      list.push({ id: "records", title: "Records" });
+    if (isOwner || isFinance || isSales)
+      list.push({ id: "referrals", title: "Referrals" });
+    if (isSocial || isTeacher || isQc || isAdmin || isHead)
+      list.push({ id: "media", title: "Media Studio" });
     return list;
   }, [
     canBilling,
@@ -181,7 +197,9 @@ export default function OperationsPage() {
   const visibleObservations = useMemo(
     () =>
       isTeacher
-        ? (data?.observations ?? []).filter((item) => item.staff_id === profileId)
+        ? (data?.observations ?? []).filter(
+            (item) => item.staff_id === profileId
+          )
         : data?.observations ?? [],
     [data?.observations, isTeacher, profileId]
   );
@@ -189,11 +207,16 @@ export default function OperationsPage() {
     () =>
       isOwner
         ? data?.availability ?? []
-        : (data?.availability ?? []).filter((item) => item.staff_id === profileId),
+        : (data?.availability ?? []).filter(
+            (item) => item.staff_id === profileId
+          ),
     [data?.availability, isOwner, profileId]
   );
 
-  const submitAction = async (action: unknown, label: string): Promise<boolean> => {
+  const submitAction = async (
+    action: unknown,
+    label: string
+  ): Promise<boolean> => {
     if (busy) return false;
     if (!isActive) {
       setActionError("Only active profiles may write to Operations.");
@@ -226,7 +249,9 @@ export default function OperationsPage() {
       }
       if (response.status === 403) setData(null);
       if (!response.ok || result.ok !== true) {
-        throw new Error(apiErrorMessage(result, response.status, "Operations request failed"));
+        throw new Error(
+          apiErrorMessage(result, response.status, "Operations request failed")
+        );
       }
       const fresh = await load();
       if (!fresh) {
@@ -238,7 +263,9 @@ export default function OperationsPage() {
       return true;
     } catch (cause) {
       setActionError(
-        cause instanceof Error ? cause.message : "The operation could not be saved."
+        cause instanceof Error
+          ? cause.message
+          : "The operation could not be saved."
       );
       return false;
     } finally {
@@ -255,7 +282,11 @@ export default function OperationsPage() {
           <div className="ops-notice ops-error" role="alert">
             <AlertCircle size={16} />
             <span>{error}</span>
-            <button className="ops-btn" type="button" onClick={() => void load()}>
+            <button
+              className="ops-btn"
+              type="button"
+              onClick={() => void load()}
+            >
               Retry
             </button>
           </div>
@@ -300,7 +331,8 @@ export default function OperationsPage() {
                 <div className="ops-notice ops-error" role="status">
                   <ShieldCheck size={16} />
                   <span>
-                    This profile is read-only. Write controls require an active staff profile.
+                    This profile is read-only. Write controls require an active
+                    staff profile.
                   </span>
                 </div>
               )}
@@ -309,7 +341,8 @@ export default function OperationsPage() {
                 <div className="ops-section">
                   <div className="ops-empty">
                     <strong>No operations sections for this role</strong>
-                    The service did not grant an operations workspace to this profile.
+                    The service did not grant an operations workspace to this
+                    profile.
                   </div>
                 </div>
               )}
@@ -320,7 +353,9 @@ export default function OperationsPage() {
                     <button
                       key={view.id}
                       type="button"
-                      className={`ops-tab ${activeView === view.id ? "active" : ""}`}
+                      className={`ops-tab ${
+                        activeView === view.id ? "active" : ""
+                      }`}
                       aria-current={activeView === view.id ? "page" : undefined}
                       onClick={() => setSelectedView(view.id)}
                     >
@@ -330,7 +365,10 @@ export default function OperationsPage() {
                 </nav>
               )}
 
-              <div className="ops-grid" data-portal-layout="operations-workspace">
+              <div
+                className="ops-grid"
+                data-portal-layout="operations-workspace"
+              >
                 {activeView === "finance" && (
                   <OpsFinanceView
                     data={data}
@@ -411,14 +449,19 @@ export default function OperationsPage() {
           )
         )}
 
-        {canBilling && data?.contracts.some((c) => c.active && c.billing_hold) && (
-          <section hidden={activeView !== "finance"} className="ops-inline-summary">
-            <h2>Billing review after a pause</h2>
-            <p>
-              Held contracts do not back-charge paused months. Agree the resume date before generating invoices.
-            </p>
-          </section>
-        )}
+        {canBilling &&
+          data?.contracts.some((c) => c.active && c.billing_hold) && (
+            <section
+              hidden={activeView !== "finance"}
+              className="ops-inline-summary"
+            >
+              <h2>Billing review after a pause</h2>
+              <p>
+                Held contracts do not back-charge paused months. Agree the
+                resume date before generating invoices.
+              </p>
+            </section>
+          )}
 
         {data && (
           <>

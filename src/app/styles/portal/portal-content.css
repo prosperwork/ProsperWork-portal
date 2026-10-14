@@ -468,20 +468,16 @@
   height: 16px;
 }
 @supports (scrollbar-width: thin) {
-  .portal-sidebar {
-    scrollbar-width: thin;
-  }
   .portal-nav {
     scrollbar-width: thin;
     scrollbar-color: #719183 transparent;
   }
 }
-.portal-sidebar::-webkit-scrollbar,
 .portal-nav::-webkit-scrollbar {
-  width: 5px;
+  width: 4px;
 }
 .portal-nav::-webkit-scrollbar-thumb {
-  background: #719183;
+  background: rgba(255, 255, 255, 0.2);
   border-radius: 4px;
 }
 .portal-nav::-webkit-scrollbar-track {
@@ -949,29 +945,6 @@
   --portal-muted: #718378;
   --portal-pine: #123d2f;
   background: var(--portal-paper);
-}
-.portal-sidebar {
-  flex-basis: 244px;
-  width: 244px;
-  padding: 22px 14px 16px;
-  background: #123d2f;
-}
-.portal-brand {
-  padding: 4px 9px 24px;
-}
-.portal-brand-mark {
-  border-radius: 12px;
-}
-.portal-nav {
-  gap: 4px;
-}
-.portal-nav-link {
-  min-height: 39px;
-  border-radius: 8px;
-}
-.portal-nav-link.active {
-  background: #285843;
-  box-shadow: inset 2px 0 #9bcaa6;
 }
 .portal-content {
   background: var(--portal-paper);
