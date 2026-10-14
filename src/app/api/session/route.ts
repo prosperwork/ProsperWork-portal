@@ -7,8 +7,8 @@ export async function GET() {
     const { user, profile, client } = await identity();
     if (!user) return NextResponse.json({ profile: null }, { status: 401 });
 
-    // Detect if the user's email has changed
-    if (user.email && profile?.email && user.email.toLowerCase() !== profile.email.toLowerCase()) {
+    // Detect if the user's email has changed (exempt "View as user" impersonated previews)
+    if (!profile?.impersonated && user.email && profile?.email && user.email.toLowerCase() !== profile.email.toLowerCase()) {
       await client?.auth.signOut().catch(() => undefined);
       return NextResponse.json({
         profile: null,
