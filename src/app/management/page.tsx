@@ -2,7 +2,20 @@
 
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState, type FormEvent, type ReactNode } from "react";
-import { RefreshCw, ShieldCheck } from "lucide-react";
+import {
+  AlertTriangle,
+  Bell,
+  CalendarClock,
+  CheckCircle2,
+  Clock,
+  FileText,
+  Inbox,
+  PhoneCall,
+  RefreshCw,
+  ShieldCheck,
+  Sparkles,
+  Users,
+} from "lucide-react";
 import ProfileAvatar from "@/app/_components/ProfileAvatar";
 
 type Staff = { id: string; name: string; role: string; status: string; quota: number | null; head_admin_id: string | null; avatar_file_id: string | null };
@@ -23,6 +36,22 @@ const actionOptions: { value: ActionKind; label: string }[] = [
   { value: "deactivate", label: "Deactivate staff" }, { value: "preview", label: "Read-only profile preview" },
 ];
 const label = (value: string) => value.replaceAll("_", " ");
+const formatRoleName = (role: string) => {
+  const map: Record<string, string> = {
+    super_admin: "Super Administrator",
+    head_admin: "Head Administrator",
+    admin: "Administrator",
+    teacher: "Music Instructor",
+    qc: "Quality Control",
+    hr: "Human Resources",
+    finance: "Finance & Accounts",
+    sales_marketing: "Admissions & Marketing",
+    social_media: "Media & Outreach",
+    parent: "Parent / Guardian",
+    student: "Student",
+  };
+  return map[role] || label(role);
+};
 const toISO = (value: string) => value ? new Date(value).toISOString() : "";
 const payloadName = (payload: Record<string, unknown>, fallback: string) => String(payload.name || payload.childName || payload.studentName || payload.parentName || payload.title || fallback);
 
@@ -272,20 +301,188 @@ export default function ManagementPage() {
       </div>
       <aside className="mw-stack mw-support-column">
         <div className="mw-support-ledgers">
-        {ownerActions && <section className="mw-support-section"><div className="mw-section-head"><div><h2>Owner action rules</h2><p>Changes require a reason and refresh.</p></div><span className="mw-count">Owner only</span></div>
-          {snapshot?.rules ? <div className="mw-meta"><RecordTag>Stagnant after {snapshot.rules.stagnant_days} days</RecordTag><RecordTag>Empty board threshold {snapshot.rules.empty_board_classes} classes</RecordTag><RecordTag>Follow-up {snapshot.rules.followup_hours} hours</RecordTag><RecordTag>Escalation {snapshot.rules.escalation_hours} hours</RecordTag><RecordTag>Late grace {snapshot.rules.late_grace_minutes} minutes</RecordTag></div> : <div className="mw-empty"><strong>Rule settings are unavailable</strong>The snapshot did not return owner rule values.</div>}
+        {ownerActions && <section className="mw-support-section">
+          <div className="mw-section-head">
+            <div>
+              <h2>Academy Operating Rules</h2>
+              <p>System thresholds and escalation timelines for academy operations.</p>
+            </div>
+            <span className="mw-count">Owner controls</span>
+          </div>
+          {snapshot?.rules ? (
+            <div className="mw-rules-card-grid">
+              <div className="mw-rule-item">
+                <div className="mw-rule-icon"><Clock size={15} /></div>
+                <div className="mw-rule-content">
+                  <div className="mw-rule-top">
+                    <span className="mw-rule-title">Lesson Late Grace</span>
+                    <span className="mw-rule-badge">{snapshot.rules.late_grace_minutes} mins</span>
+                  </div>
+                  <p className="mw-rule-desc">Grace period before a lesson is flagged late.</p>
+                </div>
+              </div>
+              <div className="mw-rule-item">
+                <div className="mw-rule-icon"><FileText size={15} /></div>
+                <div className="mw-rule-content">
+                  <div className="mw-rule-top">
+                    <span className="mw-rule-title">Classroom Board Notes</span>
+                    <span className="mw-rule-badge">{snapshot.rules.empty_board_classes} classes</span>
+                  </div>
+                  <p className="mw-rule-desc">Alerts when notes are missing for consecutive lessons.</p>
+                </div>
+              </div>
+              <div className="mw-rule-item">
+                <div className="mw-rule-icon"><PhoneCall size={15} /></div>
+                <div className="mw-rule-content">
+                  <div className="mw-rule-top">
+                    <span className="mw-rule-title">Trial Lead Contact</span>
+                    <span className="mw-rule-badge">{snapshot.rules.followup_hours} hrs</span>
+                  </div>
+                  <p className="mw-rule-desc">Target window to contact prospective trial applicants.</p>
+                </div>
+              </div>
+              <div className="mw-rule-item">
+                <div className="mw-rule-icon"><AlertTriangle size={15} /></div>
+                <div className="mw-rule-content">
+                  <div className="mw-rule-top">
+                    <span className="mw-rule-title">Case Escalation</span>
+                    <span className="mw-rule-badge">{snapshot.rules.escalation_hours} hrs</span>
+                  </div>
+                  <p className="mw-rule-desc">Unresolved items escalate to leadership after 24h.</p>
+                </div>
+              </div>
+              <div className="mw-rule-item">
+                <div className="mw-rule-icon"><CalendarClock size={15} /></div>
+                <div className="mw-rule-content">
+                  <div className="mw-rule-top">
+                    <span className="mw-rule-title">Inactivity Review</span>
+                    <span className="mw-rule-badge">{snapshot.rules.stagnant_days} days</span>
+                  </div>
+                  <p className="mw-rule-desc">Flags stagnant records without activity for 30 days.</p>
+                </div>
+              </div>
+            </div>
+          ) : (
+            <div className="mw-empty">
+              <strong>Rule settings unavailable</strong>
+              <span>The snapshot did not return owner rule values.</span>
+            </div>
+          )}
         </section>}
-        <section className="mw-support-section"><div className="mw-section-head"><div><h2>People & hierarchy</h2><p>Active staff, ownership and quotas.</p></div><span className="mw-count">{staff.length}</span></div>
-          {staff.length ? staff.map(person => <article className="mw-record" key={person.id}><div className="pw-person-inline"><ProfileAvatar profileId={person.id} name={person.name} size={32} /><div><h3>{person.name}</h3><p>{label(person.role)}{person.head_admin_id ? ` · Head ${staff.find(row => row.id === person.head_admin_id)?.name || person.head_admin_id.slice(0, 8)}` : ""}</p><div className="mw-meta"><RecordTag status={person.status}>{label(person.status)}</RecordTag>{person.quota !== null && person.quota !== undefined && <RecordTag>Quota {person.quota}</RecordTag>}</div></div></div></article>) : <div className="mw-empty"><strong>No staff are visible</strong>Staff listings are account-scoped by management access.</div>}
+        <section className="mw-support-section">
+          <div className="mw-section-head">
+            <div>
+              <h2>Team &amp; Hierarchy</h2>
+              <p>Active staff, roles, and assigned student capacity.</p>
+            </div>
+            <span className="mw-count">{staff.length} {staff.length === 1 ? "member" : "members"}</span>
+          </div>
+          {staff.length ? staff.map(person => {
+            const headName = person.head_admin_id ? staff.find(row => row.id === person.head_admin_id)?.name || person.head_admin_id.slice(0, 8) : null;
+            return (
+              <article className="mw-record" key={person.id}>
+                <div className="pw-person-inline">
+                  <ProfileAvatar profileId={person.id} name={person.name} size={36} />
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
+                      <h3 style={{ margin: 0, fontSize: 13.5 }}>{person.name}</h3>
+                      <span className="mw-pill-active">
+                        <CheckCircle2 size={11} /> {person.status === "active" ? "Active" : label(person.status)}
+                      </span>
+                    </div>
+                    <p style={{ margin: "2px 0 0", color: "#456154", fontSize: 12 }}>
+                      {formatRoleName(person.role)}{headName ? ` · Reports to ${headName}` : ""}
+                    </p>
+                    <div className="mw-meta" style={{ marginTop: 6 }}>
+                      <span className="mw-sub-tag">
+                        {person.quota === 0 || person.quota === null ? "Capacity: Unlimited" : `Capacity: ${person.quota} students`}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+              </article>
+            );
+          }) : (
+            <div className="mw-empty-clean">
+              <Users size={18} className="mw-empty-icon" />
+              <strong>No team members found</strong>
+              <span>Team listings are scoped to your management permissions.</span>
+            </div>
+          )}
         </section>
-        <section className="mw-support-section"><div className="mw-section-head"><div><h2>Current announcements</h2><p>Role-targeted, time-bounded notices.</p></div><span className="mw-count">{snapshot?.announcements.length || 0}</span></div>
-          {(snapshot?.announcements || []).length ? snapshot?.announcements.map(item => <article className="mw-record" key={item.id}><div><h3>{item.title}</h3><p>{item.body}</p><div className="mw-meta">{item.roles.map(role => <RecordTag key={role}>{label(role)}</RecordTag>)}<RecordTag status="pending">Expires {new Date(item.expires_at).toLocaleString()}</RecordTag></div></div></article>) : <div className="mw-empty"><strong>No active announcements</strong>Expired and archived announcements do not appear in the active list.</div>}
+        <section className="mw-support-section">
+          <div className="mw-section-head">
+            <div>
+              <h2>Academy Announcements</h2>
+              <p>Active bulletins published for teachers, staff, or families.</p>
+            </div>
+            <span className="mw-count">{snapshot?.announcements.length || 0} active</span>
+          </div>
+          {(snapshot?.announcements || []).length ? snapshot?.announcements.map(item => (
+            <article className="mw-record" key={item.id}>
+              <div>
+                <h3>{item.title}</h3>
+                <p>{item.body}</p>
+                <div className="mw-meta">
+                  {item.roles.map(role => <RecordTag key={role}>{formatRoleName(role)}</RecordTag>)}
+                  <RecordTag status="pending">Expires {new Date(item.expires_at).toLocaleDateString()}</RecordTag>
+                </div>
+              </div>
+            </article>
+          )) : (
+            <div className="mw-empty-clean">
+              <Bell size={18} className="mw-empty-icon" />
+              <strong>No active announcements</strong>
+              <span>Broadcast notices published to academy portals will show here.</span>
+            </div>
+          )}
         </section>
-        <section className="mw-support-section"><div className="mw-section-head"><div><h2>Linked record index</h2><p>Scoped student and lead references.</p></div></div>
-          <div className="mw-meta"><RecordTag>{students.length} students</RecordTag><RecordTag>{leads.length} leads</RecordTag></div>
-           {students.slice(0, 5).map(row => <article className="mw-record" key={row.id}><div className="pw-person-inline"><ProfileAvatar name={payloadName(row.payload, "Student record")} size={30} /><div><h3>{payloadName(row.payload, "Student record")}</h3><p>Student · {row.id}</p></div></div></article>)}
-           {leads.slice(0, 5).map(row => <article className="mw-record" key={row.id}><div className="pw-person-inline"><ProfileAvatar name={payloadName(row.payload, "Lead record")} size={30} /><div><h3>{payloadName(row.payload, "Lead record")}</h3><p>Lead · {row.id}</p></div></div></article>)}
-          {!students.length && !leads.length && <div className="mw-empty" style={{ marginTop: 12 }}><strong>No linked students or leads</strong>This scope returned no linked records.</div>}
+        <section className="mw-support-section">
+          <div className="mw-section-head">
+            <div>
+              <h2>Students &amp; Inquiries</h2>
+              <p>Quick reference of enrolled students and prospective trial inquiries.</p>
+            </div>
+          </div>
+          <div className="mw-stat-row">
+            <div className="mw-stat-pill">
+              <Users size={14} />
+              <span><strong>{students.length}</strong> Enrolled Students</span>
+            </div>
+            <div className="mw-stat-pill">
+              <Sparkles size={14} />
+              <span><strong>{leads.length}</strong> Trial Inquiries</span>
+            </div>
+          </div>
+          {students.slice(0, 5).map(row => (
+            <article className="mw-record" key={row.id}>
+              <div className="pw-person-inline">
+                <ProfileAvatar name={payloadName(row.payload, "Student record")} size={30} />
+                <div>
+                  <h3>{payloadName(row.payload, "Student record")}</h3>
+                  <p>Enrolled Student · ID {row.id.slice(0, 8)}</p>
+                </div>
+              </div>
+            </article>
+          ))}
+          {leads.slice(0, 5).map(row => (
+            <article className="mw-record" key={row.id}>
+              <div className="pw-person-inline">
+                <ProfileAvatar name={payloadName(row.payload, "Lead record")} size={30} />
+                <div>
+                  <h3>{payloadName(row.payload, "Lead record")}</h3>
+                  <p>Prospective Lead · ID {row.id.slice(0, 8)}</p>
+                </div>
+              </div>
+            </article>
+          ))}
+          {!students.length && !leads.length && (
+            <div className="mw-empty-clean">
+              <Inbox size={18} className="mw-empty-icon" />
+              <strong>No linked records yet</strong>
+              <span>Newly registered students and incoming trial leads will display here.</span>
+            </div>
+          )}
         </section>
         </div>
       </aside>

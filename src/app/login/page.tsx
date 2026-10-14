@@ -507,7 +507,11 @@ export default function LoginPage() {
                   <button
                     className="auth-submit"
                     type="submit"
-                    disabled={pending || !canSubmit || (mode === "forgot" && resetCooldown > 0)}
+                    disabled={
+                      pending ||
+                      !canSubmit ||
+                      (mode === "forgot" && resetCooldown > 0)
+                    }
                   >
                     {pending
                       ? "Please wait…"
