@@ -74,8 +74,10 @@ export async function POST(request: Request) {
       return NextResponse.json({ ok: true, message: "Check your email to confirm your account. Academy access requires activation." });
     }
     if (action === "reset") {
+      const targetUrl = publicAppUrl("/auth/confirm");
+      targetUrl.searchParams.set("next", "/reset-password");
       const { error } = await client.auth.resetPasswordForEmail(email!, {
-        redirectTo: publicAppUrl("/auth/confirm?next=/reset-password").href,
+        redirectTo: targetUrl.href,
       });
       if (error) return NextResponse.json({ error: "The reset request could not be sent. Please try again later." }, { status: 429 });
       return NextResponse.json({ ok: true, message: "If an account exists, a password reset email will be sent." });
