@@ -23,11 +23,28 @@ export async function proxy(request: NextRequest) {
         : "/login";
     }
     else {
-      const { data } = await client.from("pw_profiles").select("status,role").eq("id", user.id).single();
-      if (!data || (!["active", "on_leave"].includes(data.status)&&!(request.nextUrl.pathname==="/hiring"&&data.status==="applicant"&&!["parent","student"].includes(data.role)))) destination = "/access-pending";
-      else if(["parent","student"].includes(data.role)&&request.nextUrl.pathname!=="/onboarding"&&!(request.nextUrl.pathname==="/kid"&&data.role==="student"&&request.cookies.has("pw-kid-parent"))){
-        const policy=await client.rpc("pw_policy_ready");
-        if(policy.error||!policy.data)destination="/onboarding";
+      let targetId = user.id;
+      const { data: realUser } = await client.from("pw_profiles").select("id,status,role").eq("id", user.id).single();
+      const viewAsId = request.cookies.get("pw_view_as")?.value;
+      if (realUser?.role === "super_admin" && realUser.status === "active" && viewAsId && /^[0-9a-f-]{36}$/i.test(viewAsId) && viewAsId !== user.id) {
+        targetId = viewAsId;
+      }
+      const data = targetId === user.id ? realUser : (await client.from("pw_profiles").select("status,role").eq("id", targetId).single()).data;
+      if (!data || (!["active", "on_leave"].includes(data.status) && !(request.nextUrl.pathname === "/hiring" && data.status === "applicant" && !["parent", "student"].includes(data.role)))) {
+        destination = "/access-pending";
+      } else if (["parent", "student"].includes(data.role) && request.nextUrl.pathname !== "/onboarding" && !(request.nextUrl.pathname === "/kid" && data.role === "student" && request.cookies.has("pw-kid-parent"))) {
+        if (targetId !== user.id) {
+          const { count: currentCount } = await client.from("pw_policy_versions").select("id", { count: "exact", head: true }).not("published_at", "is", null);
+          if (!currentCount || currentCount < 3) {
+            destination = "/onboarding";
+          } else {
+            const { count: acceptedCount } = await client.from("pw_policy_acceptances").select("policy_id", { count: "exact", head: true }).eq("parent_id", targetId);
+            if (!acceptedCount || acceptedCount < currentCount) destination = "/onboarding";
+          }
+        } else {
+          const policy = await client.rpc("pw_policy_ready");
+          if (policy.error || !policy.data) destination = "/onboarding";
+        }
       }
     }
     if (destination) {

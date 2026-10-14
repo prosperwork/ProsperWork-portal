@@ -24,7 +24,13 @@ export function useAcademyData() {
     try {
       const response = await fetch("/api/academy", { cache: "no-store" });
       const result = await response.json();
-      if (!response.ok) throw new Error(result.error || "Records could not be loaded.");
+      if (!response.ok) {
+        if (result.policyRequired || result.error === "Policy acknowledgement required.") {
+          window.location.replace("/onboarding");
+          return;
+        }
+        throw new Error(result.error || "Records could not be loaded.");
+      }
       accept(result); setError("");
     } catch (failure) {
       setError(failure instanceof Error ? failure.message : "Records could not be loaded.");

@@ -57,7 +57,13 @@ export default function AccountsPage() {
       });
       const data = await response.json().catch(() => ({}));
       if (!response.ok) throw new Error(data.error || "Unable to switch view.");
-      window.location.assign("/");
+      if (target.status === "pending") {
+        window.location.assign("/access-pending");
+      } else if (["parent", "student"].includes(target.role)) {
+        window.location.assign("/onboarding");
+      } else {
+        window.location.assign("/");
+      }
     } catch (err) {
       setMutationError(
         err instanceof Error ? err.message : "Unable to switch view."

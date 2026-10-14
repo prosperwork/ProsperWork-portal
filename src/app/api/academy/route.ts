@@ -8,7 +8,11 @@ export const dynamic = "force-dynamic";
 export async function GET() {
   try {
     const { client, profile } = await identity();
-    if (!profile || !["active", "on_leave"].includes(profile.status)) return NextResponse.json({ error: "An active academy account is required." }, { status: 403 });
+    if (!profile) return NextResponse.json({ error: "Sign-in required." }, { status: 401 });
+    if (profile.status === "policy_required") {
+      return NextResponse.json({ error: "Policy acknowledgement required.", policyRequired: true }, { status: 403 });
+    }
+    if (!["active", "on_leave"].includes(profile.status)) return NextResponse.json({ error: "An active academy account is required." }, { status: 403 });
     return NextResponse.json(await academySnapshot(client, profile), { headers: { "Cache-Control": "private, no-store" } });
   } catch (error) {
     return NextResponse.json({ error: error instanceof Error ? error.message : "Academy records could not be loaded." }, { status: 503 });
