@@ -171,7 +171,7 @@ export async function POST(request: Request) {
       if (!parsed.success || parsed.data.role === "super_admin") return NextResponse.json({ error: "Check the invitation details. Additional owner access requires a separate approval." }, { status: 400 });
       const account = parsed.data;
       const { data, error } = await admin.auth.admin.inviteUserByEmail(account.email.toLowerCase(), {
-        data: { name: account.name }, redirectTo: publicAppUrl("/auth/confirm").href,
+        data: { name: account.name }, redirectTo: publicAppUrl("/auth/confirm?next=/reset-password&reason=invite").href,
       });
       if (error || !data.user) return NextResponse.json({ error: "The invitation could not be sent. If this person has registered already, activate their existing account instead." }, { status: 400 });
       const { error: profileError } = await admin.rpc("pw_set_account", {

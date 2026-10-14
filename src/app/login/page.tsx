@@ -97,6 +97,11 @@ export default function LoginPage() {
           kind: "success",
           text: "Your password was updated successfully. Please sign in with your new password.",
         });
+      } else if (reason === "password_created") {
+        setFeedback({
+          kind: "success",
+          text: "Your account password has been created successfully. Please sign in to access your academy workspace.",
+        });
       } else if (reason === "email_changed") {
         setFeedback({
           kind: "info",

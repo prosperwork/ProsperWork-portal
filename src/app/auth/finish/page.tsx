@@ -9,7 +9,7 @@ export default function FinishSignIn(){
   const fragment=new URLSearchParams(window.location.hash.slice(1));
   const access_token=fragment.get("access_token"),refresh_token=fragment.get("refresh_token");
   const next=new URLSearchParams(window.location.search).get("next");
-   const destination=next==="/reset-password"?next:next==="/hiring"?next:next==="/welcome"?next:"/";
+   const destination=next&&next.startsWith("/reset-password")?next:next==="/hiring"?next:next==="/welcome"?next:"/";
   // Never retain tokens in browser history or logs.
   window.history.replaceState(null,"",window.location.pathname+window.location.search);
   if(!access_token||!refresh_token){setError("This invitation or recovery link is missing or expired. Use Forgot password on the sign-in page to request a fresh link.");return;}

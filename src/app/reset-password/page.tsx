@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import type { FormEvent } from "react";
 
 function BrandMark() {
@@ -18,6 +18,14 @@ export default function ResetPasswordPage() {
   const [pending, setPending] = useState(false);
   const [error, setError] = useState("");
   const [complete, setComplete] = useState(false);
+  const [isInvite, setIsInvite] = useState(false);
+
+  useEffect(() => {
+    try {
+      const params = new URLSearchParams(window.location.search);
+      setIsInvite(params.get("reason") === "invite");
+    } catch {}
+  }, []);
 
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -49,7 +57,11 @@ export default function ResetPasswordPage() {
         );
       setComplete(true);
       setTimeout(() => {
-        window.location.assign("/login?reason=password_changed");
+        window.location.assign(
+          isInvite
+            ? "/login?reason=password_created"
+            : "/login?reason=password_changed"
+        );
       }, 2000);
     } catch (requestError) {
       setError(
@@ -104,15 +116,23 @@ export default function ResetPasswordPage() {
                   </svg>
                 </div>
                 <header className="auth-panel-heading">
-                  <div className="auth-overline">Password updated</div>
-                  <h2>You’re all set.</h2>
+                  <div className="auth-overline">
+                    {isInvite ? "Account activated" : "Password updated"}
+                  </div>
+                  <h2>{isInvite ? "Welcome to ProsperWork!" : "You’re all set."}</h2>
                   <p>
-                    Your new password is ready to use. Redirecting to sign in…
+                    {isInvite
+                      ? "Your account password has been created. Redirecting to sign in…"
+                      : "Your new password is ready to use. Redirecting to sign in…"}
                   </p>
                 </header>
                 <a
                   className="auth-submit"
-                  href="/login?reason=password_changed"
+                  href={
+                    isInvite
+                      ? "/login?reason=password_created"
+                      : "/login?reason=password_changed"
+                  }
                 >
                   Sign in with new password
                 </a>
@@ -120,9 +140,17 @@ export default function ResetPasswordPage() {
             ) : (
               <>
                 <header className="auth-panel-heading">
-                  <div className="auth-overline">Secure account recovery</div>
-                  <h2>Choose a new password</h2>
-                  <p>Make it at least 12 characters and confirm it below.</p>
+                  <div className="auth-overline">
+                    {isInvite ? "Academy invitation" : "Secure account recovery"}
+                  </div>
+                  <h2>
+                    {isInvite ? "Create your password" : "Choose a new password"}
+                  </h2>
+                  <p>
+                    {isInvite
+                      ? "Choose a secure password (at least 12 characters) to activate your account."
+                      : "Make it at least 12 characters and confirm it below."}
+                  </p>
                 </header>
                 {error && (
                   <div className="auth-feedback error" role="alert">
@@ -190,7 +218,13 @@ export default function ResetPasswordPage() {
                     type="submit"
                     disabled={pending}
                   >
-                    {pending ? "Updating password…" : "Set new password"}
+                    {pending
+                      ? isInvite
+                        ? "Creating password…"
+                        : "Updating password…"
+                      : isInvite
+                      ? "Create password & activate"
+                      : "Set new password"}
                     {!pending && (
                       <svg viewBox="0 0 20 20" fill="none" aria-hidden="true">
                         <path
@@ -220,7 +254,9 @@ export default function ResetPasswordPage() {
                     />
                   </svg>
                   <span>
-                    This form only works from a verified recovery session.
+                    {isInvite
+                      ? "This form activates your account from your verified invitation link."
+                      : "This form only works from a verified recovery session."}
                   </span>
                 </div>
               </>

@@ -10,8 +10,9 @@ export async function GET(request: Request) {
   const hash = url.searchParams.get("token_hash");
   const type = url.searchParams.get("type");
   const requestedNext = url.searchParams.get("next");
-  const next = requestedNext === "/reset-password" || type === "recovery"
-    ? "/reset-password"
+  const reason = url.searchParams.get("reason") || (type === "invite" ? "invite" : "");
+  const next = requestedNext === "/reset-password" || type === "recovery" || type === "invite"
+    ? (reason ? `/reset-password?reason=${encodeURIComponent(reason)}` : "/reset-password")
     : requestedNext === "/hiring"
       ? "/hiring"
       : requestedNext === "/welcome" || type === "signup" || type === "email"
