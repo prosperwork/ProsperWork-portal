@@ -229,8 +229,13 @@ export default function LoginPage() {
           result.error || "We couldn’t complete that request. Please try again."
         );
       if (mode === "login") {
-        const nextParam = new URLSearchParams(window.location.search).get("next");
-        const safeNext = nextParam && nextParam.startsWith("/") && !nextParam.startsWith("//") ? nextParam : null;
+        const nextParam = new URLSearchParams(window.location.search).get(
+          "next"
+        );
+        const safeNext =
+          nextParam && nextParam.startsWith("/") && !nextParam.startsWith("//")
+            ? nextParam
+            : null;
         let destination =
           typeof result.redirect === "string" &&
           result.redirect.startsWith("/") &&

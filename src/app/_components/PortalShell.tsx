@@ -257,7 +257,9 @@ export default function PortalShell({
 
   const visibleNav = useMemo(() => {
     if (!profile) return [];
-    const nav = portalNavigation.filter((item) => item.roles.includes(profile.role));
+    const nav = portalNavigation.filter((item) =>
+      item.roles.includes(profile.role)
+    );
     if (profile.status === "policy_required" || pathname === "/onboarding") {
       return [
         {

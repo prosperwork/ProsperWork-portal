@@ -23,12 +23,17 @@ export default function WelcomePage() {
         }
         const result = await response.json();
         if (!response.ok || !result.profile) {
-          throw new Error(result.error || "Your workspace could not be opened.");
+          throw new Error(
+            result.error || "Your workspace could not be opened."
+          );
         }
 
         const params = new URLSearchParams(window.location.search);
         const nextParam = params.get("next");
-        const safeNextParam = nextParam && nextParam.startsWith("/") && !nextParam.startsWith("//") ? nextParam : null;
+        const safeNextParam =
+          nextParam && nextParam.startsWith("/") && !nextParam.startsWith("//")
+            ? nextParam
+            : null;
 
         let next = "/";
         if (result.profile.status === "policy_required") {
@@ -39,13 +44,27 @@ export default function WelcomePage() {
           next = "/access-pending";
         }
         if (cancelled) return;
-        setName(typeof result.profile.name === "string" ? result.profile.name.trim() : "");
+        setName(
+          typeof result.profile.name === "string"
+            ? result.profile.name.trim()
+            : ""
+        );
         setGreetingReady(true);
-        const delay = window.matchMedia("(prefers-reduced-motion: reduce)").matches ? 0 : 1250;
-        redirectTimer = window.setTimeout(() => window.location.replace(next), delay);
+        const delay = window.matchMedia("(prefers-reduced-motion: reduce)")
+          .matches
+          ? 0
+          : 1250;
+        redirectTimer = window.setTimeout(
+          () => window.location.replace(next),
+          delay
+        );
       } catch (requestError) {
         if (cancelled) return;
-        setError(requestError instanceof Error ? requestError.message : "Your workspace could not be opened.");
+        setError(
+          requestError instanceof Error
+            ? requestError.message
+            : "Your workspace could not be opened."
+        );
       }
     }
 
@@ -56,17 +75,31 @@ export default function WelcomePage() {
     };
   }, []);
 
-  return <main className="welcome-root">
-    <section className={`welcome-splash${error ? " is-error" : ""}`} role="status" aria-live="polite">
-      <div className="welcome-logo-frame" aria-hidden="true">
-        <span className="welcome-spinner" />
-        <img src="/favicon-192x192.png" alt="" width={52} height={52} />
-      </div>
-      {greetingReady && <h1 className="welcome-greeting">Welcome{name ? `, ${name}` : ""}</h1>}
-      {error && <>
-        <p className="welcome-error" role="alert">{error}</p>
-        <a className="welcome-return" href="/login">Return to sign in</a>
-      </>}
-    </section>
-  </main>;
+  return (
+    <main className="welcome-root">
+      <section
+        className={`welcome-splash${error ? " is-error" : ""}`}
+        role="status"
+        aria-live="polite"
+      >
+        <div className="welcome-logo-frame" aria-hidden="true">
+          <span className="welcome-spinner" />
+          <img src="/favicon-192x192.png" alt="" width={52} height={52} />
+        </div>
+        {greetingReady && (
+          <h1 className="welcome-greeting">Welcome{name ? `, ${name}` : ""}</h1>
+        )}
+        {error && (
+          <>
+            <p className="welcome-error" role="alert">
+              {error}
+            </p>
+            <a className="welcome-return" href="/login">
+              Return to sign in
+            </a>
+          </>
+        )}
+      </section>
+    </main>
+  );
 }
