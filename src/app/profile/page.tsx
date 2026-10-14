@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState, type FormEvent } from "react";
-import { AlertCircle, Check, LoaderCircle, Save, UserRound } from "lucide-react";
+import { AlertCircle, Check, KeyRound, LoaderCircle, Lock, Save, UserRound } from "lucide-react";
 import ProfilePhotoControl from "../management/ProfilePhotoControl";
 
 type OwnProfile = {
@@ -39,6 +39,13 @@ export default function ProfilePage() {
   const [error, setError] = useState("");
   const [saveError, setSaveError] = useState("");
   const [notice, setNotice] = useState("");
+
+  // Password change state
+  const [newPassword, setNewPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
+  const [passwordSaving, setPasswordSaving] = useState(false);
+  const [passwordError, setPasswordError] = useState("");
+  const [passwordSuccess, setPasswordSuccess] = useState("");
 
   const load = useCallback(async () => {
     setRefreshing(true);
@@ -115,6 +122,45 @@ export default function ProfilePage() {
     }
   };
 
+  const updatePassword = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    setPasswordError("");
+    setPasswordSuccess("");
+
+    if (newPassword.length < 12) {
+      setPasswordError("Password must be at least 12 characters.");
+      return;
+    }
+    if (newPassword !== confirmPassword) {
+      setPasswordError("Passwords do not match.");
+      return;
+    }
+
+    setPasswordSaving(true);
+    try {
+      const response = await fetch("/api/auth", {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "updatePassword",
+          password: newPassword,
+        }),
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok || data.error) {
+        throw new Error(data.error || "Password could not be updated.");
+      }
+      setPasswordSuccess("Your password was updated successfully.");
+      setNewPassword("");
+      setConfirmPassword("");
+    } catch (err) {
+      setPasswordError(err instanceof Error ? err.message : "Password could not be updated.");
+    } finally {
+      setPasswordSaving(false);
+    }
+  };
+
   const changed = Boolean(profile && (name.trim() !== profile.name || timezone.trim() !== (profile.timezone || deviceTimezone())));
 
   return <main className="pw-profile">
@@ -145,7 +191,65 @@ export default function ProfilePage() {
               </button>
             </div>
           </form>
+
           <div className="profile-divider" />
+
+          {/* Security & Password Change */}
+          <section className="profile-password-section" aria-labelledby="profile-password-title">
+            <div className="profile-editor-head">
+              <span className="profile-mark"><KeyRound size={17} /></span>
+              <div>
+                <h2 id="profile-password-title">Security &amp; Password</h2>
+                <p>Change the sign-in password for your account. Must be at least 12 characters.</p>
+              </div>
+            </div>
+
+            {passwordError && <div className="profile-alert" role="alert"><AlertCircle size={16} /><span>{passwordError}</span></div>}
+            {passwordSuccess && <div className="profile-alert success" role="status"><Check size={16} /><span>{passwordSuccess}</span></div>}
+
+            <form className="profile-form" onSubmit={event => void updatePassword(event)}>
+              <div className="profile-field-grid">
+                <label className="profile-field">
+                  <span>New password</span>
+                  <input
+                    type="password"
+                    autoComplete="new-password"
+                    minLength={12}
+                    required
+                    value={newPassword}
+                    onChange={event => setNewPassword(event.target.value)}
+                    placeholder="At least 12 characters"
+                  />
+                  <small>Use letters, numbers, and symbols for high security.</small>
+                </label>
+                <label className="profile-field">
+                  <span>Confirm new password</span>
+                  <input
+                    type="password"
+                    autoComplete="new-password"
+                    minLength={12}
+                    required
+                    value={confirmPassword}
+                    onChange={event => setConfirmPassword(event.target.value)}
+                    placeholder="Repeat new password"
+                  />
+                  <small>Ensure both password fields match.</small>
+                </label>
+              </div>
+              <div className="profile-form-footer">
+                <button
+                  className="profile-save"
+                  type="submit"
+                  disabled={passwordSaving || newPassword.length < 12 || newPassword !== confirmPassword}
+                >
+                  {passwordSaving ? <><LoaderCircle size={14} /> Updating…</> : <><Lock size={14} /> Update password</>}
+                </button>
+              </div>
+            </form>
+          </section>
+
+          <div className="profile-divider" />
+
           <section className="profile-photo-section" aria-labelledby="profile-photo-title">
             <div><h2 id="profile-photo-title">Profile photo</h2><p>Private to your signed-in account. PNG or JPEG, up to 5 MiB.</p></div>
             {profile.id && <ProfilePhotoControl userId={profile.id} name={profile.name} onPhoto={onPhoto} />}
