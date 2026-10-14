@@ -370,6 +370,17 @@ export default function PortalShell({
             Navigation unavailable until your account is confirmed.
           </div>
         )}
+        <div className="portal-sidebar-foot">
+          <div className="portal-sidebar-foot-brand">
+            <span className="portal-status-dot" aria-hidden="true" />
+            <span>ProsperWork Music Academy</span>
+          </div>
+          <div className="portal-sidebar-foot-meta">
+            <span>v1.0.0</span>
+            <span className="portal-sidebar-foot-dot">·</span>
+            <span>Portal Platform</span>
+          </div>
+        </div>
       </aside>
       {drawerOpen && (
         <button
