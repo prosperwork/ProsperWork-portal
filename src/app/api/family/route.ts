@@ -6,8 +6,10 @@ import {provisioningClient,sameOrigin} from "@/lib/supabase/server";
 import {familyAction} from "@/lib/academy/family";
 import {open,seal,pinDigest,pinMatches,sessionId} from "@/lib/academy/kid-session";
 import {loadAllRecords} from "@/lib/academy/paged-records";
+
 export const dynamic="force-dynamic";
 const reply=(body:object,status=200)=>NextResponse.json(body,{status,headers:{"Cache-Control":"private, no-store"}});
+
 export async function GET(){
  try{
   const {client,profile}=await identity();
@@ -25,10 +27,11 @@ export async function GET(){
   if(pin.error)throw Error();
   return reply({profile,avatarFileId:photo.data.avatar_file_id,pinConfigured:!!pin.data,kidMode:!!saved&&saved.child===profile.id,children:students.data.map(s=>{
    const u=usernames.data?.find(p=>p.id===s.student_user_id),d=s.payload;
-   return {id:s.id,name:d.name,dob:d.dob,timezone:d.timezone,studentUserId:s.student_user_id,username:u?.username||null,avatarFileId:u?.avatar_file_id||null,consent:d.consent===true,rank:d.rank};
+   return {id:s.id,name:d.name,dob:d.dob,instrument:d.instrument||"Piano",timezone:d.timezone,studentUserId:s.student_user_id,username:u?.username||null,avatarFileId:u?.avatar_file_id||null,consent:d.consent===true,rank:d.rank||"Beginner"};
   })});
  }catch{return reply({error:"Family security could not be loaded."},503);}
 }
+
 export async function POST(request:Request){
  if(!sameOrigin(request))return reply({error:"Invalid request origin."},403);
  const parsed=familyAction.safeParse(await request.json().catch(()=>null));
@@ -62,6 +65,70 @@ export async function POST(request:Request){
    const saved=await admin.from("pw_family_pins").upsert({parent_id:user.id,salt,digest:pinDigest(d.pin,salt),failures:0,locked_until:null,updated_at:new Date().toISOString()});
    if(saved.error)throw Error();
    return reply({ok:true});
+  }
+  if(d.action==="create_student"){
+   const studentId=`stu_${randomBytes(8).toString("hex")}`;
+   const payload={
+     id:studentId,
+     name:d.name.trim(),
+     dob:d.dob,
+     instrument:d.instrument.trim(),
+     timezone:d.timezone?.trim()||profile.timezone||"Europe/London",
+     parentName:profile.name,
+     parentEmail:user.email||profile.email,
+     consent:d.consent===true,
+     rank:"Beginner",
+     status:"enrolled",
+     created_at:new Date().toISOString()
+   };
+   const {error:insertError}=await admin.from("pw_students").insert({
+     id:studentId,
+     parent_id:user.id,
+     payload,
+     created_at:new Date().toISOString(),
+     updated_at:new Date().toISOString(),
+     revision:1
+   });
+   if(insertError)throw insertError;
+
+   let linkedUsername:string|null=null;
+   const initialPass = d.studentPassword || d.password;
+   if(d.createLogin && initialPass && initialPass.length>=8){
+     const created=await admin.auth.admin.createUser({
+       email:`student-${randomUUID()}@students.prosperworkmusic.com`,
+       password:initialPass,
+       email_confirm:true,
+       user_metadata:{name:d.name.trim()}
+     });
+     if(!created.error&&created.data.user){
+       const linkRes=await admin.rpc("pw_link_student_account",{
+         p_actor:user.id,
+         p_child:studentId,
+         p_user:created.data.user.id,
+         p_username:null
+       });
+       if(!linkRes.error){
+         const profileRow=await admin.from("pw_profiles").select("username").eq("id",created.data.user.id).single();
+         linkedUsername=profileRow.data?.username||null;
+       }
+     }
+   }
+
+   try {
+     await admin.from("pw_audit").insert({
+       actor_id:user.id,
+       actor_name:profile.name,
+       actor_role:profile.role,
+       entity_type:"pw_students",
+       entity_id:studentId,
+       action:"student_added_by_guardian",
+       changed_fields:[`name:${d.name}`,`instrument:${d.instrument}`,`dob:${d.dob}`]
+     });
+   } catch {
+     // audit failure non-fatal
+   }
+
+   return reply({ok:true,id:studentId,username:linkedUsername});
   }
   const child=await client.from("pw_students").select("id,parent_id,student_user_id,payload").eq("id",d.childId).single();
   if(child.error||!child.data||(profile.role==="parent"&&child.data.parent_id!==user.id))return reply({error:"This learner is not linked to your account."},403);
