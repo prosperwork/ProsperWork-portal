@@ -56,10 +56,13 @@ export default function OperationsPage() {
         setError("You do not have permission to view operations.");
         return null;
       }
-      if (!response.ok || !result.ok) {
+      if (!response.ok) {
         throw new Error(apiErrorMessage(result, response.status, "Operations could not be loaded"));
       }
-      const payload = result.data as OperationsData;
+      if (typeof result.error === "string" && result.error.trim()) {
+        throw new Error(result.error);
+      }
+      const payload = (result.data && typeof result.data === "object" ? result.data : result) as OperationsData;
       setData(payload);
       return payload;
     } catch (cause) {

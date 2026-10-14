@@ -14,8 +14,40 @@ export async function GET(){
   const [contracts,fx,rules,availability,series,pauses,students,staff,payments,observations,leads,events,referrals,credits,media,files]=rows.map(r=>r.data||[]);
   const today=new Intl.DateTimeFormat("en-CA",{timeZone:profile.timezone,year:"numeric",month:"2-digit",day:"2-digit"}).format(new Date());
   const day=Date.parse(today);
-  return reply({profile,contracts,fx,settings:rules[0]||null,availability,series,pauses,students,staff:staff.map(({id,name,role,status,timezone})=>({id,name,role,status,timezone})),referrals,credits,media,files:files.filter(f=>f.complete&&["practice","homework"].includes(f.category)).map(({id,category,target_id,original_name})=>({id,category,target_id,original_name})),payments:payments.map(p=>{const delta=Math.round((Date.parse(p.payload.dueDate)-day)/86400000);return{...p,amountDue:Math.max(0,Number(p.payload.amount)-Number(p.payload.referralDiscount||0)),overdueDays:p.payload.status==="paid"?0:Math.max(0,-delta),dueBucket:p.payload.status==="paid"?"paid":delta<0?"overdue":delta===0?"today":delta===1?"tomorrow":delta===2?"next_tomorrow":"future"};}),
-   observations,leads:leads.map(l=>({...l,ageMinutes:Math.max(0,Math.floor((Date.now()-Date.parse(l.payload.arrivedAt))/60000)),followupAt:l.trial_verified_at?new Date(Date.parse(l.trial_verified_at)+86400000).toISOString():null})),financial:financial.data,quality:quality.data,events});
+  const data = {
+    profile,
+    contracts,
+    fx,
+    settings: rules[0] || null,
+    availability,
+    series,
+    pauses,
+    students,
+    staff: staff.map(({ id, name, role, status, timezone }) => ({ id, name, role, status, timezone })),
+    referrals,
+    credits,
+    media,
+    files: files.filter((f) => f.complete && ["practice", "homework"].includes(f.category)).map(({ id, category, target_id, original_name }) => ({ id, category, target_id, original_name })),
+    payments: payments.map((p) => {
+      const delta = Math.round((Date.parse(p.payload.dueDate) - day) / 86400000);
+      return {
+        ...p,
+        amountDue: Math.max(0, Number(p.payload.amount) - Number(p.payload.referralDiscount || 0)),
+        overdueDays: p.payload.status === "paid" ? 0 : Math.max(0, -delta),
+        dueBucket: p.payload.status === "paid" ? "paid" : delta < 0 ? "overdue" : delta === 0 ? "today" : delta === 1 ? "tomorrow" : delta === 2 ? "next_tomorrow" : "future",
+      };
+    }),
+    observations,
+    leads: leads.map((l) => ({
+      ...l,
+      ageMinutes: Math.max(0, Math.floor((Date.now() - Date.parse(l.payload.arrivedAt)) / 60000)),
+      followupAt: l.trial_verified_at ? new Date(Date.parse(l.trial_verified_at) + 86400000).toISOString() : null,
+    })),
+    financial: financial.data,
+    quality: quality.data,
+    events,
+  };
+  return reply({ ok: true, data, ...data });
  }catch{return reply({error:"Operations service is unavailable."},503);}
 }
 export async function POST(request:NextRequest){
@@ -26,6 +58,6 @@ export async function POST(request:NextRequest){
   const action=parsed.data.action;const rpc=action.startsWith("media_")?"pw_media_action":["observe","lead_assign","trial","convert","referral"].includes(action)?"pw_quality_sales_action":"pw_operations_action";
   const result=await client.rpc(rpc,{p_action:action,p_data:parsed.data});
   if(result.error)return reply({error:result.error.code==="42501"?"This action is outside your assigned role or portfolio.":result.error.code==="23505"?"An active contract, dated rate or availability slot already exists.":result.error.code==="PW003"?"The teacher calendar or administrator capacity conflicts.":action==="generate"?"Billing may be held after a student pause. Finance must stop the held contract and agree a new restart anchor; paused periods are not automatically charged.":"The workflow is blocked. Check the selected records, declared availability, active assignments, verified trial/payment and billing contract."},result.error.code==="42501"?403:409);
-  return reply(result.data);
+  return reply({ ok: true, ...(typeof result.data === "object" && result.data !== null ? result.data : { data: result.data }) });
  }catch{return reply({error:"The operation could not be saved."},503);}
 }
