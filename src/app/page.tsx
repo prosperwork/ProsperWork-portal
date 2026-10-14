@@ -205,6 +205,16 @@ export default function HomePage() {
 
   useEffect(() => {
     if (!profile) return;
+    if (pathname === "/") {
+      if (profile.role === "parent") {
+        router.replace("/family");
+        return;
+      }
+      if (profile.role === "student") {
+        router.replace("/learning");
+        return;
+      }
+    }
     const requested = new URLSearchParams(window.location.search).get(
       "view"
     ) as AppView | null;
@@ -214,9 +224,13 @@ export default function HomePage() {
     router.replace(
       canonical && (canonical.roles as Role[]).includes(profile.role)
         ? canonical.href
+        : profile.role === "parent"
+        ? "/family"
+        : profile.role === "student"
+        ? "/learning"
         : "/"
     );
-  }, [profile?.id, profile?.role, router]);
+  }, [profile?.id, profile?.role, pathname, router]);
 
   useEffect(() => {
     if (role !== "qc" || !profile?.id) {
@@ -734,7 +748,23 @@ export default function HomePage() {
       </main>
     );
 
-  if (!legacyWorkspaceAccess[view].includes(profile.role))
+  if (!legacyWorkspaceAccess[view]?.includes(profile.role)) {
+    if (profile.role === "parent") {
+      router.replace("/family");
+      return (
+        <main className="loading-screen">
+          <p>Opening family workspace…</p>
+        </main>
+      );
+    }
+    if (profile.role === "student") {
+      router.replace("/learning");
+      return (
+        <main className="loading-screen">
+          <p>Opening student workspace…</p>
+        </main>
+      );
+    }
     return (
       <main className="loading-screen">
         <h1>Workspace unavailable</h1>
@@ -744,6 +774,7 @@ export default function HomePage() {
         </a>
       </main>
     );
+  }
 
   if (kidMode)
     return (

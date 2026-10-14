@@ -257,9 +257,15 @@ export default function PortalShell({
 
   const visibleNav = useMemo(() => {
     if (!profile) return [];
-    const nav = portalNavigation.filter((item) =>
+    let nav = portalNavigation.filter((item) =>
       item.roles.includes(profile.role)
     );
+    if (profile.role !== "parent" && profile.role !== "student") {
+      const overviewItem = nav.find((i) => i.href === "/");
+      if (overviewItem) {
+        nav = [overviewItem, ...nav.filter((i) => i.href !== "/")];
+      }
+    }
     if (profile.status === "policy_required" || pathname === "/onboarding") {
       return [
         {
@@ -321,7 +327,13 @@ export default function PortalShell({
       >
         <Link
           className="portal-brand"
-          href="/"
+          href={
+            profile?.role === "parent"
+              ? "/family"
+              : profile?.role === "student"
+              ? "/learning"
+              : "/"
+          }
           aria-label="ProsperWork overview"
         >
           <span className="portal-brand-mark">

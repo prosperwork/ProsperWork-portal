@@ -552,9 +552,25 @@ export default function FamilyPage() {
                         : "Students appear here when they are linked to your family account."}
                     </p>
                   </div>
-                  {family.children.length > 0 && (
-                    <BrandEmblem className="family-header-emblem" />
-                  )}
+                  <div
+                    style={{ display: "flex", gap: 10, alignItems: "center" }}
+                  >
+                    {canManageChildren && (
+                      <button
+                        type="button"
+                        className="family-button primary"
+                        onClick={() => {
+                          setAddError("");
+                          setShowAddModal(true);
+                        }}
+                      >
+                        <Plus size={14} aria-hidden="true" /> Add student
+                      </button>
+                    )}
+                    {family.children.length > 0 && (
+                      <BrandEmblem className="family-header-emblem" />
+                    )}
+                  </div>
                 </div>
                 {family.children.length ? (
                   <div className="family-card-body">

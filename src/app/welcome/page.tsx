@@ -39,7 +39,13 @@ export default function WelcomePage() {
         if (result.profile.status === "policy_required") {
           next = "/onboarding";
         } else if (["active", "on_leave"].includes(result.profile.status)) {
-          next = safeNextParam || "/";
+          if (result.profile.role === "parent") {
+            next = safeNextParam || "/family";
+          } else if (result.profile.role === "student") {
+            next = safeNextParam || "/learning";
+          } else {
+            next = safeNextParam || "/";
+          }
         } else {
           next = "/access-pending";
         }
