@@ -19,6 +19,12 @@ function BrandMark() {
 }
 
 function formatCooldown(seconds: number) {
+  if (seconds >= 3600) {
+    const hours = Math.floor(seconds / 3600);
+    const mins = Math.floor((seconds % 3600) / 60);
+    const secs = seconds % 60;
+    return `${hours}h ${mins}m ${secs < 10 ? "0" : ""}${secs}s`;
+  }
   const mins = Math.floor(seconds / 60);
   const secs = seconds % 60;
   return `${mins}:${secs < 10 ? "0" : ""}${secs}`;
@@ -78,7 +84,30 @@ export default function LoginPage() {
   const [hasSentReset, setHasSentReset] = useState(false);
 
   useEffect(() => {
-    if (resetCooldown <= 0) return;
+    try {
+      const saved = localStorage.getItem("pw_reset_cooldown_until");
+      if (saved) {
+        const unlockTime = parseInt(saved, 10);
+        const diff = Math.ceil((unlockTime - Date.now()) / 1000);
+        if (diff > 0) {
+          setResetCooldown(diff);
+          setHasSentReset(true);
+        } else {
+          localStorage.removeItem("pw_reset_cooldown_until");
+        }
+      }
+    } catch {
+      // Ignore if localStorage unavailable
+    }
+  }, []);
+
+  useEffect(() => {
+    if (resetCooldown <= 0) {
+      try {
+        localStorage.removeItem("pw_reset_cooldown_until");
+      } catch {}
+      return;
+    }
     const interval = setInterval(() => {
       setResetCooldown((val) => (val > 1 ? val - 1 : 0));
     }, 1000);
@@ -146,8 +175,14 @@ export default function LoginPage() {
         const cooldown =
           typeof result.retryAfter === "number" ? result.retryAfter : 120;
         setResetCooldown(cooldown);
+        try {
+          localStorage.setItem(
+            "pw_reset_cooldown_until",
+            (Date.now() + cooldown * 1000).toString()
+          );
+        } catch {}
         setFeedback({
-          kind: "info",
+          kind: result.maxAttemptsReached ? "error" : "info",
           text:
             result.error ||
             "A reset link was recently sent. For security, please wait before requesting another.",
@@ -176,11 +211,17 @@ export default function LoginPage() {
         });
       } else {
         setHasSentReset(true);
-        setResetCooldown(
-          typeof result.retryAfter === "number" ? result.retryAfter : 120
-        );
+        const cooldown =
+          typeof result.retryAfter === "number" ? result.retryAfter : 120;
+        setResetCooldown(cooldown);
+        try {
+          localStorage.setItem(
+            "pw_reset_cooldown_until",
+            (Date.now() + cooldown * 1000).toString()
+          );
+        } catch {}
         setFeedback({
-          kind: "success",
+          kind: result.maxAttemptsReached ? "info" : "success",
           text:
             result.message ||
             "If an account matches that email, password reset instructions are on their way. Check your inbox and spam folder.",
