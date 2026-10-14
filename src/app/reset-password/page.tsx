@@ -41,6 +41,9 @@ export default function ResetPasswordPage() {
       const data = await response.json().catch(() => ({}));
       if (!response.ok || data.error) throw new Error(data.error || "We couldn’t update your password. Please try again.");
       setComplete(true);
+      setTimeout(() => {
+        window.location.assign("/login?reason=password_changed");
+      }, 2000);
     } catch (requestError) {
       setError(requestError instanceof Error ? requestError.message : "We couldn’t update your password. Please try again.");
     } finally {
@@ -64,9 +67,9 @@ export default function ResetPasswordPage() {
             <header className="auth-panel-heading">
               <div className="auth-overline">Password updated</div>
               <h2>You’re all set.</h2>
-              <p>Your new password is ready to use. Sign in to continue to your ProsperWork workspace.</p>
+              <p>Your new password is ready to use. Redirecting to sign in…</p>
             </header>
-            <a className="auth-submit" href="/login">Return to sign in</a>
+            <a className="auth-submit" href="/login?reason=password_changed">Sign in with new password</a>
           </> : <>
             <header className="auth-panel-heading">
               <div className="auth-overline">Secure account recovery</div>

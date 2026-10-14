@@ -151,9 +151,12 @@ export default function ProfilePage() {
       if (!response.ok || data.error) {
         throw new Error(data.error || "Password could not be updated.");
       }
-      setPasswordSuccess("Your password was updated successfully.");
+      setPasswordSuccess("Your password was updated. Redirecting to sign in with your new password…");
       setNewPassword("");
       setConfirmPassword("");
+      setTimeout(() => {
+        window.location.assign(data.redirect || "/login?reason=password_changed");
+      }, 1200);
     } catch (err) {
       setPasswordError(err instanceof Error ? err.message : "Password could not be updated.");
     } finally {

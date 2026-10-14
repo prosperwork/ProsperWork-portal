@@ -157,7 +157,17 @@ export async function POST(request: Request) {
     if (userError || !user) return NextResponse.json({ error: "Open a valid recovery link before changing your password." }, { status: 401 });
     const { error } = await client.auth.updateUser({ password });
     if (error) return NextResponse.json({ error: "Your password could not be updated." }, { status: 400 });
-    return NextResponse.json({ ok: true, message: "Password updated.", redirect: "/" });
+
+    // Invalidate sessions globally across all devices
+    const admin = provisioningClient();
+    await admin.auth.admin.signOut(user.id, "global").catch(() => undefined);
+    await client.auth.signOut().catch(() => undefined);
+
+    return NextResponse.json({
+      ok: true,
+      message: "Password updated successfully. Please sign in with your new password.",
+      redirect: "/login?reason=password_changed",
+    });
   } catch {
     return NextResponse.json({ error: "Authentication is temporarily unavailable." }, { status: 503 });
   }

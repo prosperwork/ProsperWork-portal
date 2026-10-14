@@ -81,6 +81,10 @@ export default function PortalShell({
         credentials: "include",
         cache: "no-store",
       });
+      if (response.status === 401) {
+        window.location.assign("/login?reason=credentials_changed");
+        return;
+      }
       const result = (await response.json().catch(() => ({}))) as ProfileResult;
       if (!response.ok || !result.profile) return;
       setProfile((current) =>
@@ -101,6 +105,14 @@ export default function PortalShell({
         cache: "no-store",
       });
       const result = await response.json().catch(() => ({}));
+      if (result?.reason === "email_changed") {
+        window.location.assign("/login?reason=email_changed");
+        return;
+      }
+      if (result?.reason === "password_changed") {
+        window.location.assign("/login?reason=password_changed");
+        return;
+      }
       if (!response.ok || !result?.profile)
         throw new Error(
           result?.error || "Your signed-in profile could not be confirmed."
@@ -122,6 +134,52 @@ export default function PortalShell({
   useEffect(() => {
     void loadSession();
   }, [loadSession]);
+
+  // Auto-logout after 10 minutes of inactivity
+  useEffect(() => {
+    if (!profile) return;
+    const INACTIVITY_LIMIT_MS = 10 * 60 * 1000; // 10 minutes
+    const ACTIVITY_KEY = "pw_portal_last_active";
+
+    const recordActivity = () => {
+      try {
+        localStorage.setItem(ACTIVITY_KEY, Date.now().toString());
+      } catch {}
+    };
+
+    recordActivity();
+
+    const activityEvents = ["mousedown", "keydown", "scroll", "touchstart", "click"];
+    activityEvents.forEach((ev) => {
+      window.addEventListener(ev, recordActivity, { passive: true });
+    });
+
+    const checkInterval = window.setInterval(async () => {
+      try {
+        const lastActiveStr = localStorage.getItem(ACTIVITY_KEY);
+        const lastActive = lastActiveStr ? parseInt(lastActiveStr, 10) : Date.now();
+        if (Date.now() - lastActive >= INACTIVITY_LIMIT_MS) {
+          localStorage.removeItem(ACTIVITY_KEY);
+          try {
+            await fetch("/api/auth", {
+              method: "POST",
+              credentials: "include",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ action: "logout" }),
+            });
+          } catch {}
+          window.location.assign("/login?reason=inactivity");
+        }
+      } catch {}
+    }, 15_000);
+
+    return () => {
+      activityEvents.forEach((ev) => {
+        window.removeEventListener(ev, recordActivity);
+      });
+      window.clearInterval(checkInterval);
+    };
+  }, [profile]);
 
   useEffect(() => {
     const onProfileUpdated = (event: Event) => {

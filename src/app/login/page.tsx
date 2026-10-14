@@ -85,6 +85,36 @@ export default function LoginPage() {
 
   useEffect(() => {
     try {
+      const params = new URLSearchParams(window.location.search);
+      const reason = params.get("reason");
+      if (reason === "inactivity") {
+        setFeedback({
+          kind: "info",
+          text: "For your security, you were signed out after 10 minutes of inactivity. Please sign in to continue.",
+        });
+      } else if (reason === "password_changed") {
+        setFeedback({
+          kind: "success",
+          text: "Your password was updated successfully. Please sign in with your new password.",
+        });
+      } else if (reason === "email_changed") {
+        setFeedback({
+          kind: "info",
+          text: "Your account email was updated. Please sign in with your updated email address.",
+        });
+      } else if (reason === "credentials_changed") {
+        setFeedback({
+          kind: "info",
+          text: "Your account credentials have changed. Please sign in again to verify your identity.",
+        });
+      }
+    } catch {
+      // Ignore
+    }
+  }, []);
+
+  useEffect(() => {
+    try {
       const saved = localStorage.getItem("pw_reset_cooldown_until");
       if (saved) {
         const unlockTime = parseInt(saved, 10);
