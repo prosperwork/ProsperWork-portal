@@ -65,9 +65,10 @@ export const replyToAliases = Object.freeze({
 let transport;
 export function smtpTransport() {
   if (!process.env.SMTP_PASSWORD) throw Object.assign(new Error("SMTP is not configured."), { code: "NOT_CONFIGURED" });
+  const user = process.env.SMTP_USER || "dev@prosperworkmusic.com";
   transport ||= nodemailer.createTransport({
     host: "mail.spacemail.com", port: 465, secure: true,
-    auth: { user: "info@prosperworkmusic.com", pass: process.env.SMTP_PASSWORD },
+    auth: { user, pass: process.env.SMTP_PASSWORD },
     tls: { minVersion: "TLSv1.2", rejectUnauthorized: true },
     connectionTimeout: 15000, greetingTimeout: 15000, socketTimeout: 45000,
     logger: false, debug: false,
