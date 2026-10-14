@@ -1,0 +1,10 @@
+/* ==========================================================================
+   PROSPERWORK MUSIC ACADEMY PORTAL - GLOBAL STYLESHEET
+   Modularized architecture for clean maintainability
+   ========================================================================== */
+
+@import "./styles/base.css";
+@import "./styles/auth.css";
+@import "./styles/accounts.css";
+@import "./styles/workspaces.css";
+@import "./styles/portal-frame.css";

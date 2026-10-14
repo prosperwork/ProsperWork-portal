@@ -1,0 +1,8 @@
+import {createCipheriv,createDecipheriv,createHash,randomBytes,scryptSync,timingSafeEqual} from "node:crypto";
+export interface SavedParent{id:string;child:string;session:string;access:string;refresh:string;until:number;}
+function key(){if(!process.env.SESSION_SECRET)throw Error("Family security is not configured.");return createHash("sha256").update(process.env.SESSION_SECRET).digest();}
+export function seal(value:SavedParent){const iv=randomBytes(12),c=createCipheriv("aes-256-gcm",key(),iv);const bytes=Buffer.concat([c.update(JSON.stringify(value)),c.final()]);return Buffer.concat([iv,c.getAuthTag(),bytes]).toString("base64url");}
+export function open(value:string):SavedParent|null{try{const b=Buffer.from(value,"base64url"),d=createDecipheriv("aes-256-gcm",key(),b.subarray(0,12));d.setAuthTag(b.subarray(12,28));const saved=JSON.parse(Buffer.concat([d.update(b.subarray(28)),d.final()]).toString()) as SavedParent;return saved.until>Date.now()&&saved.id&&saved.child&&saved.session?saved:null;}catch{return null;}}
+export function pinDigest(pin:string,salt:string){return scryptSync(pin+key().toString("hex"),salt,64).toString("hex");}
+export function pinMatches(pin:string,salt:string,expected:string){const d=Buffer.from(pinDigest(pin,salt),"hex"),e=Buffer.from(expected,"hex");return d.length===e.length&&timingSafeEqual(d,e);}
+export function sessionId(token:string){const claims=JSON.parse(Buffer.from(token.split(".")[1],"base64url").toString());if(!/^[0-9a-f-]{36}$/i.test(claims.session_id||""))throw Error("Verified session required.");return claims.session_id as string;}

@@ -1,0 +1,156 @@
+"use client";
+
+import { useCallback, useEffect, useState, type FormEvent } from "react";
+import { AlertCircle, Check, LoaderCircle, Save, UserRound } from "lucide-react";
+import ProfilePhotoControl from "../management/ProfilePhotoControl";
+
+type OwnProfile = {
+  id: string;
+  name: string;
+  email?: string | null;
+  role: string;
+  status?: string;
+  timezone?: string | null;
+  username?: string | null;
+  avatar_file_id?: string | null;
+};
+type ProfileResponse = { profile?: OwnProfile; avatarUrl?: string | null; error?: string; ok?: boolean };
+
+function deviceTimezone() {
+  return Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC";
+}
+function validTimezone(value: string) {
+  try {
+    new Intl.DateTimeFormat(undefined, { timeZone: value }).format();
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+export default function ProfilePage() {
+  const [profile, setProfile] = useState<OwnProfile | null>(null);
+  const [avatarUrl, setAvatarUrl] = useState<string | null>(null);
+  const [name, setName] = useState("");
+  const [timezone, setTimezone] = useState("");
+  const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState("");
+  const [saveError, setSaveError] = useState("");
+  const [notice, setNotice] = useState("");
+
+  const load = useCallback(async () => {
+    setRefreshing(true);
+    setError("");
+    try {
+      const response = await fetch("/api/profile", { credentials: "include", cache: "no-store" });
+      const result = await response.json().catch(() => ({})) as ProfileResponse;
+      if (response.status === 401) {
+        window.location.assign("/login");
+        return;
+      }
+      if (!response.ok || !result.profile) throw new Error(result.error || "Your profile could not be loaded.");
+      setProfile(result.profile);
+      setName(result.profile.name);
+      setTimezone(result.profile.timezone || deviceTimezone());
+      setAvatarUrl(result.avatarUrl ?? null);
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "Your profile could not be loaded.");
+    } finally {
+      setLoading(false);
+      setRefreshing(false);
+    }
+  }, []);
+
+  useEffect(() => { void load(); }, [load]);
+
+  const onPhoto = useCallback((url: string | null) => {
+    setAvatarUrl(url);
+    window.dispatchEvent(new CustomEvent("pw-profile-updated", { detail: { avatarUrl: url } }));
+  }, []);
+
+  const save = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (!profile || saving) return;
+    const cleanName = name.trim();
+    const cleanTimezone = timezone.trim();
+    if (cleanName.length < 2 || cleanName.length > 100) {
+      setSaveError("Name must contain 2–100 characters.");
+      return;
+    }
+    if (!validTimezone(cleanTimezone)) {
+      setSaveError("Enter a valid IANA timezone, such as Europe/London.");
+      return;
+    }
+    setSaving(true);
+    setSaveError("");
+    setNotice("");
+    try {
+      const response = await fetch("/api/profile", {
+        method: "PATCH",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name: cleanName, timezone: cleanTimezone }),
+      });
+      const result = await response.json().catch(() => ({})) as ProfileResponse;
+      if (response.status === 401) {
+        window.location.assign("/login");
+        return;
+      }
+      if (!response.ok || result.ok !== true || !result.profile) {
+        throw new Error(result.error || "Profile changes could not be saved.");
+      }
+      setProfile(current => current ? { ...current, ...result.profile } : result.profile ?? null);
+      setName(result.profile.name);
+      setTimezone(result.profile.timezone || cleanTimezone);
+      setNotice("Profile details saved.");
+      window.dispatchEvent(new CustomEvent("pw-profile-updated", {
+        detail: { profile: result.profile, avatarUrl },
+      }));
+    } catch (cause) {
+      setSaveError(cause instanceof Error ? cause.message : "Profile changes could not be saved.");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const changed = Boolean(profile && (name.trim() !== profile.name || timezone.trim() !== (profile.timezone || deviceTimezone())));
+
+  return <main className="pw-profile">
+    <section className="profile-content">
+      <header className="profile-heading">
+        <div><span className="profile-kicker">Account</span><h1>Profile</h1></div>
+        {refreshing && !loading && <span className="profile-refreshing" role="status">Refreshing</span>}
+      </header>
+      {error && <div className="profile-alert" role="alert"><AlertCircle size={16} /><span>{error}</span><button type="button" onClick={() => void load()}>Retry</button></div>}
+      {notice && <div className="profile-alert success" role="status"><Check size={16} /><span>{notice}</span></div>}
+      {saveError && <div className="profile-alert" role="alert"><AlertCircle size={16} /><span>{saveError}</span></div>}
+      {loading && !profile ? <section className="profile-editor" aria-label="Loading profile"><div className="profile-skeleton" /><div className="profile-skeleton short" /><div className="profile-skeleton" /></section>
+        : profile && <section className="profile-editor">
+          <div className="profile-editor-head"><span className="profile-mark"><UserRound size={17} /></span><div><h2>Personal details</h2><p>Update the name and time zone attached to your account.</p></div></div>
+          <form className="profile-form" onSubmit={event => void save(event)}>
+            <div className="profile-field-grid">
+              <label className="profile-field"><span>Name</span><input type="text" autoComplete="name" minLength={2} maxLength={100} required value={name} onChange={event => setName(event.target.value)} aria-describedby="profile-name-help" /><small id="profile-name-help">2–100 characters.</small></label>
+              <label className="profile-field"><span>Time zone</span><input type="text" autoComplete="off" required value={timezone} onChange={event => setTimezone(event.target.value)} aria-describedby="profile-timezone-help" placeholder="Europe/London" /><small id="profile-timezone-help">Use an IANA time zone such as America/Toronto.</small></label>
+              <label className="profile-field"><span>Email</span><input type="text" value={profile.email ?? "Not provided"} readOnly aria-readonly="true" /></label>
+              <label className="profile-field"><span>Username</span><input type="text" value={profile.username || "Not set"} readOnly aria-readonly="true" /></label>
+              <label className="profile-field"><span>Role</span><input type="text" value={profile.role.replaceAll("_", " ")} readOnly aria-readonly="true" /></label>
+              <label className="profile-field"><span>Account status</span><input type="text" value={profile.status || "Not provided"} readOnly aria-readonly="true" /></label>
+            </div>
+            <div className="profile-form-footer">
+              {notice && <span className="profile-save-state"><Check size={14} /> Saved</span>}
+              <button className="profile-save" type="submit" disabled={saving || !changed || !name.trim() || !timezone.trim()}>
+                {saving ? <><LoaderCircle size={14} /> Saving…</> : <><Save size={14} /> Save changes</>}
+              </button>
+            </div>
+          </form>
+          <div className="profile-divider" />
+          <section className="profile-photo-section" aria-labelledby="profile-photo-title">
+            <div><h2 id="profile-photo-title">Profile photo</h2><p>Private to your signed-in account. PNG or JPEG, up to 5 MiB.</p></div>
+            {profile.id && <ProfilePhotoControl userId={profile.id} name={profile.name} onPhoto={onPhoto} />}
+          </section>
+        </section>}
+    </section>
+  </main>;
+}

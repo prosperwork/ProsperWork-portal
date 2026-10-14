@@ -1,0 +1,71 @@
+# Dependencies
+node_modules/
+/.pnpm-store/
+.npm
+.yarn/
+.pnp
+.pnp.js
+
+# Next.js Build Outputs & Caches
+.next/
+/out/
+/build/
+/dist/
+.turbo/
+.vercel/
+
+# TypeScript
+*.tsbuildinfo
+next-env.d.ts.local
+
+# Generated artifacts & scratch files
+/generated-artifacts/
+doc_text.txt
+
+# Environment files and secrets
+.env
+.env*.local
+.env.development.local
+.env.test.local
+.env.production.local
+.env.*
+!.env.example
+*.pem
+*.key
+
+# Logs & Debugging
+logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+
+# Testing & Coverage
+coverage/
+.nyc_output/
+
+# Operating System Files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+Desktop.ini
+
+# IDE & Editor Files
+.idea/
+*.sublime-workspace
+*.sublime-project
+.vscode/*
+!.vscode/settings.json
+!.vscode/tasks.json
+!.vscode/launch.json
+!.vscode/extensions.json
+
+# Temporary / Scratch
+*.tmp
+*.temp

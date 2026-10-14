@@ -1,0 +1,23 @@
+import assert from"node:assert/strict";
+import{academyTick}from"../supabase/functions/_shared/academy-tick.mjs";
+const calls=[],warnings=[],sent=[],removed=[];
+const client={rpc:async(name,args)=>{calls.push({name,args});switch(name){
+ case"pw_reconcile_leaves":return{error:{code:"fixture"}};
+ case"pw_reconcile_operations":return{data:{blocked:1}};
+ case"pw_expired_classrooms":return{data:[{id:"expired",room_name:"expired"}]};
+ case"pw_open_classrooms":return{data:[{id:"open",room_name:"open"}]};
+ case"pw_classroom_participant_allowed":return{data:false};
+ case"pw_claim_emails":return{data:[{id:"current",lease_id:"lease1"},{id:"stale",lease_id:"lease2"}]};
+ case"pw_claim_campaign_emails":return{data:[{id:"consented-campaign",lease_id:"campaign-lease"},{id:"withdrawn-campaign",lease_id:"withdrawn-lease"}]};
+ case"pw_campaign_email_current":return{data:args.p_id==="consented-campaign"};
+ case"pw_email_current":return{data:args.p_job==="current"};
+ default:return{data:true};
+}}};
+const roomService={deleteRoom:async()=>{},listParticipants:async()=>[{identity:"00000000-0000-4000-8000-000000000000"}],removeParticipant:async(_,id)=>{removed.push(id);}};
+await academyTick({client,roomService,appUrl:"https://example.invalid",deliverEmail:async job=>sent.push(job.id),safeEmailError:()=> "FIXTURE",warn:s=>warnings.push(s)});
+assert(warnings.length===2);assert.deepEqual(sent,["current","consented-campaign"]);assert(removed.length===1);
+assert(calls.some(c=>c.name==="pw_finish_campaign_email"&&c.args.p_id==="withdrawn-campaign"&&!c.args.p_success));
+assert(calls.some(c=>c.name==="pw_close_classroom"&&c.args.p_id==="expired"));
+assert.deepEqual(calls.find(c=>c.name==="pw_finish_email"&&c.args.p_id==="current").args,{p_id:"current",p_lease:"lease1",p_success:true,p_error:null});
+assert(calls.find(c=>c.name==="pw_finish_email"&&c.args.p_id==="stale").args.p_error==="SOURCE_NO_LONGER_CURRENT");
+console.log("PASS Shared tick isolates reconciliation failures, closes rooms, removes unauthorized participants and finishes leased emails with the native RPC contract. No real email or room was used.");

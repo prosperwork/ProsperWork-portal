@@ -1,0 +1,118 @@
+import assert from "node:assert/strict";
+import{randomUUID}from"node:crypto";
+import{databaseClient,safeFailure}from"./database-client.mjs";
+const db=databaseClient(),keys=["owner","finance","head_admin","admin","teacher","otherteacher","qc","sales_marketing","social_media","parent","referrer"],ids=Object.fromEntries(keys.map(k=>[k,randomUUID()]));
+const sid="ops_"+randomUUID(),note="Isolated operations acceptance fixture with actual native writes";
+let checks=0,stage="";
+function pass(s){checks++;console.log("PASS "+s);}
+async function as(k){await db.query("reset role;set local role authenticated");await db.query("select set_config('request.jwt.claim.sub',$1,true),set_config('request.jwt.claims',$2,true),set_config('pw.sales_workflow','off',true)",[ids[k],JSON.stringify({sub:ids[k],role:"authenticated"})]);}
+async function root(){await db.query("reset role");await db.query("select set_config('request.jwt.claim.sub',$1,true),set_config('request.jwt.claims',$2,true),set_config('pw.sales_workflow','off',true)",[ids.owner,JSON.stringify({sub:ids.owner,role:"authenticated"})]);}
+async function act(action,data={}){stage=action;const fn=action.startsWith("media_")?"pw_media_action":["observe","trial","convert","lead_assign","referral"].includes(action)?"pw_quality_sales_action":"pw_operations_action";return(await db.query(`select public.${fn}($1,$2) result`,[action,{...data,notes:note}])).rows[0].result;}
+async function denied(label,fn,code="42501"){await db.query("savepoint denial");try{await fn();assert.fail(label);}catch(e){assert.equal(e.code,code,label);await db.query("rollback to savepoint denial");}await db.query("release savepoint denial");pass(label);}
+try{
+ await db.connect();await db.query("begin");
+ for(const[k,id]of Object.entries(ids)){
+  await db.query("insert into auth.users(id,email,email_confirmed_at,raw_user_meta_data,created_at,updated_at) values($1,$2,now(),$3,now(),now())",[id,id+"@operations-test.invalid",JSON.stringify({name:"Isolated "+k})]);
+  await db.query("update public.pw_profiles set role=$2,status='active',timezone='UTC' where id=$1",[id,k==="owner"?"super_admin":k==="otherteacher"?"teacher":k==="referrer"?"parent":k]);
+ }
+ await db.query("update public.pw_profiles set qc_id=$1 where id=$2",[ids.qc,ids.teacher]);
+ const pupil={id:sid,name:"Isolated pupil",dob:"2015-01-01",parentName:"Isolated parent",parentEmail:ids.parent+"@operations-test.invalid",instrument:"Piano",teacherName:"Isolated teacher",adminName:"Isolated admin",timezone:"UTC",consent:true,rank:"Novice",songsDone:[],songsToDo:[],status:"active",monthlyLessons:4,lessonsTaken:0};
+ await db.query("insert into public.pw_students(id,parent_id,teacher_id,admin_id,payload) values($1,$2,$3,$4,$5)",[sid,ids.parent,ids.teacher,ids.admin,pupil]);
+ await as("teacher");await denied("Teacher cannot configure billing or inspect profit",()=>act("contract",{studentId:sid,amount:100,currency:"GBP",terms:"upfront",anchor:"2026-01-31"}));
+ assert.deepEqual((await db.query("select public.pw_financial_summary() result")).rows[0].result,[]);pass("Non-financial actors receive no financial report");
+ await as("finance");
+ const contract=await act("contract",{studentId:sid,amount:100,currency:"GBP",terms:"upfront",anchor:"2026-01-31"});
+ let rows=(await db.query("select payload from public.pw_payments where student_id=$1 order by payload->>'dueDate'",[sid])).rows;
+ assert(rows.length>=3);assert.equal(rows[0].payload.dueDate,"2026-01-31");assert.equal(rows[1].payload.dueDate,"2026-02-28");assert.equal(rows[2].payload.dueDate,"2026-03-31");pass("Monthly anchors preserve month-end dates across February");
+ const initial=rows.length;await act("generate",{id:contract.id});assert.equal((await db.query("select count(*) n from public.pw_payments where student_id=$1",[sid])).rows[0].n,String(initial));pass("Recurring invoice generation is transactional and idempotent");
+ await denied("Only one active billing contract exists per child",()=>act("contract",{studentId:sid,amount:100,currency:"GBP",terms:"upfront",anchor:"2026-01-31"}),"23505");
+ const baselineExp=Number((await db.query("select coalesce(sum((payload->>'amount')::numeric),0) n from public.pw_expenses where payload->>'currency'='NGN'")).rows[0].n);
+ await act("expense",{title:"Isolated teaching equipment",amount:20,currency:"GBP",date:"2026-01-31",category:"Equipment"});
+ let report=(await db.query("select public.pw_financial_summary() result")).rows[0].result;
+ assert(report.every(row=>!("profit"in row)));pass("Finance cannot read owner-only net-profit fields");
+ assert(report.at(-1).missingRates>0);assert.equal(report.at(-1).expenses,null);pass("Missing FX rates explicitly block consolidated totals");
+ await act("fx",{currency:"GBP",date:"2026-01-01",rate:2000});report=(await db.query("select public.pw_financial_summary() result")).rows[0].result;assert.equal(report.at(-1).missingRates,0);assert.equal(report.at(-1).expenses,baselineExp+40000);pass("Approved dated rates convert costs without mixing currencies");
+ await denied("Dated FX approvals cannot silently overwrite earlier rates",()=>act("fx",{currency:"GBP",date:"2026-01-01",rate:1000}),"23505");
+ await denied("Finance cannot grant itself profit access",()=>act("finance_settings",{taxPercent:10,financeProfit:true,referralPercent:10}));
+ await as("owner");await act("finance_settings",{taxPercent:10,financeProfit:true,referralPercent:10});await as("finance");
+ assert((await db.query("select public.pw_financial_summary() result")).rows[0].result.every(r=>"profit"in r));pass("Owner can explicitly grant Finance estimated-profit reporting");
+ await act("contract_stop",{id:contract.id});
+ const after=await act("contract",{studentId:sid,amount:120,currency:"USD",terms:"after_service",anchor:"2026-01-31"});
+ rows=(await db.query("select p.payload from public.pw_payments p join public.pw_contract_invoices i on i.payment_id=p.id where i.contract_id=$1 order by i.period",[after.id])).rows;
+ assert.equal(rows[0].payload.dueDate,"2026-02-28");pass("After-service billing is anchored one month after lesson start");
+ await as("owner");
+ const series=await act("recurrence",{studentId:sid,weekday:1,time:"10:00",zone:"Europe/London",duration:60,startsOn:"2026-10-19",weeks:3});
+ rows=(await db.query("select payload from public.pw_lessons where id like $1 order by payload->>'startsAt'",["series_"+series.id.replaceAll("-","")+"_%"])).rows;
+ assert.equal(rows.length,3);assert.equal(new Date(rows[0].payload.startsAt).getUTCHours(),9);assert.equal(new Date(rows[1].payload.startsAt).getUTCHours(),10);pass("Recurring local-time lessons retain their clock time across DST");
+ await denied("Recurring classes reject teacher calendar overlaps",()=>act("recurrence",{studentId:sid,weekday:1,time:"10:00",zone:"Europe/London",duration:60,startsOn:"2026-10-19",weeks:3}),"PW003");
+ await as("teacher");
+ await act("availability",{staffId:ids.teacher,weekday:1,from:"00:00",to:"23:59"});
+ await denied("Teachers cannot edit another teacher's availability",()=>act("availability",{staffId:ids.otherteacher,weekday:1,from:"09:00",to:"17:00"}));
+ await as("owner");
+ await denied("Declared weekly availability is enforced natively",()=>act("recurrence",{studentId:sid,weekday:2,time:"10:00",zone:"UTC",duration:60,startsOn:"2026-10-20",weeks:1}),"23514");
+ const pause=await act("pause",{studentId:sid,resumeOn:null});
+ assert.equal((await db.query("select payload->>'status' s from public.pw_students where id=$1",[sid])).rows[0].s,"paused");
+ assert((await db.query("select payload->>'status' s from public.pw_lessons where student_id=$1",[sid])).rows.every(r=>r.s==="cancelled"));pass("Indefinite pauses preserve future lesson records rather than deleting them");
+ await act("resume",{id:pause.id});assert((await db.query("select payload->>'status' s from public.pw_lessons where student_id=$1",[sid])).rows.every(r=>r.s==="scheduled"));pass("Resume restores original future classes through conflict checks");
+ await as("finance");await denied("Resuming lessons cannot silently back-charge paused billing periods",()=>act("generate",{id:after.id}),"23514");await as("owner");
+ await as("admin");await denied("Regular Admin cannot grant permanent teacher assignments",()=>act("reassign",{studentId:sid,teacherId:ids.otherteacher,adminId:ids.admin}));
+ await as("qc");await act("observe",{staffId:ids.teacher,kind:"observation",score:80});
+ assert((await db.query("select public.pw_quality_snapshot() result")).rows[0].result.some(r=>r.staffId===ids.teacher));pass("Assigned QC records immutable scored observations");
+ await denied("QC cannot score an unrelated teacher",()=>act("observe",{staffId:ids.otherteacher,kind:"coaching",score:60}));
+ await as("finance");assert.equal((await db.query("select count(*) n from public.pw_quality_observations")).rows[0].n,"0");pass("Financial staff cannot retrieve confidential coaching");
+ await root();const lead="opslead_"+randomUUID();
+ await db.query("insert into public.pw_leads(id,owner_id,payload) values($1,$2,$3)",[lead,ids.sales_marketing,{id:lead,parentName:"Isolated parent",email:ids.parent+"@operations-test.invalid",phone:"",childName:pupil.name,instrument:"Piano",source:"Fixture",status:"new",arrivedAt:"2000-01-01T00:00:00Z",owner:"Isolated sales_marketing",notes:note}]);
+ assert(Date.parse((await db.query("select payload->>'arrivedAt' d from public.pw_leads where id=$1",[lead])).rows[0].d)>Date.now()-60000);pass("Lead age begins from the actual server arrival time");
+ await as("sales_marketing");await db.query("update public.pw_leads set payload=payload||'{\"status\":\"contacted\",\"firstResponseAt\":\"2000-01-01T00:00:00Z\"}' where id=$1",[lead]);
+ assert(Date.parse((await db.query("select payload->>'firstResponseAt' d from public.pw_leads where id=$1",[lead])).rows[0].d)>Date.now()-60000);pass("First response time is server-controlled and cannot be backdated");
+ await denied("Sales cannot fake completed conversion",()=>act("convert",{id:lead}),"23514");
+ await denied("Direct table updates cannot forge verified trial metadata",()=>db.query("update public.pw_leads set trial_verified_at=now() where id=$1",[lead]));
+ await as("owner");const trial=await act("trial",{id:lead,studentId:sid,teacherId:ids.otherteacher,adminId:ids.admin,at:"2026-11-03T12:00:00Z"});
+ assert((await db.query("select trial_lesson_id from public.pw_leads where id=$1",[lead])).rows[0].trial_lesson_id);pass("Head/Owner trial assignment creates a real scheduled lesson");
+ await root();const trialId=(await db.query("select trial_lesson_id from public.pw_leads where id=$1",[lead])).rows[0].trial_lesson_id;
+ await db.query("update public.pw_lessons set payload=payload||jsonb_build_object('startsAt',now()-interval '1 hour','status','completed') where id=$1",[trialId]);
+ assert((await db.query("select trial_verified_at from public.pw_leads where id=$1",[lead])).rows[0].trial_verified_at);pass("Actual Admin/Owner attendance verification advances the linked Sales trial");
+ stage="referral receipt";const requestId=randomUUID();await db.query("insert into public.pw_referral_requests(id,parent_id,lead_id) values($1,$2,$3)",[requestId,ids.referrer,lead]);
+ const payment=(await db.query("select payment_id from public.pw_contract_invoices where contract_id=$1 order by period limit 1",[after.id])).rows[0].payment_id;
+ const receipt=randomUUID();await db.query("insert into public.pw_files(id,uploader_id,category,target_id,path,original_name,mime,bytes,complete) values($1,$2,'receipt',$3,$4,'Isolated receipt','application/pdf',30,true)",[receipt,ids.parent,payment,ids.parent+"/"+receipt]);
+ await db.query("insert into storage.objects(bucket_id,name) values('pw-private',$1)",[ids.parent+"/"+receipt]);
+ await db.query("update public.pw_payments set payload=payload||jsonb_build_object('status','receipt_uploaded','receiptPath',$2::text,'receiptName','Isolated receipt') where id=$1",[payment,ids.parent+"/"+receipt]);
+ stage="referral verification";await as("finance");await db.query("update public.pw_payments set payload=jsonb_set(payload,'{status}','\"paid\"') where id=$1",[payment]);
+ assert.equal(Number((await db.query("select amount from public.pw_referral_credits where referral_id=$1",[requestId])).rows[0].amount),12);pass("First verified payment earns the configured one-time referral credit");
+ await as("sales_marketing");await denied("Held billing cannot masquerade as completed Finance handover",()=>act("convert",{id:lead}),"23514");
+ await as("finance");await act("contract_stop",{id:after.id});await act("contract",{studentId:sid,amount:120,currency:"USD",terms:"upfront",anchor:"2026-10-13"});
+ await as("sales_marketing");await act("convert",{id:lead});assert((await db.query("select converted_at from public.pw_leads where id=$1",[lead])).rows[0].converted_at);pass("Sales conversion requires real verified trial, payment and Finance contract");
+ await root();const refChild=sid+"_referrer";await db.query("insert into public.pw_students(id,parent_id,teacher_id,admin_id,payload) values($1,$2,$3,$4,$5)",[refChild,ids.referrer,ids.otherteacher,ids.admin,{...pupil,id:refChild,parentName:"Isolated referrer",parentEmail:ids.referrer+"@operations-test.invalid"}]);
+ await as("finance");const creditContract=await act("contract",{studentId:refChild,amount:100,currency:"USD",terms:"upfront",anchor:"2026-10-13"});
+ const discounted=(await db.query("select p.payload from public.pw_contract_invoices c join public.pw_payments p on p.id=c.payment_id where c.contract_id=$1",[creditContract.id])).rows[0].payload;
+ assert.equal(discounted.amount,100);assert.equal(discounted.referralDiscount,12);assert.equal(discounted.amount-discounted.referralDiscount,88);pass("Earned credit is applied once using the existing gross-minus-discount invoice model");
+ await act("generate",{id:creditContract.id});assert.equal(Number((await db.query("select remaining from public.pw_referral_credits where referral_id=$1",[requestId])).rows[0].remaining),0);pass("Invoice retries cannot spend the same referral credit twice");
+ const practice=randomUUID(),file=randomUUID();await root();
+ await db.query("insert into public.pw_practice(id,student_id,created_by,status,seconds) values($1,$2,$3,'complete',60)",[practice,sid,ids.teacher]);
+ await db.query("insert into public.pw_files(id,uploader_id,category,target_id,path,original_name,mime,bytes,complete) values($1,$2,'practice',$3,$4,'Isolated video','video/webm',30,true)",[file,ids.teacher,practice.toString(),ids.teacher+"/"+file]);
+ await as("teacher");const media=await act("media_submit",{fileId:file});
+ await as("social_media");assert.equal((await db.query("select count(*) n from public.pw_media_reviews")).rows[0].n,"0");pass("Social Media cannot read unreviewed child media");
+ await as("owner");await act("media_review",{id:media.id,approve:true,safetyChecked:true});
+ await as("social_media");assert.equal((await db.query("select count(*) n from public.pw_media_reviews")).rows[0].n,"1");pass("Independent review plus guardian consent exposes approved media only");
+ await act("media_publish",{id:media.id,url:"https://example.com/isolated-publication"});
+ await root();await db.query("update public.pw_students set payload=jsonb_set(payload,'{consent}','false') where id=$1",[sid]);
+ await as("social_media");assert.equal((await db.query("select status from public.pw_media_reviews")).rows[0].status,"withdrawn");pass("Guardian withdrawal immediately revokes delivery and creates takedown status");
+ await as("owner");await act("reassign",{studentId:sid,teacherId:ids.otherteacher,adminId:ids.admin});
+ assert.equal((await db.query("select teacher_id from public.pw_students where id=$1",[sid])).rows[0].teacher_id,ids.otherteacher);pass("Reasoned permanent reassignment updates the actual roster and future classes");
+ stage="currency catalog";
+ await as("teacher");await denied("Teachers cannot change supported currencies",()=>db.query("select public.pw_currency_action($1)",[{code:"AUD",name:"Australian dollar",symbol:"A$",enabled:true,notes:"Isolated central catalog test"}]),"42501");
+ await as("finance");await denied("Finance controls rates but cannot add currency codes",()=>db.query("select public.pw_currency_action($1)",[{code:"AUD",name:"Australian dollar",symbol:"A$",enabled:true,notes:"Isolated central catalog test"}]),"42501");
+ await as("owner");await db.query("select public.pw_currency_action($1)",[{code:"AUD",name:"Australian dollar",symbol:"A$",enabled:true,notes:"Isolated central catalog test"}]);
+ assert.equal((await db.query("select count(*) n from public.pw_currencies where code='AUD'")).rows[0].n,"1");pass("Owner adds a central database currency without application code changes");
+ await as("finance");await act("fx",{currency:"AUD",date:"2026-10-13",rate:1100});pass("Finance approves a dated conversion rate for a newly added currency");
+ await act("contract_stop",{id:creditContract.id});const aud=await act("contract",{studentId:refChild,amount:100,currency:"AUD",terms:"upfront",anchor:"2024-01-31"});
+ assert((await db.query("select 1 from public.pw_payments where student_id=$1 and payload->>'currency'='AUD'",[refChild])).rowCount);pass("Newly configured currency works in actual recurring invoices");
+ await act("expense",{title:"New currency expense",amount:3,currency:"AUD",date:"2026-10-13",category:"Test"});
+ await as("owner");await db.query("select public.pw_currency_action($1)",[{code:"AUD",name:"Australian dollar",symbol:"A$",enabled:false,notes:"Disable new contracts; preserve old history"}]);
+ await as("finance");await act("generate",{id:aud.id});pass("Disabling a currency preserves and honours existing agreements");
+ await act("contract_stop",{id:aud.id});await denied("Disabled currencies cannot create new billing agreements",()=>act("contract",{studentId:refChild,amount:100,currency:"AUD",terms:"upfront",anchor:"2026-10-13"}),"23514");
+ await denied("Unknown three-letter codes cannot enter the expense ledger",()=>act("expense",{title:"Invalid code",amount:1,currency:"XYZ",date:"2026-10-13",category:"Test"}),"23514");
+ await as("owner");await denied("The reporting base cannot be disabled",()=>db.query("select public.pw_currency_action($1)",[{code:"NGN",name:"Nigerian naira",symbol:"₦",enabled:false,notes:"Invalid reporting base change"}]),"23514");
+ console.log(`${checks} native operations checks passed; all fixtures and queued reminders rolled back.`);
+}catch(e){console.error("Operations stage: "+stage);console.error(safeFailure(e));if(e.code==="22023")console.error(e.message);process.exitCode=1;}
+finally{await db.query("rollback").catch(()=>{});await db.end();}
