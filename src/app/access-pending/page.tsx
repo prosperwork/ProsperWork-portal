@@ -52,6 +52,10 @@ export default function AccessPendingPage() {
         window.location.replace("/login");
         return;
       }
+      if (data.profile.status === "policy_required") {
+        window.location.replace("/onboarding");
+        return;
+      }
       setProfile(data.profile);
       setCheckedAt(new Date());
     } catch (requestError) {
