@@ -10,6 +10,8 @@ export const familyAction=z.discriminatedUnion("action",[
   experience: z.string().trim().max(80).optional(),
   hasInstrument: z.string().trim().max(80).optional(),
   learningGoals: z.string().trim().max(250).optional(),
+  lessonDuration: z.string().trim().max(80).optional(),
+  extraTimeNotes: z.string().trim().max(250).optional(),
   preferredDays: z.string().trim().max(250).optional(),
   specialNeeds: z.string().trim().max(500).optional(),
   notes: z.string().trim().max(500).optional(),
@@ -41,6 +43,8 @@ export interface FamilyChild {
   experience?: string;
   hasInstrument?: string;
   learningGoals?: string;
+  lessonDuration?: string;
+  extraTimeNotes?: string;
   preferredDays?: string;
   specialNeeds?: string;
   notes?: string;

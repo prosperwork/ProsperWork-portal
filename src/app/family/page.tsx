@@ -118,8 +118,10 @@ export default function FamilyPage() {
   const [newLearningGoals, setNewLearningGoals] = useState(
     "Classical & Sight-reading"
   );
-  const [newPreferredDays, setNewPreferredDays] =
-    useState("Weekday afternoons");
+  const [newLessonDuration, setNewLessonDuration] =
+    useState("1 hour (Standard)");
+  const [newExtraTimeNotes, setNewExtraTimeNotes] = useState("");
+  const [newPreferredDays, setNewPreferredDays] = useState("");
   const [newSpecialNeeds, setNewSpecialNeeds] = useState("");
   const [newNotes, setNewNotes] = useState("");
   const [newConsent, setNewConsent] = useState(false);
@@ -420,7 +422,9 @@ export default function FamilyPage() {
         experience: newExperience,
         hasInstrument: newHasInstrument,
         learningGoals: newLearningGoals,
-        preferredDays: newPreferredDays,
+        lessonDuration: newLessonDuration,
+        extraTimeNotes: newExtraTimeNotes.trim() || undefined,
+        preferredDays: newPreferredDays.trim() || undefined,
         specialNeeds: newSpecialNeeds.trim() || undefined,
         notes: newNotes.trim() || undefined,
         consent: newConsent,
@@ -436,7 +440,9 @@ export default function FamilyPage() {
       setNewExperience("Absolute Beginner");
       setNewHasInstrument("Owns instrument");
       setNewLearningGoals("Classical & Sight-reading");
-      setNewPreferredDays("Weekday afternoons");
+      setNewLessonDuration("1 hour (Standard)");
+      setNewExtraTimeNotes("");
+      setNewPreferredDays("");
       setNewSpecialNeeds("");
       setNewNotes("");
       setNewConsent(false);
@@ -682,12 +688,19 @@ export default function FamilyPage() {
                                 </strong>
                               </div>
                               <div className="family-fact">
+                                <small>Lesson duration</small>
+                                <strong>
+                                  {child.lessonDuration || "1 hour (Standard)"}
+                                </strong>
+                              </div>
+                              <div className="family-fact">
                                 <small>Practice rank</small>
                                 <strong>{child.rank || "Not ranked"}</strong>
                               </div>
                             </div>
                             {(child.learningGoals ||
                               child.preferredDays ||
+                              child.extraTimeNotes ||
                               (child.gender &&
                                 child.gender !== "Prefer not to say") ||
                               child.specialNeeds ||
@@ -701,6 +714,11 @@ export default function FamilyPage() {
                                 {child.preferredDays && (
                                   <span className="family-meta-tag">
                                     Schedule: {child.preferredDays}
+                                  </span>
+                                )}
+                                {child.extraTimeNotes && (
+                                  <span className="family-meta-tag">
+                                    Extra time: {child.extraTimeNotes}
                                   </span>
                                 )}
                                 {child.gender &&
@@ -1220,30 +1238,66 @@ export default function FamilyPage() {
                   </select>
                 </div>
                 <div className="family-field">
-                  <label htmlFor="new-student-schedule">
-                    Preferred lesson schedule
-                  </label>
+                  <label htmlFor="new-student-duration">Lesson duration</label>
                   <select
-                    id="new-student-schedule"
-                    value={newPreferredDays}
-                    onChange={(e) => setNewPreferredDays(e.target.value)}
+                    id="new-student-duration"
+                    value={newLessonDuration}
+                    onChange={(e) => setNewLessonDuration(e.target.value)}
                   >
-                    <option value="Weekday afternoons">
-                      Weekday afternoons (4:00 PM - 7:00 PM)
+                    <option value="1 hour (Standard)">
+                      1 hour (Standard default)
                     </option>
-                    <option value="Weekday evenings">
-                      Weekday evenings (7:00 PM - 9:00 PM)
+                    <option value="1.5 hours (90 mins)">
+                      1.5 hours (90 mins - Extra time)
                     </option>
-                    <option value="Saturday morning">Saturday morning</option>
-                    <option value="Saturday afternoon">
-                      Saturday afternoon
+                    <option value="2 hours (120 mins)">
+                      2 hours (120 mins - Intensive)
                     </option>
-                    <option value="Sunday afternoon">Sunday afternoon</option>
-                    <option value="Flexible">
-                      Flexible / Discuss with academy
+                    <option value="Custom / Request extra time">
+                      Custom / Request extra time
                     </option>
                   </select>
+                  <small>
+                    Classes are 1 hour by default unless extra time is
+                    requested.
+                  </small>
                 </div>
+              </div>
+
+              {newLessonDuration !== "1 hour (Standard)" && (
+                <div className="family-field">
+                  <label htmlFor="new-student-extra-time">
+                    Extra time request details (optional)
+                  </label>
+                  <input
+                    id="new-student-extra-time"
+                    type="text"
+                    placeholder="e.g. Preparing for exam or recital, or requesting 90-min sessions"
+                    value={newExtraTimeNotes}
+                    onChange={(e) => setNewExtraTimeNotes(e.target.value)}
+                  />
+                  <small>
+                    State any special reasons or timing requirements for extra
+                    lesson time.
+                  </small>
+                </div>
+              )}
+
+              <div className="family-field">
+                <label htmlFor="new-student-schedule">
+                  Preferred days &amp; times
+                </label>
+                <input
+                  id="new-student-schedule"
+                  type="text"
+                  placeholder="e.g. Tuesdays &amp; Thursdays at 5:00 PM, or Saturday mornings around 10:30 AM"
+                  value={newPreferredDays}
+                  onChange={(e) => setNewPreferredDays(e.target.value)}
+                />
+                <small>
+                  Classes are 1 hour by default. State any days or times that
+                  fit your family routine best.
+                </small>
               </div>
 
               <div className="family-section-legend">
