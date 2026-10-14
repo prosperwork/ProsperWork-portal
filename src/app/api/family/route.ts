@@ -3,7 +3,9 @@ import {cookies} from "next/headers";
 import {randomBytes,randomUUID} from "node:crypto";
 import {identity} from "@/lib/supabase/identity";
 import {provisioningClient,sameOrigin} from "@/lib/supabase/server";
+import {publicAppUrl} from "@/lib/supabase/app-url.mjs";
 import {familyAction} from "@/lib/academy/family";
+import {deliverEmail} from "@/lib/email/transport.mjs";
 import {open,seal,pinDigest,pinMatches,sessionId} from "@/lib/academy/kid-session";
 import {loadAllRecords} from "@/lib/academy/paged-records";
 
@@ -36,12 +38,16 @@ export async function GET(){
      experience:d.experience||"Absolute Beginner",
      hasInstrument:d.hasInstrument||undefined,
      learningGoals:d.learningGoals||undefined,
-     lessonDuration:d.lessonDuration||"1 hour (Standard)",
-     extraTimeNotes:d.extraTimeNotes||undefined,
      preferredDays:d.preferredDays||undefined,
      specialNeeds:d.specialNeeds||undefined,
      notes:d.notes||undefined,
      timezone:d.timezone,
+     lessonDuration:d.lessonDuration||"1 hour (Standard)",
+     extraTimeNotes:d.extraTimeNotes||undefined,
+     status:d.status||"inactive",
+     admissionStatus:d.admissionStatus||(d.status==="active"?"approved":"pending_review"),
+     teacherName:d.teacherName||undefined,
+     adminName:d.adminName||undefined,
      studentUserId:s.student_user_id,
      username:u?.username||null,
      avatarFileId:u?.avatar_file_id||null,
@@ -73,6 +79,73 @@ export async function POST(request:Request){
    if(cleared.error){await client.auth.signOut({scope:"local"});return reply({error:"Guardian access could not be restored."},503);}
    store.delete("pw-kid-parent");
    return reply({ok:true,redirect:"/family"});
+  }
+  if (d.action === "approve_student") {
+    if (!["super_admin", "general_manager", "head_admin", "admin"].includes(profile.role)) {
+      return reply({ error: "Administrator access is required to approve admissions." }, 403);
+    }
+    const studentRow = await admin.from("pw_students").select("id,parent_id,student_user_id,payload").eq("id", d.studentId).single();
+    if (studentRow.error || !studentRow.data) return reply({ error: "Student record not found." }, 404);
+
+    const prevPayload = (studentRow.data.payload || {}) as Record<string, any>;
+    const updatedPayload = {
+      ...prevPayload,
+      status: "active",
+      admissionStatus: "approved",
+      teacherName: d.teacherName.trim(),
+      adminName: d.adminName?.trim() || profile.name,
+      approvedAt: new Date().toISOString(),
+      approvedBy: profile.name,
+    };
+
+    const updateRes = await admin.from("pw_students").update({
+      payload: updatedPayload,
+      teacher_id: d.teacherId || null,
+      admin_id: d.adminId || profile.id,
+      updated_at: new Date().toISOString(),
+    }).eq("id", d.studentId);
+    if (updateRes.error) throw updateRes.error;
+
+    if (studentRow.data.student_user_id) {
+      await admin.from("pw_profiles").update({ status: "active" }).eq("id", studentRow.data.student_user_id);
+    }
+
+    try {
+      await admin.from("pw_audit").insert({
+        actor_id: user.id,
+        actor_name: profile.name,
+        actor_role: profile.role,
+        entity_type: "pw_students",
+        entity_id: d.studentId,
+        action: "student_admission_approved",
+        changed_fields: [`teacher:${d.teacherName}`, `admin:${d.adminName || profile.name}`, "status:active"],
+      });
+    } catch {}
+
+    const parentEmail = prevPayload.parentEmail;
+    if (parentEmail) {
+      try {
+        await deliverEmail({
+          id: randomUUID(),
+          lease_id: randomUUID(),
+          email: parentEmail,
+          category: "admissions",
+          subject: `Admission Confirmed: Welcome ${prevPayload.name || "Learner"} to ProsperWork Music Academy!`,
+          template: "student_admission_approved",
+          payload: {
+            childName: prevPayload.name || "Learner",
+            parentName: prevPayload.parentName || "Guardian",
+            instrument: prevPayload.instrument || "Music",
+            teacherName: d.teacherName.trim(),
+            lessonDuration: prevPayload.lessonDuration || "1 hour (Standard)",
+          },
+        }, publicAppUrl("/").origin);
+      } catch (emailErr) {
+        console.error("Admission approval email dispatch failed:", emailErr);
+      }
+    }
+
+    return reply({ ok: true });
   }
   if(!["parent","super_admin"].includes(profile.role))return reply({error:"Guardian or owner access required."},403);
   if(d.action==="pin"){
@@ -108,6 +181,14 @@ export async function POST(request:Request){
      consent:d.consent===true,
      rank:d.experience==="Advanced"?"Amateur":d.experience==="Intermediate"?"Novice":"Beginner",
      status:"enrolled",
+     status:"inactive",
+     admissionStatus:"pending_review",
+     teacherName:"Unassigned (Pending Review)",
+     adminName:"Unassigned",
+     songsDone:[],
+     songsToDo:[],
+     monthlyLessons:4,
+     lessonsTaken:0,
      created_at:new Date().toISOString()
    };
    const {error:insertError}=await admin.from("pw_students").insert({
@@ -137,6 +218,7 @@ export async function POST(request:Request){
          p_username:null
        });
        if(!linkRes.error){
+         await admin.from("pw_profiles").update({ status: "pending" }).eq("id", created.data.user.id);
          const profileRow=await admin.from("pw_profiles").select("username").eq("id",created.data.user.id).single();
          linkedUsername=profileRow.data?.username||null;
        }
@@ -152,12 +234,69 @@ export async function POST(request:Request){
        entity_id:studentId,
        action:"student_added_by_guardian",
        changed_fields:[`name:${d.name}`,`instrument:${d.instrument}`,`dob:${d.dob}`]
+       action:"student_submitted_for_review",
+       changed_fields:[`name:${d.name}`,`instrument:${d.instrument}`,`duration:${d.lessonDuration||"1 hour"}`,`preferredDays:${d.preferredDays||"flexible"}`]
      });
    } catch {
      // audit failure non-fatal
    }
 
    return reply({ok:true,id:studentId,username:linkedUsername});
+   // 1. Dispatch admissions review notification to school admins
+   try {
+     await deliverEmail({
+       id: randomUUID(),
+       lease_id: randomUUID(),
+       email: "admissions@prosperworkmusic.com",
+       category: "admissions",
+       subject: `New Student Registration Awaiting Review: ${d.name.trim()} (${d.instrument.trim()})`,
+       template: "student_registration_alert",
+       payload: {
+         childName: d.name.trim(),
+         dob: d.dob,
+         gender: d.gender?.trim() || "Not specified",
+         instrument: d.instrument.trim(),
+         experience: d.experience?.trim() || "Beginner",
+         hasInstrument: d.hasInstrument?.trim() || "Not specified",
+         lessonDuration: d.lessonDuration?.trim() || "1 hour (Standard)",
+         extraTimeNotes: d.extraTimeNotes?.trim() || "",
+         preferredDays: d.preferredDays?.trim() || "Flexible",
+         learningGoals: d.learningGoals?.trim() || "",
+         specialNeeds: d.specialNeeds?.trim() || "",
+         notes: d.notes?.trim() || "",
+         parentName: profile.name,
+         parentEmail: user.email || profile.email,
+       },
+     }, publicAppUrl("/").origin);
+   } catch (adminEmailErr) {
+     console.error("Admissions alert email dispatch error:", adminEmailErr);
+   }
+
+   // 2. Dispatch acknowledgment receipt to guardian
+   const guardianEmail = user.email || profile.email;
+   if (guardianEmail) {
+     try {
+       await deliverEmail({
+         id: randomUUID(),
+         lease_id: randomUUID(),
+         email: guardianEmail,
+         category: "automated",
+         subject: `We've received ${d.name.trim()}'s registration — ProsperWork Music Academy`,
+         template: "student_registration_received",
+         payload: {
+           childName: d.name.trim(),
+           parentName: profile.name,
+           instrument: d.instrument.trim(),
+           lessonDuration: d.lessonDuration?.trim() || "1 hour (Standard)",
+           preferredDays: d.preferredDays?.trim() || "Flexible",
+         },
+       }, publicAppUrl("/").origin);
+     } catch (guardianEmailErr) {
+       console.error("Guardian acknowledgment email error:", guardianEmailErr);
+     }
+   }
+
+   return reply({ok:true,id:studentId,username:linkedUsername,pendingReview:true});
   }
   const child=await client.from("pw_students").select("id,parent_id,student_user_id,payload").eq("id",d.childId).single();
   if(child.error||!child.data||(profile.role==="parent"&&child.data.parent_id!==user.id))return reply({error:"This learner is not linked to your account."},403);

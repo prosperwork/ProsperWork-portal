@@ -14,6 +14,7 @@ import {
   BookOpen,
   CalendarDays,
   Check,
+  Clock,
   ExternalLink,
   KeyRound,
   LoaderCircle,
@@ -612,6 +613,11 @@ export default function FamilyPage() {
                         const studentAccountBusy =
                           actionBusy === `account:${child.id}` ||
                           actionBusy === `password:${child.id}`;
+                        const isPending =
+                          child.admissionStatus === "pending_review" ||
+                          child.status === "inactive" ||
+                          (Boolean(child.admissionStatus) &&
+                            child.admissionStatus !== "approved");
                         return (
                           <article className="family-child" key={child.id}>
                             <div className="family-child-top">
@@ -623,6 +629,49 @@ export default function FamilyPage() {
                                 />
                                 <div>
                                   <h3>{child.name}</h3>
+                                  <div
+                                    style={{
+                                      display: "flex",
+                                      alignItems: "center",
+                                      gap: "8px",
+                                      flexWrap: "wrap",
+                                    }}
+                                  >
+                                    <h3 style={{ margin: 0 }}>{child.name}</h3>
+                                    {isPending ? (
+                                      <span
+                                        style={{
+                                          fontSize: "11px",
+                                          fontWeight: 700,
+                                          padding: "2px 8px",
+                                          borderRadius: "12px",
+                                          background: "#fef3c7",
+                                          color: "#92400e",
+                                          display: "inline-flex",
+                                          alignItems: "center",
+                                          gap: "4px",
+                                        }}
+                                      >
+                                        <Clock size={11} /> Under Review
+                                      </span>
+                                    ) : (
+                                      <span
+                                        style={{
+                                          fontSize: "11px",
+                                          fontWeight: 700,
+                                          padding: "2px 8px",
+                                          borderRadius: "12px",
+                                          background: "#dcfce7",
+                                          color: "#166534",
+                                          display: "inline-flex",
+                                          alignItems: "center",
+                                          gap: "4px",
+                                        }}
+                                      >
+                                        <Check size={11} /> Enrolled
+                                      </span>
+                                    )}
+                                  </div>
                                   <p>
                                     {child.username
                                       ? `Student username · ${child.username}`
@@ -650,8 +699,85 @@ export default function FamilyPage() {
                                     </>
                                   )}
                                 </button>
+                                isPending ? (
+                                  <div
+                                    style={{
+                                      display: "inline-flex",
+                                      alignItems: "center",
+                                      gap: "6px",
+                                      fontSize: "12px",
+                                      fontWeight: 600,
+                                      color: "#92400e",
+                                      background: "#fffbeb",
+                                      padding: "6px 12px",
+                                      borderRadius: "8px",
+                                      border: "1px solid #fde68a",
+                                    }}
+                                  >
+                                    <Clock size={13} /> Review in progress
+                                  </div>
+                                ) : (
+                                  <button
+                                    type="button"
+                                    className="family-button primary"
+                                    onClick={() => void enterKidMode(child.id)}
+                                    disabled={
+                                      actionBusy === `kid:${child.id}` ||
+                                      !family.pinConfigured
+                                    }
+                                  >
+                                    {actionBusy === `kid:${child.id}` ? (
+                                      <>
+                                        <LoaderCircle size={14} /> Opening…
+                                      </>
+                                    ) : (
+                                      <>
+                                        <LockKeyhole size={14} /> Enter Kid Mode
+                                      </>
+                                    )}
+                                  </button>
+                                )
                               )}
                             </div>
+                            {isPending && (
+                              <div
+                                style={{
+                                  margin: "12px 0 14px",
+                                  padding: "12px 14px",
+                                  borderRadius: "8px",
+                                  background: "#fffbeb",
+                                  border: "1px solid #fde68a",
+                                  fontSize: "13px",
+                                  lineHeight: 1.5,
+                                  color: "#78350f",
+                                  display: "flex",
+                                  alignItems: "flex-start",
+                                  gap: "10px",
+                                }}
+                              >
+                                <AlertCircle
+                                  size={16}
+                                  color="#d97706"
+                                  style={{ flexShrink: 0, marginTop: "2px" }}
+                                />
+                                <div>
+                                  <strong
+                                    style={{
+                                      color: "#92400e",
+                                      display: "block",
+                                      marginBottom: "2px",
+                                    }}
+                                  >
+                                    Registration Awaiting Academy Confirmation
+                                  </strong>
+                                  We have received {child.name}&apos;s registration for{" "}
+                                  {child.instrument || "lessons"}. The academy administration has
+                                  been notified and is reviewing your schedule (
+                                  {child.preferredDays || "flexible"}) to match a qualified teacher.
+                                  You will receive an email once confirmed.
+                                </div>
+                              </div>
+                            )}
                             <div className="family-child-facts">
                               <div className="family-fact">
                                 <small>Instrument</small>
@@ -691,6 +817,14 @@ export default function FamilyPage() {
                                 <small>Lesson duration</small>
                                 <strong>
                                   {child.lessonDuration || "1 hour (Standard)"}
+                                </strong>
+                              </div>
+                              <div className="family-fact">
+                                <small>Instructor</small>
+                                <strong>
+                                  {child.teacherName && !child.teacherName.includes("Pending")
+                                    ? child.teacherName
+                                    : "Matching instructor…"}
                                 </strong>
                               </div>
                               <div className="family-fact">

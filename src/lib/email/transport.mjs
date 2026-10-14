@@ -109,6 +109,45 @@ export function emailText(job, appUrl) {
       const actionText = isOnboardingRole ? "Complete your academy onboarding" : "Sign in to your portal";
       return `Hello ${p.name || "there"},\n\nGreat news! Your ProsperWork Music Academy account has been reviewed and activated by our administration.\n\n${isOnboardingRole ? "To complete your setup and access family and lesson records, please review and acknowledge the academy policies:" : "You now have full access to your lessons, classroom, practice schedule, and academy workspace."}\n\n${actionText}:\n${appUrl}${targetPath}\n\nIf you have any questions or need assistance getting started, please reply to this email or contact support@prosperworkmusic.com.${signature}`;
     }
+    case "student_registration_alert":
+      return `Attention Academy Admissions & Admin,\n\nA new student registration has been submitted and is awaiting your review.\n\n` +
+        `Student Details:\n` +
+        `• Name: ${p.childName}\n` +
+        `• Date of Birth: ${p.dob || "Not provided"}\n` +
+        `• Gender: ${p.gender || "Not specified"}\n` +
+        `• Instrument: ${p.instrument}\n` +
+        `• Experience Level: ${p.experience || "Beginner"}\n` +
+        `• Lesson Duration: ${p.lessonDuration || "1 hour (Standard)"}\n` +
+        (p.extraTimeNotes ? `• Extra Time Notes: ${p.extraTimeNotes}\n` : "") +
+        `• Preferred Schedule: ${p.preferredDays || "Not specified"}\n` +
+        (p.learningGoals ? `• Learning Goals: ${p.learningGoals}\n` : "") +
+        (p.specialNeeds ? `• Accommodations / Health: ${p.specialNeeds}\n` : "") +
+        (p.notes ? `• Special Notes: ${p.notes}\n` : "") +
+        `\nGuardian Information:\n` +
+        `• Guardian: ${p.parentName}\n` +
+        `• Email: ${p.parentEmail}\n\n` +
+        `Review and approve this registration in the Academy Portal:\n` +
+        `${appUrl}/students${signature}`;
+    case "student_registration_received":
+      return `Hello ${p.parentName || "Guardian"},\n\n` +
+        `Thank you for registering ${p.childName} with ProsperWork Music Academy!\n\n` +
+        `We have received your registration details. Our admissions team is currently reviewing your preferred schedule (${p.preferredDays || "Flexible"}) and duration (${p.lessonDuration || "1 hour (Standard)"}) to match ${p.childName} with the ideal qualified instructor.\n\n` +
+        `What happens next:\n` +
+        `1. Our administration team will review your lesson preferences.\n` +
+        `2. You will receive an email confirmation once instructor placement and schedule are approved.\n` +
+        `3. Your live classroom and lesson schedule will be activated in your Family Portal.\n\n` +
+        `View your family dashboard:\n` +
+        `${appUrl}/family${signature}`;
+    case "student_admission_approved":
+      return `Hello ${p.parentName || "Guardian"},\n\n` +
+        `Great news! The registration for ${p.childName} has been approved and enrolled at ProsperWork Music Academy.\n\n` +
+        `Enrollment Details:\n` +
+        `• Student: ${p.childName}\n` +
+        `• Instrument: ${p.instrument}\n` +
+        `• Assigned Instructor: ${p.teacherName}\n` +
+        `• Lesson Duration: ${p.lessonDuration || "1 hour (Standard)"}\n\n` +
+        `You can now access your family portal, view your lessons, and prepare for class:\n` +
+        `${appUrl}/family${signature}`;
     default: throw Object.assign(new Error("Unknown email template."), { code: "EMESSAGE" });
   }
 }
@@ -122,19 +161,24 @@ export function emailHtml(job, appUrl) {
     const targetUrl = isOnboardingRole ? `${appUrl}/onboarding` : `${appUrl}/login`;
     const buttonLabel = isOnboardingRole ? "Complete Academy Onboarding &rarr;" : "Sign in to Portal &rarr;";
     return `<!DOCTYPE html>
+function emailWrapper({ title, badge, heading, bodyHtml, buttonLabel, buttonUrl, noteHtml }) {
+  return `<!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Your Academy Account is Active</title>
+  <title>${title}</title>
 </head>
 <body style="margin: 0; padding: 0; background-color: #f3f7f4; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; color: #1e2924;">
   <table role="presentation" width="100%" border="0" cellspacing="0" cellpadding="0" style="background-color: #f3f7f4; padding: 40px 15px;">
     <tr>
       <td align="center">
         <table role="presentation" width="100%" border="0" cellspacing="0" cellpadding="0" style="max-width: 560px; background-color: #ffffff; border-radius: 16px; border: 1px solid #dce6df; box-shadow: 0 4px 24px rgba(10, 46, 34, 0.05); overflow: hidden;">
+        <table role="presentation" width="100%" border="0" cellspacing="0" cellpadding="0" style="max-width: 580px; background-color: #ffffff; border-radius: 16px; border: 1px solid #dce6df; box-shadow: 0 4px 24px rgba(10, 46, 34, 0.05); overflow: hidden;">
           <tr>
             <td style="background-color: #0d3527; padding: 28px 32px; text-align: left;">
+            <td style="background-color: #0d3527; padding: 26px 32px; text-align: left;">
               <table role="presentation" border="0" cellspacing="0" cellpadding="0">
                 <tr>
                   <td style="vertical-align: middle; padding-right: 12px;">
@@ -145,6 +189,7 @@ export function emailHtml(job, appUrl) {
                   <td style="vertical-align: middle;">
                     <span style="display: block; color: #ffffff; font-size: 17px; font-weight: 700; letter-spacing: -0.3px; line-height: 1.2;">ProsperWork</span>
                     <span style="display: block; color: #8fcaab; font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 1.2px; margin-top: 2px;">Music Academy Portal</span>
+                    <span style="display: block; color: #8fcaab; font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 1.2px; margin-top: 2px;">Music Academy</span>
                   </td>
                 </tr>
               </table>
@@ -157,33 +202,47 @@ export function emailHtml(job, appUrl) {
               </div>
               <h1 style="margin: 0 0 16px; color: #0a2e22; font-size: 22px; font-weight: 700; letter-spacing: -0.5px; line-height: 1.3;">
                 Your academy account has been activated
+            <td style="padding: 34px 32px 28px;">
+              ${badge ? `<div style="display: inline-block; padding: 4px 10px; background-color: #edf6f1; border-radius: 16px; font-size: 11px; font-weight: 700; color: #1c7a5d; text-transform: uppercase; letter-spacing: 0.8px; margin-bottom: 14px;">${badge}</div>` : ""}
+              <h1 style="margin: 0 0 16px; color: #0a2e22; font-size: 21px; font-weight: 700; letter-spacing: -0.4px; line-height: 1.3;">
+                ${heading}
               </h1>
               <div style="font-size: 14.5px; line-height: 1.65; color: #374740; margin-bottom: 22px;">
                 Hello <strong>${name}</strong>,<br><br>
                 Great news! Your <strong>${roleTitle}</strong> account has been approved and activated by the ProsperWork administration. You now have full access to your academy workspace.
+                ${bodyHtml}
               </div>
               <table role="presentation" border="0" cellspacing="0" cellpadding="0" style="margin: 28px 0;">
+              ${buttonLabel && buttonUrl ? `
+              <table role="presentation" border="0" cellspacing="0" cellpadding="0" style="margin: 24px 0;">
                 <tr>
                   <td align="center" style="border-radius: 10px; background-color: #135b45;">
                     <a href="${targetUrl}" target="_blank" style="display: inline-block; padding: 13px 28px; font-size: 14px; font-weight: 600; color: #ffffff; text-decoration: none; border-radius: 10px; background-color: #135b45; letter-spacing: 0.1px;">
+                    <a href="${buttonUrl}" target="_blank" style="display: inline-block; padding: 13px 26px; font-size: 14px; font-weight: 600; color: #ffffff; text-decoration: none; border-radius: 10px; background-color: #135b45; letter-spacing: 0.1px;">
                       ${buttonLabel}
                     </a>
                   </td>
                 </tr>
               </table>
+              </table>` : ""}
+              ${noteHtml ? `
               <div style="padding: 14px 16px; background-color: #f7faf8; border-left: 3px solid #135b45; border-radius: 4px; font-size: 12.5px; line-height: 1.55; color: #5a6e64;">
                 <strong>Next Steps:</strong> ${isOnboardingRole ? "Please review and acknowledge the academy policies to complete your onboarding and open your family workspace." : "When you sign in, you can view your private dashboard, explore your schedule, and access live classroom resources."}
               </div>
+                ${noteHtml}
+              </div>` : ""}
             </td>
           </tr>
           <tr>
             <td style="background-color: #f7faf8; padding: 26px 32px; border-top: 1px solid #e6ede8;">
+            <td style="background-color: #f7faf8; padding: 24px 32px; border-top: 1px solid #e6ede8;">
               <table role="presentation" width="100%" border="0" cellspacing="0" cellpadding="0">
                 <tr>
                   <td style="font-size: 11.5px; line-height: 1.6; color: #62756b;">
                     <strong style="color: #0a2e22; font-size: 12px;">ProsperWork Music Academy</strong><br>
                     Official Portal: <a href="https://portal.prosperworkmusic.com" style="color: #135b45; text-decoration: none; font-weight: 600;">portal.prosperworkmusic.com</a><br>
                     Website: <a href="https://www.prosperworkmusic.com" style="color: #135b45; text-decoration: none;">www.prosperworkmusic.com</a>
+                    Official Portal: <a href="https://portal.prosperworkmusic.com" style="color: #135b45; text-decoration: none; font-weight: 600;">portal.prosperworkmusic.com</a> &bull; <a href="https://www.prosperworkmusic.com" style="color: #135b45; text-decoration: none;">www.prosperworkmusic.com</a>
                   </td>
                 </tr>
                 <tr>
@@ -191,6 +250,9 @@ export function emailHtml(job, appUrl) {
                     <strong>Inquiries & Support:</strong> <a href="mailto:info@prosperworkmusic.com" style="color: #135b45; text-decoration: none;">info@prosperworkmusic.com</a> &bull; <a href="mailto:support@prosperworkmusic.com" style="color: #135b45; text-decoration: none;">support@prosperworkmusic.com</a><br>
                     <strong>Admissions:</strong> <a href="mailto:admissions@prosperworkmusic.com" style="color: #135b45; text-decoration: none;">admissions@prosperworkmusic.com</a> &bull; <strong>Accounts & Fees:</strong> <a href="mailto:fees@prosperworkmusic.com" style="color: #135b45; text-decoration: none;">fees@prosperworkmusic.com</a><br><br>
                     <em>This is an official automated notification from ProsperWork Music Academy.</em>
+                  <td style="padding-top: 12px; font-size: 11px; line-height: 1.5; color: #7f9187; border-top: 1px solid #eaf0ec; margin-top: 12px;">
+                    <strong>Admissions:</strong> <a href="mailto:admissions@prosperworkmusic.com" style="color: #135b45; text-decoration: none;">admissions@prosperworkmusic.com</a> &bull; <strong>Support:</strong> <a href="mailto:support@prosperworkmusic.com" style="color: #135b45; text-decoration: none;">support@prosperworkmusic.com</a><br><br>
+                    <em>ProsperWork Music Academy — Developing Musical Excellence.</em>
                   </td>
                 </tr>
               </table>
@@ -202,6 +264,89 @@ export function emailHtml(job, appUrl) {
   </table>
 </body>
 </html>`;
+}
+
+export function emailHtml(job, appUrl) {
+  const p = job.payload;
+  if (job.template === "account_activated") {
+    const name = p.name || "there";
+    const roleTitle = typeof p.roleTitle === "string" ? p.roleTitle : "Academy Member";
+    const isOnboardingRole = ["parent", "student"].includes(p.role);
+    const targetUrl = isOnboardingRole ? `${appUrl}/onboarding` : `${appUrl}/login`;
+    const buttonLabel = isOnboardingRole ? "Complete Academy Onboarding &rarr;" : "Sign in to Portal &rarr;";
+    return emailWrapper({
+      title: "Your Academy Account is Active",
+      badge: "Account Verified",
+      heading: "Your academy account has been activated",
+      bodyHtml: `Hello <strong>${name}</strong>,<br><br>Great news! Your <strong>${roleTitle}</strong> account has been approved and activated by the ProsperWork administration. You now have full access to your academy workspace.`,
+      buttonLabel,
+      buttonUrl: targetUrl,
+      noteHtml: `<strong>Next Steps:</strong> ${isOnboardingRole ? "Please review and acknowledge the academy policies to complete your onboarding and open your family workspace." : "When you sign in, you can view your private dashboard, explore your schedule, and access live classroom resources."}`
+    });
+  }
+
+  if (job.template === "student_registration_alert") {
+    const targetUrl = `${appUrl}/students`;
+    const bodyHtml = `A new student registration has been submitted from the Family Portal and is awaiting administrative review.<br><br>
+      <table style="width: 100%; border-collapse: collapse; font-size: 13.5px; margin-top: 10px;">
+        <tr style="border-bottom: 1px solid #eef2ef;"><td style="padding: 8px 4px; font-weight: 600; color: #5a6e64; width: 38%;">Student Name</td><td style="padding: 8px 4px; color: #0a2e22; font-weight: 700;">${p.childName}</td></tr>
+        <tr style="border-bottom: 1px solid #eef2ef;"><td style="padding: 8px 4px; font-weight: 600; color: #5a6e64;">Date of Birth</td><td style="padding: 8px 4px; color: #2a3d34;">${p.dob || "Not provided"}</td></tr>
+        <tr style="border-bottom: 1px solid #eef2ef;"><td style="padding: 8px 4px; font-weight: 600; color: #5a6e64;">Instrument & Level</td><td style="padding: 8px 4px; color: #2a3d34;">${p.instrument} (${p.experience || "Beginner"})</td></tr>
+        <tr style="border-bottom: 1px solid #eef2ef;"><td style="padding: 8px 4px; font-weight: 600; color: #5a6e64;">Lesson Duration</td><td style="padding: 8px 4px; color: #0a2e22; font-weight: 600;">${p.lessonDuration || "1 hour (Standard)"}</td></tr>
+        ${p.extraTimeNotes ? `<tr style="border-bottom: 1px solid #eef2ef;"><td style="padding: 8px 4px; font-weight: 600; color: #d97706;">Extra Time Notes</td><td style="padding: 8px 4px; color: #92400e;">${p.extraTimeNotes}</td></tr>` : ""}
+        <tr style="border-bottom: 1px solid #eef2ef;"><td style="padding: 8px 4px; font-weight: 600; color: #5a6e64;">Preferred Schedule</td><td style="padding: 8px 4px; color: #2a3d34;">${p.preferredDays || "Not specified"}</td></tr>
+        ${p.learningGoals ? `<tr style="border-bottom: 1px solid #eef2ef;"><td style="padding: 8px 4px; font-weight: 600; color: #5a6e64;">Learning Goals</td><td style="padding: 8px 4px; color: #2a3d34;">${p.learningGoals}</td></tr>` : ""}
+        ${p.specialNeeds ? `<tr style="border-bottom: 1px solid #eef2ef;"><td style="padding: 8px 4px; font-weight: 600; color: #5a6e64;">Accommodations</td><td style="padding: 8px 4px; color: #2a3d34;">${p.specialNeeds}</td></tr>` : ""}
+        <tr style="border-bottom: 1px solid #eef2ef;"><td style="padding: 8px 4px; font-weight: 600; color: #5a6e64;">Guardian</td><td style="padding: 8px 4px; color: #2a3d34;">${p.parentName} (<a href="mailto:${p.parentEmail}" style="color: #135b45;">${p.parentEmail}</a>)</td></tr>
+      </table>`;
+    return emailWrapper({
+      title: "New Student Registration Awaiting Review",
+      badge: "Action Required",
+      heading: `New Student Registration: ${p.childName}`,
+      bodyHtml,
+      buttonLabel: "Review & Enroll in Portal &rarr;",
+      buttonUrl: targetUrl,
+      noteHtml: "Please review the family's preferred days, duration request, and assign a qualified teacher to finalize admission."
+    });
+  }
+
+  if (job.template === "student_registration_received") {
+    const targetUrl = `${appUrl}/family`;
+    const bodyHtml = `Hello <strong>${p.parentName || "Guardian"}</strong>,<br><br>
+      Thank you for registering <strong>${p.childName}</strong> with ProsperWork Music Academy!<br><br>
+      We have received your registration details for <strong>${p.instrument}</strong> lessons (${p.lessonDuration || "1 hour"}). Our admissions team is currently reviewing your schedule preferences (<em>${p.preferredDays || "Flexible"}</em>) to place ${p.childName} with the ideal teacher.`;
+    return emailWrapper({
+      title: "Registration Received",
+      badge: "Registration Received",
+      heading: `We've received ${p.childName}'s registration`,
+      bodyHtml,
+      buttonLabel: "View Family Workspace &rarr;",
+      buttonUrl: targetUrl,
+      noteHtml: "<strong>What happens next:</strong> Our school admissions team will confirm instructor assignment and class timing. You will receive an email once enrollment is active."
+    });
+  }
+
+  if (job.template === "student_admission_approved") {
+    const targetUrl = `${appUrl}/family`;
+    const bodyHtml = `Hello <strong>${p.parentName || "Guardian"}</strong>,<br><br>
+      Great news! The admission and enrollment for <strong>${p.childName}</strong> has been officially confirmed by ProsperWork Music Academy.<br><br>
+      <div style="background-color: #f7faf8; padding: 16px; border-radius: 8px; border: 1px solid #dce6df; margin: 16px 0;">
+        <strong style="color: #0a2e22; font-size: 15px;">Enrollment Summary</strong><br>
+        &bull; <strong>Student:</strong> ${p.childName}<br>
+        &bull; <strong>Instrument:</strong> ${p.instrument}<br>
+        &bull; <strong>Assigned Teacher:</strong> ${p.teacherName}<br>
+        &bull; <strong>Lesson Duration:</strong> ${p.lessonDuration || "1 hour (Standard)"}
+      </div>
+      You can now sign in to your Family Portal to view upcoming classes, access resources, and enter the live classroom when classes commence.`;
+    return emailWrapper({
+      title: "Admission Confirmed",
+      badge: "Enrollment Confirmed",
+      heading: `Welcome ${p.childName} to ProsperWork!`,
+      bodyHtml,
+      buttonLabel: "Open Family Portal &rarr;",
+      buttonUrl: targetUrl,
+      noteHtml: "If you have any questions before classes begin, our support desk is ready to help at support@prosperworkmusic.com."
+    });
   }
   return null;
 }

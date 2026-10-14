@@ -27,6 +27,15 @@ export const familyAction=z.discriminatedUnion("action",[
  z.object({action:z.literal("enter_kid"),childId:child}).strict(),
  z.object({action:z.literal("exit_kid"),pin}).strict(),
  z.object({action:z.literal("media_consent"),childId:child,consent:z.boolean()}).strict(),
+  z.object({action:z.literal("media_consent"),childId:child,consent:z.boolean()}).strict(),
+  z.object({
+    action: z.literal("approve_student"),
+    studentId: z.string().trim().min(1).max(100),
+    teacherName: z.string().trim().min(1).max(120),
+    teacherId: z.string().trim().max(100).optional(),
+    adminName: z.string().trim().max(120).optional(),
+    adminId: z.string().trim().max(100).optional(),
+  }).strict(),
 ]);
 export const policyAction=z.discriminatedUnion("action",[
  z.object({action:z.literal("draft"),key:z.string().regex(/^[a-z][a-z0-9_-]{2,49}$/),title:z.string().trim().min(3).max(150),audienceParentId:z.string().uuid().nullable().optional()}).strict(),
@@ -48,6 +57,10 @@ export interface FamilyChild {
   preferredDays?: string;
   specialNeeds?: string;
   notes?: string;
+  status?: string;
+  admissionStatus?: string;
+  teacherName?: string;
+  adminName?: string;
   timezone: string;
   studentUserId: string | null;
   username: string | null;

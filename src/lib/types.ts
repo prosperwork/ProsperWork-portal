@@ -61,6 +61,16 @@ export interface Student {
   songsDone: string[];
   songsToDo: string[];
   status: "active" | "paused" | "inactive";
+  admissionStatus?: "pending_review" | "approved" | "rejected";
+  lessonDuration?: string;
+  extraTimeNotes?: string;
+  preferredDays?: string;
+  gender?: string;
+  experience?: string;
+  hasInstrument?: string;
+  learningGoals?: string;
+  specialNeeds?: string;
+  notes?: string;
   monthlyLessons: number;
   lessonsTaken: number;
 }
