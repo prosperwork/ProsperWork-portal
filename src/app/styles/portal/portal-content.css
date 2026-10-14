@@ -1845,7 +1845,8 @@
 }
 .portal-route-content
   [data-portal-layout="operations-workspace"]
-  .ops-section-head h2 {
+  .ops-section-head
+  h2 {
   margin: 0;
   color: #143c2b;
   font: 800 16px/1.25 var(--display, "Manrope", sans-serif);
