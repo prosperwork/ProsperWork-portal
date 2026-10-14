@@ -276,8 +276,8 @@ export default function OperationsPage() {
   const showAnySection = views.length > 0;
 
   return (
-    <main className="pw-ops ops-page">
-      <div className="ops-main ops-shell">
+    <main className="ops-page">
+      <div className="ops-shell">
         {error && (
           <div className="ops-notice ops-error" role="alert">
             <AlertCircle size={16} />

@@ -40,19 +40,16 @@
   gap: 10px;
   margin-top: 12px;
 }
-.pw-ops,
-.ops-page {
+.pw-ops {
   min-height: 100dvh;
   color: #1f342b;
   background: #f5f8f5;
   font-family: var(--body, "DM Sans", sans-serif);
 }
-.pw-ops *,
-.ops-page * {
+.pw-ops * {
   box-sizing: border-box;
 }
-.ops-main,
-.ops-shell {
+.ops-main {
   width: min(1420px, 100%);
   margin: 0 auto;
   padding: 24px 28px 54px;
