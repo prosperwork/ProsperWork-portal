@@ -149,7 +149,13 @@ export default function PortalShell({
 
     recordActivity();
 
-    const activityEvents = ["mousedown", "keydown", "scroll", "touchstart", "click"];
+    const activityEvents = [
+      "mousedown",
+      "keydown",
+      "scroll",
+      "touchstart",
+      "click",
+    ];
     activityEvents.forEach((ev) => {
       window.addEventListener(ev, recordActivity, { passive: true });
     });
@@ -157,7 +163,9 @@ export default function PortalShell({
     const checkInterval = window.setInterval(async () => {
       try {
         const lastActiveStr = localStorage.getItem(ACTIVITY_KEY);
-        const lastActive = lastActiveStr ? parseInt(lastActiveStr, 10) : Date.now();
+        const lastActive = lastActiveStr
+          ? parseInt(lastActiveStr, 10)
+          : Date.now();
         if (Date.now() - lastActive >= INACTIVITY_LIMIT_MS) {
           localStorage.removeItem(ACTIVITY_KEY);
           try {
