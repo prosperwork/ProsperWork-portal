@@ -111,7 +111,17 @@ export default function FamilyPage() {
   const [showAddModal, setShowAddModal] = useState(false);
   const [newName, setNewName] = useState("");
   const [newDob, setNewDob] = useState("");
+  const [newGender, setNewGender] = useState("Prefer not to say");
   const [newInstrument, setNewInstrument] = useState("Piano");
+  const [newExperience, setNewExperience] = useState("Absolute Beginner");
+  const [newHasInstrument, setNewHasInstrument] = useState("Owns instrument");
+  const [newLearningGoals, setNewLearningGoals] = useState(
+    "Classical & Sight-reading"
+  );
+  const [newPreferredDays, setNewPreferredDays] =
+    useState("Weekday afternoons");
+  const [newSpecialNeeds, setNewSpecialNeeds] = useState("");
+  const [newNotes, setNewNotes] = useState("");
   const [newConsent, setNewConsent] = useState(false);
   const [createLogin, setCreateLogin] = useState(false);
   const [newPassword, setNewPassword] = useState("");
@@ -405,16 +415,30 @@ export default function FamilyPage() {
         action: "create_student",
         name: newName.trim(),
         dob: newDob,
+        gender: newGender,
         instrument: newInstrument,
+        experience: newExperience,
+        hasInstrument: newHasInstrument,
+        learningGoals: newLearningGoals,
+        preferredDays: newPreferredDays,
+        specialNeeds: newSpecialNeeds.trim() || undefined,
+        notes: newNotes.trim() || undefined,
         consent: newConsent,
         createLogin,
-        password: createLogin ? newPassword : undefined,
+        studentPassword: createLogin ? newPassword : undefined,
       });
       setShowAddModal(false);
       const studentNameAdded = newName.trim();
       setNewName("");
       setNewDob("");
+      setNewGender("Prefer not to say");
       setNewInstrument("Piano");
+      setNewExperience("Absolute Beginner");
+      setNewHasInstrument("Owns instrument");
+      setNewLearningGoals("Classical & Sight-reading");
+      setNewPreferredDays("Weekday afternoons");
+      setNewSpecialNeeds("");
+      setNewNotes("");
       setNewConsent(false);
       setCreateLogin(false);
       setNewPassword("");
@@ -628,6 +652,12 @@ export default function FamilyPage() {
                                 <strong>{child.instrument || "Piano"}</strong>
                               </div>
                               <div className="family-fact">
+                                <small>Level</small>
+                                <strong>
+                                  {child.experience || "Beginner"}
+                                </strong>
+                              </div>
+                              <div className="family-fact">
                                 <small>Date of birth</small>
                                 <strong>
                                   {child.dob
@@ -646,10 +676,51 @@ export default function FamilyPage() {
                                 <strong>{ageOf(child.dob)}</strong>
                               </div>
                               <div className="family-fact">
+                                <small>Instrument access</small>
+                                <strong>
+                                  {child.hasInstrument || "Not specified"}
+                                </strong>
+                              </div>
+                              <div className="family-fact">
                                 <small>Practice rank</small>
                                 <strong>{child.rank || "Not ranked"}</strong>
                               </div>
                             </div>
+                            {(child.learningGoals ||
+                              child.preferredDays ||
+                              (child.gender &&
+                                child.gender !== "Prefer not to say") ||
+                              child.specialNeeds ||
+                              child.notes) && (
+                              <div className="family-meta-tags">
+                                {child.learningGoals && (
+                                  <span className="family-meta-tag">
+                                    Goal: {child.learningGoals}
+                                  </span>
+                                )}
+                                {child.preferredDays && (
+                                  <span className="family-meta-tag">
+                                    Schedule: {child.preferredDays}
+                                  </span>
+                                )}
+                                {child.gender &&
+                                  child.gender !== "Prefer not to say" && (
+                                    <span className="family-meta-tag">
+                                      {child.gender}
+                                    </span>
+                                  )}
+                                {child.specialNeeds && (
+                                  <span className="family-meta-tag">
+                                    Accommodations: {child.specialNeeds}
+                                  </span>
+                                )}
+                                {child.notes && (
+                                  <span className="family-meta-tag">
+                                    Interests: {child.notes}
+                                  </span>
+                                )}
+                              </div>
+                            )}
                             {canManageChildren && (
                               <div>
                                 {!child.studentUserId ? (
@@ -995,60 +1066,220 @@ export default function FamilyPage() {
                   <p>{addError}</p>
                 </div>
               )}
-              <div className="family-field">
-                <label htmlFor="new-student-name">Student full name *</label>
-                <input
-                  id="new-student-name"
-                  required
-                  minLength={2}
-                  maxLength={120}
-                  type="text"
-                  placeholder="e.g. John Doe"
-                  value={newName}
-                  onChange={(e) => setNewName(e.target.value)}
-                />
+              <div className="family-section-legend" style={{ marginTop: 0 }}>
+                Student Details
+              </div>
+
+              <div className="family-modal-row">
+                <div className="family-field">
+                  <label htmlFor="new-student-name">Student full name *</label>
+                  <input
+                    id="new-student-name"
+                    required
+                    minLength={2}
+                    maxLength={120}
+                    type="text"
+                    placeholder="e.g. John Doe"
+                    value={newName}
+                    onChange={(e) => setNewName(e.target.value)}
+                  />
+                </div>
+                <div className="family-field">
+                  <label htmlFor="new-student-gender">Gender</label>
+                  <select
+                    id="new-student-gender"
+                    value={newGender}
+                    onChange={(e) => setNewGender(e.target.value)}
+                  >
+                    <option value="Prefer not to say">Prefer not to say</option>
+                    <option value="Male">Male</option>
+                    <option value="Female">Female</option>
+                    <option value="Other">Other</option>
+                  </select>
+                </div>
+              </div>
+
+              <div className="family-modal-row">
+                <div className="family-field">
+                  <label htmlFor="new-student-dob">Date of birth *</label>
+                  <input
+                    id="new-student-dob"
+                    required
+                    type="date"
+                    max={new Date().toISOString().slice(0, 10)}
+                    value={newDob}
+                    onChange={(e) => setNewDob(e.target.value)}
+                  />
+                  <small>
+                    Calculates age and guides curriculum milestones.
+                  </small>
+                </div>
+                <div className="family-field">
+                  <label htmlFor="new-student-instrument">
+                    Primary instrument *
+                  </label>
+                  <select
+                    id="new-student-instrument"
+                    value={newInstrument}
+                    onChange={(e) => setNewInstrument(e.target.value)}
+                  >
+                    <option value="Piano">Piano</option>
+                    <option value="Voice / Singing">Voice / Singing</option>
+                    <option value="Guitar">Guitar</option>
+                    <option value="Violin">Violin</option>
+                    <option value="Drums">Drums</option>
+                    <option value="Saxophone">Saxophone</option>
+                    <option value="Flute">Flute</option>
+                    <option value="Clarinet">Clarinet</option>
+                    <option value="Bass Guitar">Bass Guitar</option>
+                    <option value="Cello">Cello</option>
+                    <option value="Trumpet">Trumpet</option>
+                    <option value="Ukulele">Ukulele</option>
+                    <option value="Music Theory">Music Theory</option>
+                    <option value="Other">Other</option>
+                  </select>
+                </div>
+              </div>
+
+              <div className="family-section-legend">
+                Musical Background &amp; Learning Goals
+              </div>
+
+              <div className="family-modal-row">
+                <div className="family-field">
+                  <label htmlFor="new-student-experience">
+                    Current skill level
+                  </label>
+                  <select
+                    id="new-student-experience"
+                    value={newExperience}
+                    onChange={(e) => setNewExperience(e.target.value)}
+                  >
+                    <option value="Absolute Beginner">
+                      Absolute Beginner (Never played before)
+                    </option>
+                    <option value="Beginner with basics">
+                      Beginner with basics (Knows simple notes/keys)
+                    </option>
+                    <option value="Intermediate">
+                      Intermediate (Reads notation, plays songs)
+                    </option>
+                    <option value="Advanced">
+                      Advanced (Formal exams, grade 5+, performance)
+                    </option>
+                  </select>
+                </div>
+                <div className="family-field">
+                  <label htmlFor="new-student-has-instrument">
+                    Instrument access at home
+                  </label>
+                  <select
+                    id="new-student-has-instrument"
+                    value={newHasInstrument}
+                    onChange={(e) => setNewHasInstrument(e.target.value)}
+                  >
+                    <option value="Owns instrument">
+                      Yes - owns an instrument at home
+                    </option>
+                    <option value="Has access / borrows">
+                      Yes - has regular practice access
+                    </option>
+                    <option value="Planning to acquire">
+                      Planning to acquire soon
+                    </option>
+                    <option value="No instrument yet">No instrument yet</option>
+                  </select>
+                </div>
+              </div>
+
+              <div className="family-modal-row">
+                <div className="family-field">
+                  <label htmlFor="new-student-goals">
+                    Primary learning goals
+                  </label>
+                  <select
+                    id="new-student-goals"
+                    value={newLearningGoals}
+                    onChange={(e) => setNewLearningGoals(e.target.value)}
+                  >
+                    <option value="Classical & Sight-reading">
+                      Classical &amp; Sight-reading
+                    </option>
+                    <option value="Contemporary & Pop">
+                      Contemporary &amp; Pop Music
+                    </option>
+                    <option value="Church & Gospel Worship">
+                      Church &amp; Gospel Worship
+                    </option>
+                    <option value="ABRSM / Trinity Exam Prep">
+                      ABRSM / Trinity Exam Prep
+                    </option>
+                    <option value="Fun & Musical Foundation">
+                      Fun, Creativity &amp; Foundation
+                    </option>
+                  </select>
+                </div>
+                <div className="family-field">
+                  <label htmlFor="new-student-schedule">
+                    Preferred lesson schedule
+                  </label>
+                  <select
+                    id="new-student-schedule"
+                    value={newPreferredDays}
+                    onChange={(e) => setNewPreferredDays(e.target.value)}
+                  >
+                    <option value="Weekday afternoons">
+                      Weekday afternoons (4:00 PM - 7:00 PM)
+                    </option>
+                    <option value="Weekday evenings">
+                      Weekday evenings (7:00 PM - 9:00 PM)
+                    </option>
+                    <option value="Saturday morning">Saturday morning</option>
+                    <option value="Saturday afternoon">
+                      Saturday afternoon
+                    </option>
+                    <option value="Sunday afternoon">Sunday afternoon</option>
+                    <option value="Flexible">
+                      Flexible / Discuss with academy
+                    </option>
+                  </select>
+                </div>
+              </div>
+
+              <div className="family-section-legend">
+                Special Considerations &amp; Interests
               </div>
 
               <div className="family-field">
-                <label htmlFor="new-student-dob">Date of birth *</label>
+                <label htmlFor="new-student-special-needs">
+                  Learning accommodations or health notes (optional)
+                </label>
                 <input
-                  id="new-student-dob"
-                  required
-                  type="date"
-                  max={new Date().toISOString().slice(0, 10)}
-                  value={newDob}
-                  onChange={(e) => setNewDob(e.target.value)}
+                  id="new-student-special-needs"
+                  type="text"
+                  placeholder="e.g. Left-handed, ADHD / needs short breaks, Dyslexia, or None"
+                  value={newSpecialNeeds}
+                  onChange={(e) => setNewSpecialNeeds(e.target.value)}
                 />
                 <small>
-                  Used to recommend age-appropriate lesson plans and practice
-                  materials.
+                  Helps our teachers tailor pacing and instructional technique.
                 </small>
               </div>
 
               <div className="family-field">
-                <label htmlFor="new-student-instrument">
-                  Primary instrument
+                <label htmlFor="new-student-notes">
+                  Favorite songs, artists, or musical interests (optional)
                 </label>
-                <select
-                  id="new-student-instrument"
-                  value={newInstrument}
-                  onChange={(e) => setNewInstrument(e.target.value)}
-                >
-                  <option value="Piano">Piano</option>
-                  <option value="Voice / Singing">Voice / Singing</option>
-                  <option value="Guitar">Guitar</option>
-                  <option value="Violin">Violin</option>
-                  <option value="Drums">Drums</option>
-                  <option value="Saxophone">Saxophone</option>
-                  <option value="Flute">Flute</option>
-                  <option value="Clarinet">Clarinet</option>
-                  <option value="Bass Guitar">Bass Guitar</option>
-                  <option value="Cello">Cello</option>
-                  <option value="Trumpet">Trumpet</option>
-                  <option value="Ukulele">Ukulele</option>
-                  <option value="Music Theory">Music Theory</option>
-                  <option value="Other">Other</option>
-                </select>
+                <textarea
+                  id="new-student-notes"
+                  placeholder="e.g. Loves Disney soundtracks, nursery rhymes, hymns, or video game tunes..."
+                  value={newNotes}
+                  onChange={(e) => setNewNotes(e.target.value)}
+                />
+              </div>
+
+              <div className="family-section-legend">
+                Safety &amp; Device Access
               </div>
 
               <label className="family-checkbox-label">
@@ -1089,7 +1320,10 @@ export default function FamilyPage() {
               </label>
 
               {createLogin && (
-                <div className="family-field">
+                <div
+                  className="family-field"
+                  style={{ animation: "fadeIn 0.2s ease" }}
+                >
                   <label htmlFor="new-student-password">
                     Student password *
                   </label>
@@ -1114,7 +1348,7 @@ export default function FamilyPage() {
               <div
                 className="family-form-actions"
                 style={{
-                  marginTop: 12,
+                  marginTop: 16,
                   display: "flex",
                   justifyContent: "flex-end",
                   gap: 10,

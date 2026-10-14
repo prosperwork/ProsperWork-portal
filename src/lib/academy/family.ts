@@ -5,7 +5,14 @@ export const familyAction=z.discriminatedUnion("action",[
   action: z.literal("create_student"),
   name: z.string().trim().min(2).max(120),
   dob: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+  gender: z.string().trim().max(40).optional(),
   instrument: z.string().trim().min(2).max(80),
+  experience: z.string().trim().max(80).optional(),
+  hasInstrument: z.string().trim().max(80).optional(),
+  learningGoals: z.string().trim().max(250).optional(),
+  preferredDays: z.string().trim().max(250).optional(),
+  specialNeeds: z.string().trim().max(500).optional(),
+  notes: z.string().trim().max(500).optional(),
   timezone: z.string().trim().min(2).max(80).optional(),
   consent: z.boolean().optional(),
   createLogin: z.boolean().optional(),
@@ -25,4 +32,23 @@ export const policyAction=z.discriminatedUnion("action",[
  z.object({action:z.literal("accept"),ids:z.array(z.string().uuid()).min(1).max(30)}).strict(),
 ]);
 export interface PolicyVersion{id:string;key:string;title:string;version:number;file_id:string|null;published_at:string|null;created_at:string;}
-export interface FamilyResponse{profile:{id:string;name:string;role:string;status:string;timezone?:string};pinConfigured:boolean;kidMode:boolean;children:{id:string;name:string;dob:string;instrument?:string;timezone:string;studentUserId:string|null;username:string|null;avatarFileId:string|null;consent:boolean;rank:string}[];avatarFileId:string|null;}
+export interface FamilyChild {
+  id: string;
+  name: string;
+  dob: string;
+  gender?: string;
+  instrument?: string;
+  experience?: string;
+  hasInstrument?: string;
+  learningGoals?: string;
+  preferredDays?: string;
+  specialNeeds?: string;
+  notes?: string;
+  timezone: string;
+  studentUserId: string | null;
+  username: string | null;
+  avatarFileId: string | null;
+  consent: boolean;
+  rank: string;
+}
+export interface FamilyResponse{profile:{id:string;name:string;role:string;status:string;timezone?:string};pinConfigured:boolean;kidMode:boolean;children:FamilyChild[];avatarFileId:string|null;}

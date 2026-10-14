@@ -302,7 +302,8 @@
   font-weight: 800;
 }
 .family-field input,
-.family-field select {
+.family-field select,
+.family-field textarea {
   width: 100%;
   min-height: 38px;
   border: 1px solid #dce7df;
@@ -312,9 +313,15 @@
   color: var(--fam-ink);
   background: #fffefa;
   font-size: 11px;
+  font-family: inherit;
+}
+.family-field textarea {
+  min-height: 64px;
+  resize: vertical;
 }
 .family-field input:focus,
-.family-field select:focus {
+.family-field select:focus,
+.family-field textarea:focus {
   border-color: #7cab8a;
   box-shadow: 0 0 0 3px rgba(90, 150, 108, 0.12);
 }
@@ -744,7 +751,7 @@
   padding: 16px;
 }
 .family-modal-dialog {
-  width: min(520px, 100%);
+  width: min(640px, 100%);
   max-height: 90vh;
   overflow-y: auto;
   background: #fffefa;
@@ -755,8 +762,14 @@
   animation: family-modal-in 0.2s cubic-bezier(0.16, 1, 0.3, 1);
 }
 @keyframes family-modal-in {
-  from { opacity: 0; transform: scale(0.96) translateY(8px); }
-  to { opacity: 1; transform: scale(1) translateY(0); }
+  from {
+    opacity: 0;
+    transform: scale(0.96) translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
 }
 .family-modal-header {
   display: flex;
@@ -791,6 +804,45 @@
   background: #edf6f1;
   color: var(--fam-ink);
 }
+.family-modal-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+@media (max-width: 600px) {
+  .family-modal-row {
+    grid-template-columns: 1fr;
+    gap: 0;
+  }
+}
+.family-section-legend {
+  font-size: 11px;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--fam-pine);
+  border-bottom: 1px solid #e7efe9;
+  padding-bottom: 6px;
+  margin: 16px 0 10px;
+}
+.family-meta-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 8px;
+}
+.family-meta-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 10px;
+  font-weight: 700;
+  padding: 3px 8px;
+  border-radius: 6px;
+  background: #eef6f1;
+  color: var(--fam-pine);
+  border: 1px solid #d5e7dc;
+}
 
 @media (prefers-reduced-motion: reduce) {
   .pw-family *,
@@ -802,4 +854,3 @@
     scroll-behavior: auto !important;
   }
 }
-

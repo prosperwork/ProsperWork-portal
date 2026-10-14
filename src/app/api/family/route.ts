@@ -26,8 +26,26 @@ export async function GET(){
   const pin=profile.role==="parent"?await provisioningClient().from("pw_family_pins").select("parent_id").eq("parent_id",profile.id).maybeSingle():{data:null,error:null};
   if(pin.error)throw Error();
   return reply({profile,avatarFileId:photo.data.avatar_file_id,pinConfigured:!!pin.data,kidMode:!!saved&&saved.child===profile.id,children:students.data.map(s=>{
-   const u=usernames.data?.find(p=>p.id===s.student_user_id),d=s.payload;
-   return {id:s.id,name:d.name,dob:d.dob,instrument:d.instrument||"Piano",timezone:d.timezone,studentUserId:s.student_user_id,username:u?.username||null,avatarFileId:u?.avatar_file_id||null,consent:d.consent===true,rank:d.rank||"Beginner"};
+   const u=usernames.data?.find(p=>p.id===s.student_user_id),d=s.payload as Record<string,any>;
+   return {
+     id:s.id,
+     name:d.name,
+     dob:d.dob,
+     gender:d.gender||undefined,
+     instrument:d.instrument||"Piano",
+     experience:d.experience||"Absolute Beginner",
+     hasInstrument:d.hasInstrument||undefined,
+     learningGoals:d.learningGoals||undefined,
+     preferredDays:d.preferredDays||undefined,
+     specialNeeds:d.specialNeeds||undefined,
+     notes:d.notes||undefined,
+     timezone:d.timezone,
+     studentUserId:s.student_user_id,
+     username:u?.username||null,
+     avatarFileId:u?.avatar_file_id||null,
+     consent:d.consent===true,
+     rank:d.rank||"Beginner"
+   };
   })});
  }catch{return reply({error:"Family security could not be loaded."},503);}
 }
@@ -72,12 +90,19 @@ export async function POST(request:Request){
      id:studentId,
      name:d.name.trim(),
      dob:d.dob,
+     gender:d.gender?.trim()||undefined,
      instrument:d.instrument.trim(),
+     experience:d.experience?.trim()||"Absolute Beginner",
+     hasInstrument:d.hasInstrument?.trim()||undefined,
+     learningGoals:d.learningGoals?.trim()||undefined,
+     preferredDays:d.preferredDays?.trim()||undefined,
+     specialNeeds:d.specialNeeds?.trim()||undefined,
+     notes:d.notes?.trim()||undefined,
      timezone:d.timezone?.trim()||profile.timezone||"Europe/London",
      parentName:profile.name,
      parentEmail:user.email||profile.email,
      consent:d.consent===true,
-     rank:"Beginner",
+     rank:d.experience==="Advanced"?"Amateur":d.experience==="Intermediate"?"Novice":"Beginner",
      status:"enrolled",
      created_at:new Date().toISOString()
    };
