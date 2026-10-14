@@ -8,6 +8,7 @@ const fields = z.object({
   action: z.enum(["login", "register", "reset", "updatePassword", "logout"]),
   email: z.string().trim().min(3).max(254).optional(),
   password: z.string().max(128).optional(),
+  currentPassword: z.string().max(128).optional(),
   name: z.string().trim().min(2).max(120).optional(),
   legalAcceptance: z.object({
     accepted: z.literal(true),
@@ -22,7 +23,7 @@ export async function POST(request: Request) {
   }
   const parsed = fields.safeParse(await request.json().catch(() => null));
   if (!parsed.success) return NextResponse.json({ error: "Please check your form entries." }, { status: 400 });
-  const { action, email, password, name, legalAcceptance } = parsed.data;
+  const { action, email, password, currentPassword, name, legalAcceptance } = parsed.data;
   if(["register","reset"].includes(action)&&!z.string().email().safeParse(email).success)return NextResponse.json({error:"Enter a valid email address."},{status:400});
   if (["login", "register", "reset"].includes(action) && !email) return NextResponse.json({ error: "Enter your email address." }, { status: 400 });
   if (["register", "updatePassword"].includes(action) && (!password || password.length < 8)) {
@@ -155,6 +156,25 @@ export async function POST(request: Request) {
     }
     const { data: { user }, error: userError } = await client.auth.getUser();
     if (userError || !user) return NextResponse.json({ error: "Open a valid recovery link before changing your password." }, { status: 401 });
+
+    // When changing password from the active user profile, require and verify the current password
+    if (currentPassword !== undefined) {
+      if (!currentPassword) {
+        return NextResponse.json({ error: "Enter your current password." }, { status: 400 });
+      }
+      if (!user.email) {
+        return NextResponse.json({ error: "Your account email could not be verified." }, { status: 400 });
+      }
+      const verifyClient = await sessionClient();
+      const { error: verifyError } = await verifyClient.auth.signInWithPassword({
+        email: user.email,
+        password: currentPassword,
+      });
+      if (verifyError) {
+        return NextResponse.json({ error: "Your current password was entered incorrectly." }, { status: 400 });
+      }
+    }
+
     const { error } = await client.auth.updateUser({ password });
     if (error) return NextResponse.json({ error: "Your password could not be updated." }, { status: 400 });
 

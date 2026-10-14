@@ -750,6 +750,9 @@
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 15px 18px;
 }
+.profile-field.full-width {
+  grid-column: 1 / -1;
+}
 .profile-field {
   min-width: 0;
   display: grid;

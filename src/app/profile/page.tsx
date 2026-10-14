@@ -54,6 +54,7 @@ export default function ProfilePage() {
   const [notice, setNotice] = useState("");
 
   // Password change state
+  const [currentPassword, setCurrentPassword] = useState("");
   const [newPassword, setNewPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [passwordSaving, setPasswordSaving] = useState(false);
@@ -164,12 +165,16 @@ export default function ProfilePage() {
     setPasswordError("");
     setPasswordSuccess("");
 
+    if (!currentPassword) {
+      setPasswordError("Please enter your current password.");
+      return;
+    }
     if (newPassword.length < 8) {
-      setPasswordError("Password must be at least 8 characters.");
+      setPasswordError("New password must be at least 8 characters.");
       return;
     }
     if (newPassword !== confirmPassword) {
-      setPasswordError("Passwords do not match.");
+      setPasswordError("New passwords do not match.");
       return;
     }
 
@@ -181,6 +186,7 @@ export default function ProfilePage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           action: "updatePassword",
+          currentPassword,
           password: newPassword,
         }),
       });
@@ -191,6 +197,7 @@ export default function ProfilePage() {
       setPasswordSuccess(
         "Your password was updated. Redirecting to sign in with your new password…"
       );
+      setCurrentPassword("");
       setNewPassword("");
       setConfirmPassword("");
       setTimeout(() => {
@@ -401,6 +408,22 @@ export default function ProfilePage() {
                   onSubmit={(event) => void updatePassword(event)}
                 >
                   <div className="profile-field-grid">
+                    <label className="profile-field full-width">
+                      <span>Current password</span>
+                      <input
+                        type="password"
+                        autoComplete="current-password"
+                        required
+                        value={currentPassword}
+                        onChange={(event) =>
+                          setCurrentPassword(event.target.value)
+                        }
+                        placeholder="Enter your current password"
+                      />
+                      <small>
+                        Verify your identity with your current password before changing it.
+                      </small>
+                    </label>
                     <label className="profile-field">
                       <span>New password</span>
                       <input
@@ -438,6 +461,7 @@ export default function ProfilePage() {
                       type="submit"
                       disabled={
                         passwordSaving ||
+                        !currentPassword ||
                         newPassword.length < 8 ||
                         newPassword !== confirmPassword
                       }
