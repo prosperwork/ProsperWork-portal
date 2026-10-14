@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import type { FormEvent } from "react";
 import { PARENT_TERMS_VERSION, PRIVACY_POLICY_VERSION } from "@/lib/legal/consent-versions";
 
@@ -14,8 +14,17 @@ function BrandMark() {
 function FeedbackMessage({ feedback }: { feedback: Feedback }) {
   if (!feedback) return null;
   const isError = feedback.kind === "error";
+  const isInfo = feedback.kind === "info";
   return <div className={`auth-feedback ${feedback.kind}`} role={isError ? "alert" : "status"}>
-    <svg viewBox="0 0 20 20" fill="none" aria-hidden="true">{isError ? <path d="M10 6v4m0 3h.01M10 2.5a7.5 7.5 0 1 0 0 15 7.5 7.5 0 0 0 0-15Z" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round"/> : <path d="m5 10 3.2 3.2L15.5 6" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/>}</svg>
+    <svg viewBox="0 0 20 20" fill="none" aria-hidden="true">
+      {isError ? (
+        <path d="M10 6v4m0 3h.01M10 2.5a7.5 7.5 0 1 0 0 15 7.5 7.5 0 0 0 0-15Z" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round"/>
+      ) : isInfo ? (
+        <path d="M10 9v4m0-7h.01M10 2.5a7.5 7.5 0 1 0 0 15 7.5 7.5 0 0 0 0-15Z" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round"/>
+      ) : (
+        <path d="m5 10 3.2 3.2L15.5 6" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/>
+      )}
+    </svg>
     <span>{feedback.text}</span>
   </div>;
 }
@@ -31,6 +40,16 @@ export default function LoginPage() {
   const [pending, setPending] = useState(false);
   const [feedback, setFeedback] = useState<Feedback>(null);
   const [registeredEmail, setRegisteredEmail] = useState("");
+  const [resetCooldown, setResetCooldown] = useState(0);
+  const [hasSentReset, setHasSentReset] = useState(false);
+
+  useEffect(() => {
+    if (resetCooldown <= 0) return;
+    const interval = setInterval(() => {
+      setResetCooldown(val => (val > 1 ? val - 1 : 0));
+    }, 1000);
+    return () => clearInterval(interval);
+  }, [resetCooldown]);
 
   function switchMode(nextMode: Mode) {
     setMode(nextMode);
@@ -70,6 +89,15 @@ export default function LoginPage() {
         body: JSON.stringify(payload),
       });
       const result = await response.json().catch(() => ({}));
+      if (response.status === 429 || result.rateLimited) {
+        const cooldown = typeof result.retryAfter === "number" ? result.retryAfter : 60;
+        setResetCooldown(cooldown);
+        setFeedback({
+          kind: "info",
+          text: result.error || "A reset link was recently sent. For security, please wait before requesting another.",
+        });
+        return;
+      }
       if (!response.ok || result.error) throw new Error(result.error || "We couldn’t complete that request. Please try again.");
       if (mode === "login") {
         const destination = typeof result.redirect === "string" && result.redirect.startsWith("/") && !result.redirect.startsWith("//") ? result.redirect : "/access-pending";
@@ -78,7 +106,9 @@ export default function LoginPage() {
         setRegisteredEmail(email);
         setFeedback({ kind: "success", text: `${result.message ? `${result.message} ` : ""}Check your email for a confirmation link to finish setting up your parent account. Staff activation is still required before workspace access.` });
       } else {
-        setFeedback({ kind: "success", text: result.message || "If an account matches that email, password reset instructions are on their way." });
+        setHasSentReset(true);
+        setResetCooldown(typeof result.retryAfter === "number" ? result.retryAfter : 60);
+        setFeedback({ kind: "success", text: result.message || "If an account matches that email, password reset instructions are on their way. Check your inbox and spam folder." });
       }
     } catch (error) {
       setFeedback({ kind: "error", text: error instanceof Error ? error.message : "Something went wrong. Please try again." });
@@ -92,7 +122,7 @@ export default function LoginPage() {
   const canSubmit = mode === "login"
     ? email.trim().length > 0 && password.length > 0
     : mode === "forgot"
-      ? validEmail
+      ? validEmail && resetCooldown === 0
       : name.trim().length >= 2
         && validEmail
         && password.length >= 12
@@ -164,8 +194,18 @@ export default function LoginPage() {
               </div>}
               {mode === "login" && <div className="auth-form-meta"><button className="auth-link" type="button" onClick={() => switchMode("forgot")}>Forgot password?</button></div>}
               <button className="auth-submit" type="submit" disabled={pending || !canSubmit}>
-                {pending ? "Please wait…" : mode === "login" ? "Sign in securely" : mode === "register" ? "Create parent account" : "Send reset instructions"}
-                {!pending && <svg viewBox="0 0 20 20" fill="none" aria-hidden="true"><path d="M4 10h11m-4-4 4 4-4 4" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"/></svg>}
+                {pending
+                  ? "Please wait…"
+                  : mode === "login"
+                    ? "Sign in securely"
+                    : mode === "register"
+                      ? "Create parent account"
+                      : resetCooldown > 0
+                        ? `Resend instructions in ${resetCooldown}s`
+                        : hasSentReset
+                          ? "Resend reset instructions"
+                          : "Send reset instructions"}
+                {!pending && (mode !== "forgot" || resetCooldown === 0) && <svg viewBox="0 0 20 20" fill="none" aria-hidden="true"><path d="M4 10h11m-4-4 4 4-4 4" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"/></svg>}
               </button>
             </form>
             {mode === "forgot" && <button className="auth-back" type="button" onClick={() => switchMode("login")}><span aria-hidden="true">←</span> Back to sign in</button>}

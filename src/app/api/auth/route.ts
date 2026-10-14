@@ -79,8 +79,24 @@ export async function POST(request: Request) {
       const { error } = await client.auth.resetPasswordForEmail(email!, {
         redirectTo: targetUrl.href,
       });
-      if (error) return NextResponse.json({ error: "The reset request could not be sent. Please try again later." }, { status: 429 });
-      return NextResponse.json({ ok: true, message: "If an account exists, a password reset email will be sent." });
+      if (error) {
+        const isRateLimit = (error as { status?: number; code?: string }).status === 429
+          || (error as { status?: number; code?: string }).code === "over_email_send_rate_limit"
+          || (typeof error.message === "string" && error.message.toLowerCase().includes("rate limit"));
+        if (isRateLimit) {
+          return NextResponse.json({
+            error: "A reset email was sent recently. For security, please wait before requesting another.",
+            rateLimited: true,
+            retryAfter: 60,
+          }, { status: 429 });
+        }
+        return NextResponse.json({ error: "The reset request could not be sent. Please try again later." }, { status: 400 });
+      }
+      return NextResponse.json({
+        ok: true,
+        message: "If an account exists, a password reset email will be sent. Check your inbox and spam folder.",
+        retryAfter: 60,
+      });
     }
     const { data: { user }, error: userError } = await client.auth.getUser();
     if (userError || !user) return NextResponse.json({ error: "Open a valid recovery link before changing your password." }, { status: 401 });
