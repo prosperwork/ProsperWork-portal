@@ -87,7 +87,7 @@ export async function POST(request: Request) {
           return NextResponse.json({
             error: "A reset email was sent recently. For security, please wait before requesting another.",
             rateLimited: true,
-            retryAfter: 60,
+            retryAfter: 120,
           }, { status: 429 });
         }
         return NextResponse.json({ error: "The reset request could not be sent. Please try again later." }, { status: 400 });
@@ -95,7 +95,7 @@ export async function POST(request: Request) {
       return NextResponse.json({
         ok: true,
         message: "If an account exists, a password reset email will be sent. Check your inbox and spam folder.",
-        retryAfter: 60,
+        retryAfter: 120,
       });
     }
     const { data: { user }, error: userError } = await client.auth.getUser();

@@ -4,7 +4,7 @@ import { useState } from "react";
 import type { FormEvent } from "react";
 
 function BrandMark() {
-  return <span className="auth-brand-mark" aria-hidden="true"><svg viewBox="0 0 32 32" fill="none"><path d="M6 20.5 16 7l10 13.5M9 24h14M13 24v-5.5h6V24" stroke="currentColor" strokeWidth="2.1" strokeLinecap="round" strokeLinejoin="round"/><circle cx="16" cy="10" r="1.5" fill="currentColor"/></svg></span>;
+  return <span className="auth-brand-mark" aria-hidden="true"><img src="/favicon-192x192.png" alt="" width={36} height={36} /></span>;
 }
 
 export default function ResetPasswordPage() {
@@ -50,20 +50,15 @@ export default function ResetPasswordPage() {
 
   return <main className="auth-root">
     <div className="auth-noise" aria-hidden="true" />
-    <div className="auth-layout">
-      <aside className="auth-aside" aria-label="ProsperWork">
-        <a className="auth-brand" href="/login" aria-label="ProsperWork"><BrandMark /><span className="auth-brand-copy"><span className="auth-brand-name">ProsperWork</span><span className="auth-brand-caption">Music Concepts</span></span></a>
-        <div className="auth-aside-message">
-          <div className="auth-kicker">Keep your records yours</div>
-          <h1>A fresh key for your <em>private space.</em></h1>
-          <p>Choose a strong password to protect your family’s lessons and academy records.</p>
-          <div className="auth-score"><span className="auth-score-line" /><strong>Private by design. Ready when you are.</strong></div>
-        </div>
-        <div className="auth-aside-foot"><span>PROSPERWORK MUSIC CONCEPTS</span><span>PRIVATE FAMILY WORKSPACE</span></div>
-      </aside>
-      <section className="auth-main">
+    <a className="auth-brand auth-login-brand" href="/login" aria-label="ProsperWork sign in">
+      <BrandMark /><span className="auth-brand-copy"><span className="auth-brand-name">ProsperWork</span><span className="auth-brand-caption">Music Concepts</span></span>
+    </a>
+    <div className="auth-layout auth-login-layout">
+      <section className="auth-main auth-login-main">
         <div className="auth-panel">
-          <a className="auth-mobile-brand" href="/login" aria-label="ProsperWork"><BrandMark /><span className="auth-brand-copy"><span className="auth-brand-name">ProsperWork</span><span className="auth-brand-caption">Music Concepts</span></span></a>
+          <a className="auth-mobile-brand" href="/login" aria-label="ProsperWork sign in">
+            <BrandMark /><span className="auth-brand-copy"><span className="auth-brand-name">ProsperWork</span><span className="auth-brand-caption">Music Concepts</span></span>
+          </a>
           {complete ? <>
             <div className="pending-symbol" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none"><path d="m5 12 4.5 4.5L19 7" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/></svg></div>
             <header className="auth-panel-heading">

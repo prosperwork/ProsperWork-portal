@@ -18,6 +18,12 @@ function BrandMark() {
   );
 }
 
+function formatCooldown(seconds: number) {
+  const mins = Math.floor(seconds / 60);
+  const secs = seconds % 60;
+  return `${mins}:${secs < 10 ? "0" : ""}${secs}`;
+}
+
 function FeedbackMessage({ feedback }: { feedback: Feedback }) {
   if (!feedback) return null;
   const isError = feedback.kind === "error";
@@ -138,7 +144,7 @@ export default function LoginPage() {
       const result = await response.json().catch(() => ({}));
       if (response.status === 429 || result.rateLimited) {
         const cooldown =
-          typeof result.retryAfter === "number" ? result.retryAfter : 60;
+          typeof result.retryAfter === "number" ? result.retryAfter : 120;
         setResetCooldown(cooldown);
         setFeedback({
           kind: "info",
@@ -171,7 +177,7 @@ export default function LoginPage() {
       } else {
         setHasSentReset(true);
         setResetCooldown(
-          typeof result.retryAfter === "number" ? result.retryAfter : 60
+          typeof result.retryAfter === "number" ? result.retryAfter : 120
         );
         setFeedback({
           kind: "success",
@@ -460,7 +466,7 @@ export default function LoginPage() {
                   <button
                     className="auth-submit"
                     type="submit"
-                    disabled={pending || !canSubmit}
+                    disabled={pending || !canSubmit || (mode === "forgot" && resetCooldown > 0)}
                   >
                     {pending
                       ? "Please wait…"
@@ -469,7 +475,7 @@ export default function LoginPage() {
                       : mode === "register"
                       ? "Create parent account"
                       : resetCooldown > 0
-                      ? `Resend instructions in ${resetCooldown}s`
+                      ? `Resend available in ${formatCooldown(resetCooldown)}`
                       : hasSentReset
                       ? "Resend reset instructions"
                       : "Send reset instructions"}
