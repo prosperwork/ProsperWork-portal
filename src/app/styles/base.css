@@ -816,6 +816,7 @@ td strong {
   display: grid;
   place-items: center;
   padding: 18px;
+  -webkit-backdrop-filter: blur(3px);
   backdrop-filter: blur(3px);
   animation: fadein 0.16s ease-out;
 }

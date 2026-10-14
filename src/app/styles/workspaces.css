@@ -3102,6 +3102,7 @@
   place-items: center;
   padding: 16px;
   background: rgba(14, 39, 29, 0.42);
+  -webkit-backdrop-filter: blur(3px);
   backdrop-filter: blur(3px);
   animation: pr-fade 0.16s ease-out;
 }
@@ -3763,6 +3764,7 @@
   gap: 8px;
   flex: none;
   cursor: pointer;
+  -webkit-user-select: none;
   user-select: none;
 }
 .ps-switch input {
