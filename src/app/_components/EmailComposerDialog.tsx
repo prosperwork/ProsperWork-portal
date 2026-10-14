@@ -2,6 +2,7 @@
 
 import { useState, type FormEvent } from "react";
 import { LoaderCircle, Send, X } from "lucide-react";
+import { ACADEMY_EMAILS } from "@/lib/email/config";
 
 export type PortalEmailTarget = {
   recipientType: "staff" | "family" | "lead";
@@ -11,11 +12,18 @@ export type PortalEmailTarget = {
 };
 
 const senderOptions = [
-  { value: "admin", label: "Admin · admin@prosperworkmusic.com" },
-  { value: "admissions", label: "Admissions · admissions@prosperworkmusic.com" },
-  { value: "support", label: "Support · support@prosperworkmusic.com" },
-  { value: "payments", label: "Payments · payments@prosperworkmusic.com" },
-  { value: "contact", label: "Contact · contact@prosperworkmusic.com" },
+  { value: "admissions", label: `Admissions · ${ACADEMY_EMAILS.communications.admissions}` },
+  { value: "support", label: `Support · ${ACADEMY_EMAILS.communications.support}` },
+  { value: "students", label: `Students · ${ACADEMY_EMAILS.communications.students}` },
+  { value: "registration", label: `Registration · ${ACADEMY_EMAILS.communications.registration}` },
+  { value: "fees", label: `Fees & Tuition · ${ACADEMY_EMAILS.communications.fees}` },
+  { value: "contact", label: `General Communications · ${ACADEMY_EMAILS.communications.primary}` },
+  { value: "admin", label: `Administration · ${ACADEMY_EMAILS.adminTech.admin}` },
+  { value: "finance", label: `Finance · ${ACADEMY_EMAILS.adminTech.finance}` },
+  { value: "billing", label: `Billing · ${ACADEMY_EMAILS.adminTech.billing}` },
+  { value: "technical", label: `Technical Support · ${ACADEMY_EMAILS.adminTech.tech}` },
+  { value: "official", label: `Official Academy · ${ACADEMY_EMAILS.leadership.official}` },
+  { value: "management", label: `Management · ${ACADEMY_EMAILS.leadership.management}` },
 ] as const;
 
 function defaultSender(target: PortalEmailTarget) {
@@ -58,10 +66,13 @@ export default function EmailComposerDialog({
         }),
       });
       const result = await response.json().catch(() => ({}));
-      if (!response.ok) throw new Error(result.error || "The email could not be sent.");
+      if (!response.ok) {
+        throw new Error(result.error || "The email could not be sent.");
+      }
       onSent();
-    } catch (cause) {
-      setError(cause instanceof Error ? cause.message : "The email could not be sent.");
+      onClose();
+    } catch (sendError) {
+      setError(sendError instanceof Error ? sendError.message : "The email could not be sent.");
     } finally {
       setSending(false);
     }
@@ -73,7 +84,7 @@ export default function EmailComposerDialog({
         <div className="modal-head">
           <div>
             <h2 id="email-compose-title">Compose email</h2>
-            <p>Send through ProsperWork email. Replies go to info@prosperworkmusic.com.</p>
+            <p>Send through official ProsperWork email. Responses route to the assigned mailbox.</p>
           </div>
           <button className="close-btn" type="button" aria-label="Close email composer" onClick={onClose} disabled={sending}><X size={16} /></button>
         </div>

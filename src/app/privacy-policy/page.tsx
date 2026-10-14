@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { PRIVACY_POLICY_VERSION } from "@/lib/legal/consent-versions";
+import { ACADEMY_EMAILS } from "@/lib/email/config";
 
 export const metadata = { title: "Privacy Policy | ProsperWork" };
 
@@ -36,7 +37,7 @@ export default function PrivacyPolicyPage() {
       </section>
       <section>
         <h2>Your questions and requests</h2>
-        <p>To ask about, correct or request deletion of family information, contact <a href="mailto:info@prosperworkmusic.com">info@prosperworkmusic.com</a>. Some records may need to be retained for academy operations or legal and financial obligations.</p>
+        <p>To ask about, correct or request deletion of family information, contact our privacy desk at <a href={`mailto:${ACADEMY_EMAILS.adminTech.security}`}>{ACADEMY_EMAILS.adminTech.security}</a> or general school communications at <a href={`mailto:${ACADEMY_EMAILS.communications.primary}`}>{ACADEMY_EMAILS.communications.primary}</a>. Some records may need to be retained for academy operations or legal and financial obligations.</p>
       </section>
       <p className="public-legal-related">Read the <Link href="/terms-and-conditions">Parent Terms and Conditions</Link>.</p>
     </article>

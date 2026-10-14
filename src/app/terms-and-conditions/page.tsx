@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { PARENT_TERMS_VERSION } from "@/lib/legal/consent-versions";
+import { ACADEMY_EMAILS } from "@/lib/email/config";
 
 export const metadata = { title: "Parent Terms and Conditions | ProsperWork" };
 
@@ -32,7 +33,7 @@ export default function ParentTermsPage() {
       </section>
       <section>
         <h2>Changes and questions</h2>
-        <p>The version accepted during registration is recorded with its acceptance time. The academy may issue a newer version. For questions, contact <a href="mailto:info@prosperworkmusic.com">info@prosperworkmusic.com</a>.</p>
+        <p>The version accepted during registration is recorded with its acceptance time. The academy may issue a newer version. For general questions, contact <a href={`mailto:${ACADEMY_EMAILS.communications.primary}`}>{ACADEMY_EMAILS.communications.primary}</a> or our admissions team at <a href={`mailto:${ACADEMY_EMAILS.communications.admissions}`}>{ACADEMY_EMAILS.communications.admissions}</a>.</p>
       </section>
       <p className="public-legal-related">Read the <Link href="/privacy-policy">Privacy Policy</Link>.</p>
     </article>

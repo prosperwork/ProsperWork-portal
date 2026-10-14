@@ -2,15 +2,21 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { identity } from "@/lib/supabase/identity";
 import { sameOrigin } from "@/lib/supabase/server";
-import { senderAliases, smtpTransport, safeEmailError } from "@/lib/email/transport.mjs";
+import { senderAliases, replyToAliases, smtpTransport, safeEmailError } from "@/lib/email/transport.mjs";
 import type { Role } from "@/lib/types";
 
 export const runtime = "nodejs";
 
+const validCategories = [
+  "admin", "admissions", "support", "payments", "fees", "contact",
+  "students", "registration", "finance", "billing", "technical",
+  "official", "management"
+] as const;
+
 const schema = z.object({
   recipientType: z.enum(["staff", "family", "lead"]),
   recipientId: z.string().trim().min(1).max(100).regex(/^[\w-]+$/),
-  fromCategory: z.enum(["admin", "admissions", "support", "payments", "contact"]),
+  fromCategory: z.enum(validCategories),
   subject: z.string().trim().min(1).max(160).refine((value) => !/[\r\n]/.test(value)),
   message: z.string().trim().min(1).max(10000),
 }).strict();
@@ -72,12 +78,16 @@ export async function POST(request: Request) {
     const from = senderAliases[input.fromCategory];
     if (!from) return NextResponse.json({ error: "The selected sender address is unavailable." }, { status: 400 });
 
+    const replyTo = replyToAliases[input.fromCategory] || replyToAliases.default;
+
+    const signature = `\n\n--\nProsperWork Music Academy\nWebsite: https://www.prosperworkmusic.com\nStudent Support: support@prosperworkmusic.com`;
+
     const result = await smtpTransport().sendMail({
       from: { name: "ProsperWork Music Academy", address: from },
-      replyTo: "info@prosperworkmusic.com",
+      replyTo,
       to: recipientEmail.trim(),
       subject: input.subject,
-      text: input.message,
+      text: `${input.message}${signature}`,
     });
     if (!result.accepted?.length) return NextResponse.json({ error: "The email provider did not accept this message." }, { status: 502 });
     return NextResponse.json({ ok: true }, { headers: { "Cache-Control": "private, no-store" } });
