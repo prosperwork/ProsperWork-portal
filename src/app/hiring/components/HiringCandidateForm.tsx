@@ -112,7 +112,7 @@ export default function HiringCandidateForm({
             </div>
             <div className="hire-form-field">
               <label htmlFor="assigned-reviewer">
-                Independent departmental reviewer · {roleLabel(supervisorRole)}
+                Departmental reviewer or Super Admin
               </label>
               <select
                 id="assigned-reviewer"
@@ -125,20 +125,25 @@ export default function HiringCandidateForm({
                   .filter(
                     (person) =>
                       person.status === "active" &&
-                      roleKey(person.role) === supervisorRole &&
-                      person.id !== data.profile.id
+                      person.id !== data.profile.id &&
+                      (roleKey(person.role) === supervisorRole ||
+                        person.role === "super_admin")
                   )
                   .map((person) => (
                     <option value={person.id} key={person.id}>
-                      {person.name} · {roleLabel(person.role)}
+                      {person.name} · {roleLabel(person.role)}{" "}
+                      {person.role === "super_admin"
+                        ? "(Owner / Executive Oversight)"
+                        : ""}
                     </option>
                   ))}
               </select>
               <small>
-                Teacher → QC · Admin → Head Admin · QC/HR/Head Admin → Owner ·
-                other roles → same role.
+                Default supervisor ({roleLabel(supervisorRole)}) or Super Admin
+                (universal review & fallback for unfilled roles).
               </small>
             </div>
+
             <div className="hire-form-field">
               <label htmlFor="create-notes">
                 Recruitment context · 5–2000 characters
