@@ -59,20 +59,26 @@ export async function resolveChange(client: SupabaseClient, module: Module, inpu
   if (!parsed.success) throw new Error("Please check the record's required fields, dates and timezone.");
   const payload = parsed.data as unknown as Record<string, unknown>;
   const record: Record<string, unknown> = { id: payload.id, payload };
-  async function person(label: unknown, requiredRole?: string) {
+  async function person(label: unknown, requiredRole?: string | string[]) {
     if (!label) return null;
     const query = client.from("pw_profiles").select("id,name,role,status").eq("status", "active");
     // Both existing label fields and explicit profile identifiers are supported.
     const byId = typeof label === "string" && /^[0-9a-f-]{36}$/i.test(label);
     const { data, error } = await (byId ? query.eq("id", label) : query.eq("name", label)).limit(2);
-    if (error || data?.length !== 1 || (requiredRole && data[0].role !== requiredRole)) throw new Error("Select one active, authorized staff account. Invite and activate that person first.");
+    if (error || data?.length !== 1) throw new Error("Select one active, authorized staff account. Invite and activate that person first.");
+    if (requiredRole) {
+      const allowed = Array.isArray(requiredRole) ? requiredRole : [requiredRole];
+      if (!allowed.includes(data[0].role)) {
+        throw new Error("Select one active, authorized staff account. Invite and activate that person first.");
+      }
+    }
     return data[0];
   }
   if (module === "students") {
     const { data: parent, error } = await client.from("pw_profiles").select("id,name,email,role").eq("email", String(payload.parentEmail).toLowerCase()).single();
     if (error || !parent || parent.role !== "parent") throw new Error("Invite and activate this parent account before enrolling their child.");
-    const teacher = await person(payload.teacherName, "teacher");
-    const admin = await person(payload.adminName, "admin");
+    const teacher = await person(payload.teacherName, ["teacher", "super_admin", "owner"]);
+    const admin = await person(payload.adminName, ["admin", "head_admin", "super_admin", "owner", "general_manager"]);
     record.parent_id = parent.id; record.teacher_id = teacher?.id || null; record.admin_id = admin?.id || null;
     payload.parentName = parent.name; payload.parentEmail = parent.email;
     payload.teacherName = teacher?.name || ""; payload.adminName = admin?.name || "";
@@ -81,12 +87,20 @@ export async function resolveChange(client: SupabaseClient, module: Module, inpu
   } else if (module === "lessons" || module === "homework") {
     const { data: student, error } = await client.from("pw_students").select("id,parent_id,teacher_id,admin_id,payload").eq("id", payload.studentId).single();
     if (error || !student) throw new Error("The selected child is not accessible.");
-    const teacher = await person(payload.teacherName || student.teacher_id, "teacher");
+    const teacher = await person(payload.teacherName || student.teacher_id, ["teacher", "super_admin", "owner"]);
     if (!teacher) throw new Error("Assign an active teacher first.");
     record.student_id = student.id; record.teacher_id = teacher.id;
     payload.studentName = student.payload.name; payload.teacherName = teacher.name;
     if (module === "lessons") {
-      const admin = await person(payload.adminName || student.admin_id, "admin");
+      let admin = null;
+      const adminCandidate = payload.adminName || student.admin_id;
+      if (adminCandidate && adminCandidate !== "Academy Administration") {
+        try {
+          admin = await person(adminCandidate, ["admin", "head_admin", "super_admin", "owner", "general_manager"]);
+        } catch {
+          admin = null;
+        }
+      }
       record.admin_id = admin?.id || null; payload.adminName = admin?.name || "";
       payload.studentTimezone = student.payload.timezone;
       delete payload.verification; // Database controls the signature.

@@ -153,15 +153,10 @@ export function getFields(
           name: "adminName",
           label: "Class Coordinator / Admin (Optional)",
           type: "select",
-          options:
-            adminChoices.length > 0
-              ? adminChoices
-              : [
-                  {
-                    value: "Academy Admin",
-                    label: "Academy Administration (Default)",
-                  },
-                ],
+          options: [
+            { value: "", label: "None / Not assigned" },
+            ...adminChoices,
+          ],
           required: false,
         },
         {

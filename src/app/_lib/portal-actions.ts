@@ -128,7 +128,7 @@ export function handleActionModalSubmit({
       studentId: values.studentId,
       studentName: targetStudent ? targetStudent.name : "Learner",
       teacherName: data.staff.find((s) => s.id === values.teacherName || s.name === values.teacherName)?.name || values.teacherName || "Assigned Teacher",
-      adminName: data.staff.find((s) => s.id === values.adminName || s.name === values.adminName)?.name || values.adminName || "Academy Administration",
+      adminName: data.staff.find((s) => s.id === values.adminName || s.name === values.adminName)?.name || values.adminName || "",
       title: values.title?.trim() || "Music Lesson",
       startsAt: new Date(values.startsAt).toISOString(),
       studentTimezone: targetStudent ? targetStudent.timezone : "Africa/Lagos",
