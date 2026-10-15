@@ -91,58 +91,65 @@ export default function ClassroomTuner({ onClose }: ClassroomTunerProps) {
 
   // Autocorrelation Pitch Detection
   const autoCorrelate = (buffer: Float32Array, sampleRate: number): number => {
-    // Calculate RMS to ensure signal is loud enough
+    // Calculate RMS to ensure signal is present
     let sumSquares = 0;
     for (let i = 0; i < buffer.length; i++) {
       sumSquares += buffer[i] * buffer[i];
     }
     const rms = Math.sqrt(sumSquares / buffer.length);
-    if (rms < 0.01) return -1; // too quiet
+    if (rms < 0.003) return -1; // sensitive to soft acoustic & high-pitch notes
 
-    // Trim edges to find signal bounds
-    let r1 = 0;
-    let r2 = buffer.length - 1;
-    const threshold = 0.2;
-    for (let i = 0; i < buffer.length / 2; i++) {
-      if (Math.abs(buffer[i]) < threshold) {
-        r1 = i;
-        break;
-      }
-    }
-    for (let i = 1; i < buffer.length / 2; i++) {
-      if (Math.abs(buffer[buffer.length - i]) < threshold) {
-        r2 = buffer.length - i;
-        break;
-      }
-    }
+    // Minimum period for 4500 Hz (C8 is ~4186 Hz), Maximum period for 50 Hz (bass notes)
+    const minPeriod = Math.max(8, Math.floor(sampleRate / 4500));
+    const maxPeriod = Math.min(
+      Math.floor(buffer.length / 2),
+      Math.floor(sampleRate / 50)
+    );
 
-    const trimmed = buffer.slice(r1, r2);
-    const c = new Array<number>(trimmed.length).fill(0);
-    for (let i = 0; i < trimmed.length; i++) {
-      for (let j = 0; j < trimmed.length - i; j++) {
-        c[i] = c[i] + trimmed[j] * trimmed[j + i];
+    // Calculate autocorrelation across candidate periods
+    const c = new Float32Array(maxPeriod + 2);
+    const halfLen = Math.floor(buffer.length / 2);
+
+    for (let lag = 0; lag <= maxPeriod + 1; lag++) {
+      let sum = 0;
+      for (let i = 0; i < halfLen; i++) {
+        sum += buffer[i] * buffer[i + lag];
       }
+      c[lag] = sum;
     }
 
-    let d = 0;
-    while (c[d] > c[d + 1]) d++;
+    // Step past the initial zero-lag decay slope
+    let d = minPeriod;
+    while (d < maxPeriod && c[d] < c[d - 1]) {
+      d++;
+    }
+
+    // Find the global maximum correlation peak in [d, maxPeriod]
     let maxVal = -1;
     let maxPos = -1;
-    for (let i = d; i < trimmed.length; i++) {
+    for (let i = d; i <= maxPeriod; i++) {
       if (c[i] > maxVal) {
         maxVal = c[i];
         maxPos = i;
       }
     }
-    let T0 = maxPos;
 
-    // Parabolic interpolation for sub-bin accuracy
-    const x1 = c[T0 - 1];
-    const x2 = c[T0];
-    const x3 = c[T0 + 1];
-    const a = (x1 + x3 - 2 * x2) / 2;
-    const b = (x3 - x1) / 2;
-    if (a) T0 = T0 - b / (2 * a);
+    if (maxPos <= 0 || maxVal < c[0] * 0.2) {
+      return -1;
+    }
+
+    let T0 = maxPos;
+    // Parabolic interpolation around peak for high-precision pitch
+    if (T0 > 0 && T0 < maxPeriod) {
+      const x1 = c[T0 - 1];
+      const x2 = c[T0];
+      const x3 = c[T0 + 1];
+      const a = (x1 + x3 - 2 * x2) / 2;
+      const b = (x3 - x1) / 2;
+      if (a !== 0) {
+        T0 = T0 - b / (2 * a);
+      }
+    }
 
     return sampleRate / T0;
   };
@@ -153,7 +160,8 @@ export default function ClassroomTuner({ onClose }: ClassroomTunerProps) {
     analyserRef.current.getFloatTimeDomainData(buffer);
 
     const freq = autoCorrelate(buffer, audioCtxRef.current.sampleRate);
-    if (freq !== -1 && freq >= 60 && freq <= 1800) {
+    // Support from 50 Hz up to 4500 Hz (easily covers C7 at 2093 Hz and C8 at 4186 Hz)
+    if (freq !== -1 && freq >= 50 && freq <= 4500) {
       // Calculate MIDI note: n = 12 * log2(freq / 440) + 69
       const midi = 12 * (Math.log(freq / 440) / Math.log(2)) + 69;
       const roundedMidi = Math.round(midi);

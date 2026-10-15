@@ -2,10 +2,21 @@
 
 import { useEffect, useRef, useState } from "react";
 import { useDataChannel, useRoomContext } from "@livekit/components-react";
-import { Eraser, Highlighter, Pen, RotateCcw, Trash2, X } from "lucide-react";
+import {
+  Columns2,
+  Eraser,
+  Highlighter,
+  Maximize2,
+  Minimize2,
+  Pen,
+  Trash2,
+  Type,
+  X,
+} from "lucide-react";
 
 interface ClassroomWhiteboardProps {
   onClose: () => void;
+  pianoOpen?: boolean;
 }
 
 interface DrawPoint {
@@ -20,34 +31,39 @@ interface DrawStroke {
   isHighlighter?: boolean;
 }
 
+interface TypingState {
+  x: number;
+  y: number;
+  screenX: number;
+  screenY: number;
+  text: string;
+}
+
+type ToolType = "pen" | "highlighter" | "eraser" | "text";
+type LayoutMode = "full" | "split-left" | "split-right" | "compact";
+
 export default function ClassroomWhiteboard({
   onClose,
+  pianoOpen = false,
 }: ClassroomWhiteboardProps) {
   const room = useRoomContext();
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
-  const [tool, setTool] = useState<"pen" | "highlighter" | "eraser">("pen");
+  const containerRef = useRef<HTMLDivElement | null>(null);
+  const textInputRef = useRef<HTMLInputElement | null>(null);
+
+  const [tool, setTool] = useState<ToolType>("pen");
   const [color, setColor] = useState("#2ed573");
   const [strokeWidth, setStrokeWidth] = useState(3);
+  const [fontSize, setFontSize] = useState(20);
   const [showStaff, setShowStaff] = useState(true);
+  const [layoutMode, setLayoutMode] = useState<LayoutMode>("full");
+
+  const [typingState, setTypingState] = useState<TypingState | null>(null);
 
   const isDrawingRef = useRef(false);
   const currentStrokeRef = useRef<DrawPoint[]>([]);
 
-  // Listen to remote drawing events
-  const { send: sendWhiteboard } = useDataChannel("whiteboard_sync", (msg) => {
-    try {
-      const decoded = new TextDecoder().decode(msg.payload);
-      const data = JSON.parse(decoded);
-      if (data.type === "stroke") {
-        drawRemoteStroke(data.stroke);
-      } else if (data.type === "clear") {
-        clearCanvasLocal();
-      }
-    } catch {
-      // ignore
-    }
-  });
-
+  // Draw musical staff lines
   const drawStaffLines = (
     ctx: CanvasRenderingContext2D,
     width: number,
@@ -77,21 +93,24 @@ export default function ClassroomWhiteboard({
     ctx.restore();
   };
 
-  const clearCanvasLocal = () => {
-    const canvas = canvasRef.current;
-    if (!canvas) return;
-    const ctx = canvas.getContext("2d");
-    if (!ctx) return;
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
-    drawStaffLines(ctx, canvas.width, canvas.height);
-  };
-
-  const handleClearAll = () => {
-    clearCanvasLocal();
-    if (sendWhiteboard) {
-      const payload = JSON.stringify({ type: "clear" });
-      sendWhiteboard(new TextEncoder().encode(payload), { reliable: true });
-    }
+  const drawTextOnCanvas = (
+    ctx: CanvasRenderingContext2D,
+    text: string,
+    x: number,
+    y: number,
+    textColor: string,
+    size: number,
+    width: number,
+    height: number
+  ) => {
+    ctx.save();
+    ctx.font = `bold ${size}px "Segoe UI", Roboto, system-ui, sans-serif`;
+    ctx.fillStyle = textColor;
+    ctx.textBaseline = "middle";
+    ctx.shadowColor = "rgba(0,0,0,0.8)";
+    ctx.shadowBlur = 4;
+    ctx.fillText(text, x * width, y * height);
+    ctx.restore();
   };
 
   const drawRemoteStroke = (stroke: DrawStroke) => {
@@ -126,25 +145,132 @@ export default function ClassroomWhiteboard({
     ctx.restore();
   };
 
+  const clearCanvasLocal = () => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return;
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    drawStaffLines(ctx, canvas.width, canvas.height);
+  };
+
+  // Listen to remote whiteboard events
+  const { send: sendWhiteboard } = useDataChannel("whiteboard_sync", (msg) => {
+    try {
+      const decoded = new TextDecoder().decode(msg.payload);
+      const data = JSON.parse(decoded);
+      if (data.type === "stroke") {
+        drawRemoteStroke(data.stroke);
+      } else if (data.type === "text" && typeof data.text === "string") {
+        const canvas = canvasRef.current;
+        if (canvas) {
+          const ctx = canvas.getContext("2d");
+          if (ctx) {
+            drawTextOnCanvas(
+              ctx,
+              data.text,
+              data.x,
+              data.y,
+              data.color || "#2ed573",
+              data.size || 20,
+              canvas.width,
+              canvas.height
+            );
+          }
+        }
+      } else if (data.type === "clear") {
+        clearCanvasLocal();
+      }
+    } catch {
+      // ignore
+    }
+  });
+
+  const handleClearAll = () => {
+    clearCanvasLocal();
+    if (sendWhiteboard) {
+      const payload = JSON.stringify({ type: "clear" });
+      sendWhiteboard(new TextEncoder().encode(payload), { reliable: true });
+    }
+  };
+
+  const commitText = () => {
+    if (!typingState || !typingState.text.trim()) {
+      setTypingState(null);
+      return;
+    }
+
+    const canvas = canvasRef.current;
+    if (canvas) {
+      const ctx = canvas.getContext("2d");
+      if (ctx) {
+        drawTextOnCanvas(
+          ctx,
+          typingState.text,
+          typingState.x,
+          typingState.y,
+          color,
+          fontSize,
+          canvas.width,
+          canvas.height
+        );
+      }
+    }
+
+    if (sendWhiteboard) {
+      const payload = JSON.stringify({
+        type: "text",
+        text: typingState.text,
+        x: typingState.x,
+        y: typingState.y,
+        color,
+        size: fontSize,
+      });
+      sendWhiteboard(new TextEncoder().encode(payload), { reliable: true });
+    }
+
+    setTypingState(null);
+  };
+
   const getCoordinates = (
     e: React.MouseEvent | React.TouchEvent
-  ): DrawPoint | null => {
+  ): { x: number; y: number; screenX: number; screenY: number } | null => {
     const canvas = canvasRef.current;
     if (!canvas) return null;
     const rect = canvas.getBoundingClientRect();
     const clientX = "touches" in e ? e.touches[0].clientX : e.clientX;
     const clientY = "touches" in e ? e.touches[0].clientY : e.clientY;
+    const screenX = clientX - rect.left;
+    const screenY = clientY - rect.top;
     return {
-      x: (clientX - rect.left) / rect.width,
-      y: (clientY - rect.top) / rect.height,
+      x: screenX / rect.width,
+      y: screenY / rect.height,
+      screenX,
+      screenY,
     };
   };
 
-  const startDrawing = (e: React.MouseEvent | React.TouchEvent) => {
+  const handlePointerDown = (e: React.MouseEvent | React.TouchEvent) => {
     const pt = getCoordinates(e);
     if (!pt) return;
+
+    if (tool === "text") {
+      // If already typing, commit previous text first
+      if (typingState && typingState.text.trim()) {
+        commitText();
+      }
+      setTypingState({
+        x: pt.x,
+        y: pt.y,
+        screenX: pt.screenX,
+        screenY: pt.screenY,
+        text: "",
+      });
+      return;
+    }
+
     isDrawingRef.current = true;
-    currentStrokeRef.current = [pt];
+    currentStrokeRef.current = [{ x: pt.x, y: pt.y }];
 
     const canvas = canvasRef.current;
     if (!canvas) return;
@@ -162,12 +288,12 @@ export default function ClassroomWhiteboard({
     ctx.moveTo(pt.x * canvas.width, pt.y * canvas.height);
   };
 
-  const draw = (e: React.MouseEvent | React.TouchEvent) => {
-    if (!isDrawingRef.current) return;
+  const handlePointerMove = (e: React.MouseEvent | React.TouchEvent) => {
+    if (tool === "text" || !isDrawingRef.current) return;
     const pt = getCoordinates(e);
     if (!pt) return;
 
-    currentStrokeRef.current.push(pt);
+    currentStrokeRef.current.push({ x: pt.x, y: pt.y });
 
     const canvas = canvasRef.current;
     if (!canvas) return;
@@ -178,8 +304,8 @@ export default function ClassroomWhiteboard({
     ctx.stroke();
   };
 
-  const endDrawing = () => {
-    if (!isDrawingRef.current) return;
+  const handlePointerUp = () => {
+    if (tool === "text" || !isDrawingRef.current) return;
     isDrawingRef.current = false;
 
     const canvas = canvasRef.current;
@@ -201,58 +327,138 @@ export default function ClassroomWhiteboard({
     currentStrokeRef.current = [];
   };
 
+  // Preserve existing canvas drawing when resized or layout toggled
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
-    // Set actual render resolution
-    canvas.width = canvas.parentElement?.clientWidth || 700;
-    canvas.height = canvas.parentElement?.clientHeight || 450;
+    const parent = canvas.parentElement;
+    if (!parent) return;
+
+    const prevWidth = canvas.width;
+    const prevHeight = canvas.height;
+    let tempCanvas: HTMLCanvasElement | null = null;
+
+    if (prevWidth > 0 && prevHeight > 0) {
+      tempCanvas = document.createElement("canvas");
+      tempCanvas.width = prevWidth;
+      tempCanvas.height = prevHeight;
+      const tempCtx = tempCanvas.getContext("2d");
+      if (tempCtx) {
+        tempCtx.drawImage(canvas, 0, 0);
+      }
+    }
+
+    const nextWidth = parent.clientWidth || 700;
+    const nextHeight = parent.clientHeight || 450;
+
+    canvas.width = nextWidth;
+    canvas.height = nextHeight;
     const ctx = canvas.getContext("2d");
-    if (ctx) drawStaffLines(ctx, canvas.width, canvas.height);
-  }, [showStaff]);
+    if (ctx) {
+      if (tempCanvas && tempCanvas.width > 0) {
+        ctx.drawImage(tempCanvas, 0, 0, nextWidth, nextHeight);
+      } else {
+        drawStaffLines(ctx, nextWidth, nextHeight);
+      }
+    }
+  }, [showStaff, layoutMode, pianoOpen]);
+
+  // Focus input when typing state activates
+  useEffect(() => {
+    if (typingState && textInputRef.current) {
+      textInputRef.current.focus();
+    }
+  }, [typingState]);
+
+  // Determine modal styling based on layout mode and pianoOpen
+  const getContainerStyle = (): React.CSSProperties => {
+    const baseBottom = pianoOpen ? 215 : 20;
+
+    switch (layoutMode) {
+      case "split-left":
+        return {
+          position: "absolute",
+          top: 55,
+          left: 20,
+          right: "auto",
+          width: "calc(50% - 25px)",
+          bottom: baseBottom,
+          zIndex: 100,
+        };
+      case "split-right":
+        return {
+          position: "absolute",
+          top: 55,
+          left: "auto",
+          right: 20,
+          width: "calc(50% - 25px)",
+          bottom: baseBottom,
+          zIndex: 100,
+        };
+      case "compact":
+        return {
+          position: "absolute",
+          top: 55,
+          left: 20,
+          right: "auto",
+          width: 520,
+          height: 380,
+          zIndex: 100,
+        };
+      case "full":
+      default:
+        return {
+          position: "absolute",
+          top: 55,
+          left: 20,
+          right: 20,
+          bottom: baseBottom,
+          zIndex: 100,
+        };
+    }
+  };
 
   return (
     <div
+      ref={containerRef}
       className="pc-whiteboard-modal"
       style={{
-        position: "absolute",
-        top: 55,
-        left: 20,
-        right: 20,
-        bottom: 20,
+        ...getContainerStyle(),
         background: "#16201a",
         border: "1px solid rgba(255, 255, 255, 0.22)",
         borderRadius: 14,
         display: "flex",
         flexDirection: "column",
-        boxShadow: "0 16px 50px rgba(0,0,0,0.8)",
-        zIndex: 100,
+        boxShadow: "0 16px 50px rgba(0,0,0,0.85)",
         overflow: "hidden",
+        transition: "width 0.2s ease, left 0.2s ease, right 0.2s ease, bottom 0.2s ease",
       }}
     >
       {/* Whiteboard Toolbar */}
       <div
         style={{
-          height: 48,
+          minHeight: 48,
           background: "#1b2921",
           borderBottom: "1px solid rgba(255, 255, 255, 0.12)",
-          padding: "0 14px",
+          padding: "6px 14px",
           display: "flex",
           alignItems: "center",
           justifyContent: "space-between",
+          flexWrap: "wrap",
+          gap: 8,
           flexShrink: 0,
         }}
       >
-        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-          <strong style={{ fontSize: 13, color: "#2ed573" }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+          <strong style={{ fontSize: 13, color: "#2ed573", whiteSpace: "nowrap" }}>
             Music Staff &amp; Whiteboard
           </strong>
 
-          {/* Tools */}
+          {/* Tools Selector */}
           <div
             style={{
               display: "flex",
-              gap: 4,
+              gap: 3,
               background: "rgba(0,0,0,0.3)",
               padding: 3,
               borderRadius: 6,
@@ -260,7 +466,10 @@ export default function ClassroomWhiteboard({
           >
             <button
               type="button"
-              onClick={() => setTool("pen")}
+              onClick={() => {
+                if (typingState) commitText();
+                setTool("pen");
+              }}
               style={{
                 background: tool === "pen" ? "#2ed573" : "transparent",
                 color: tool === "pen" ? "#000" : "#fff",
@@ -279,7 +488,33 @@ export default function ClassroomWhiteboard({
             </button>
             <button
               type="button"
-              onClick={() => setTool("highlighter")}
+              onClick={() => {
+                if (typingState) commitText();
+                setTool("text");
+              }}
+              style={{
+                background: tool === "text" ? "#2ed573" : "transparent",
+                color: tool === "text" ? "#000" : "#fff",
+                border: "none",
+                borderRadius: 4,
+                padding: "4px 8px",
+                fontSize: 11,
+                fontWeight: 700,
+                cursor: "pointer",
+                display: "inline-flex",
+                alignItems: "center",
+                gap: 4,
+              }}
+              title="Click anywhere to type chords, lyrics, dynamics or notes"
+            >
+              <Type size={12} /> Type Text
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                if (typingState) commitText();
+                setTool("highlighter");
+              }}
               style={{
                 background: tool === "highlighter" ? "#ffb142" : "transparent",
                 color: tool === "highlighter" ? "#000" : "#fff",
@@ -298,10 +533,13 @@ export default function ClassroomWhiteboard({
             </button>
             <button
               type="button"
-              onClick={() => setTool("eraser")}
+              onClick={() => {
+                if (typingState) commitText();
+                setTool("eraser");
+              }}
               style={{
                 background: tool === "eraser" ? "#ff4757" : "transparent",
-                color: tool === "eraser" ? "#fff" : "#fff",
+                color: "#fff",
                 border: "none",
                 borderRadius: 4,
                 padding: "4px 8px",
@@ -317,29 +555,54 @@ export default function ClassroomWhiteboard({
             </button>
           </div>
 
-          {/* Colors */}
+          {/* Text Font Size Options (when Type Text tool is active) */}
+          {tool === "text" && (
+            <div style={{ display: "flex", alignItems: "center", gap: 3, background: "rgba(0,0,0,0.3)", padding: "2px 5px", borderRadius: 6 }}>
+              <span style={{ fontSize: 10, color: "#8fcaab", marginRight: 2 }}>Font:</span>
+              {[
+                { label: "Sm", size: 16 },
+                { label: "Md", size: 22 },
+                { label: "Lg", size: 30 },
+              ].map((f) => (
+                <button
+                  key={f.size}
+                  type="button"
+                  onClick={() => setFontSize(f.size)}
+                  style={{
+                    background: fontSize === f.size ? "#2ed573" : "transparent",
+                    color: fontSize === f.size ? "#000" : "#fff",
+                    border: "none",
+                    borderRadius: 3,
+                    padding: "2px 5px",
+                    fontSize: 10,
+                    fontWeight: 700,
+                    cursor: "pointer",
+                  }}
+                >
+                  {f.label}
+                </button>
+              ))}
+            </div>
+          )}
+
+          {/* Color Palette */}
           {tool !== "eraser" && (
             <div style={{ display: "flex", gap: 5, alignItems: "center" }}>
-              {["#2ed573", "#ff4757", "#ffb142", "#70a1ff", "#ffffff"].map(
-                (c) => (
-                  <button
-                    key={c}
-                    type="button"
-                    onClick={() => setColor(c)}
-                    style={{
-                      width: 18,
-                      height: 18,
-                      borderRadius: "50%",
-                      background: c,
-                      border:
-                        color === c
-                          ? "2px solid #fff"
-                          : "1px solid rgba(0,0,0,0.4)",
-                      cursor: "pointer",
-                    }}
-                  />
-                )
-              )}
+              {["#2ed573", "#ff4757", "#ffb142", "#70a1ff", "#ffffff"].map((c) => (
+                <button
+                  key={c}
+                  type="button"
+                  onClick={() => setColor(c)}
+                  style={{
+                    width: 18,
+                    height: 18,
+                    borderRadius: "50%",
+                    background: c,
+                    border: color === c ? "2px solid #fff" : "1px solid rgba(0,0,0,0.4)",
+                    cursor: "pointer",
+                  }}
+                />
+              ))}
             </div>
           )}
 
@@ -348,24 +611,115 @@ export default function ClassroomWhiteboard({
             type="button"
             onClick={() => setShowStaff((prev) => !prev)}
             style={{
-              background: showStaff
-                ? "rgba(46, 213, 115, 0.2)"
-                : "rgba(255,255,255,0.1)",
-              border: `1px solid ${
-                showStaff ? "#2ed573" : "rgba(255,255,255,0.2)"
-              }`,
+              background: showStaff ? "rgba(46, 213, 115, 0.2)" : "rgba(255,255,255,0.1)",
+              border: `1px solid ${showStaff ? "#2ed573" : "rgba(255,255,255,0.2)"}`,
               color: showStaff ? "#2ed573" : "#fff",
               borderRadius: 4,
               padding: "3px 8px",
               fontSize: 11,
               cursor: "pointer",
+              whiteSpace: "nowrap",
             }}
           >
             {showStaff ? "Staff Lines: ON" : "Blank Canvas"}
           </button>
         </div>
 
-        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+        {/* Layout Sizing & Actions */}
+        <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+          {/* Multi-Tool Layout Modes */}
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: 2,
+              background: "rgba(0,0,0,0.35)",
+              padding: 2,
+              borderRadius: 6,
+            }}
+          >
+            <button
+              type="button"
+              onClick={() => setLayoutMode("full")}
+              title="Full Width (Auto-clears piano below)"
+              style={{
+                background: layoutMode === "full" ? "#2ed573" : "transparent",
+                color: layoutMode === "full" ? "#000" : "#aaa",
+                border: "none",
+                borderRadius: 4,
+                padding: "3px 6px",
+                fontSize: 10,
+                fontWeight: 600,
+                cursor: "pointer",
+                display: "inline-flex",
+                alignItems: "center",
+                gap: 3,
+              }}
+            >
+              <Maximize2 size={11} /> Full
+            </button>
+            <button
+              type="button"
+              onClick={() => setLayoutMode("split-left")}
+              title="Split Left 50% (Use side-by-side with video or tuner)"
+              style={{
+                background: layoutMode === "split-left" ? "#2ed573" : "transparent",
+                color: layoutMode === "split-left" ? "#000" : "#aaa",
+                border: "none",
+                borderRadius: 4,
+                padding: "3px 6px",
+                fontSize: 10,
+                fontWeight: 600,
+                cursor: "pointer",
+                display: "inline-flex",
+                alignItems: "center",
+                gap: 3,
+              }}
+            >
+              <Columns2 size={11} /> Half L
+            </button>
+            <button
+              type="button"
+              onClick={() => setLayoutMode("split-right")}
+              title="Split Right 50%"
+              style={{
+                background: layoutMode === "split-right" ? "#2ed573" : "transparent",
+                color: layoutMode === "split-right" ? "#000" : "#aaa",
+                border: "none",
+                borderRadius: 4,
+                padding: "3px 6px",
+                fontSize: 10,
+                fontWeight: 600,
+                cursor: "pointer",
+                display: "inline-flex",
+                alignItems: "center",
+                gap: 3,
+              }}
+            >
+              <Columns2 size={11} /> Half R
+            </button>
+            <button
+              type="button"
+              onClick={() => setLayoutMode("compact")}
+              title="Compact Floating Window"
+              style={{
+                background: layoutMode === "compact" ? "#2ed573" : "transparent",
+                color: layoutMode === "compact" ? "#000" : "#aaa",
+                border: "none",
+                borderRadius: 4,
+                padding: "3px 6px",
+                fontSize: 10,
+                fontWeight: 600,
+                cursor: "pointer",
+                display: "inline-flex",
+                alignItems: "center",
+                gap: 3,
+              }}
+            >
+              <Minimize2 size={11} /> Compact
+            </button>
+          </div>
+
           <button
             type="button"
             onClick={handleClearAll}
@@ -382,8 +736,9 @@ export default function ClassroomWhiteboard({
               gap: 4,
             }}
           >
-            <Trash2 size={12} /> Clear Board
+            <Trash2 size={12} /> Clear
           </button>
+
           <button
             type="button"
             onClick={onClose}
@@ -394,32 +749,146 @@ export default function ClassroomWhiteboard({
               cursor: "pointer",
               padding: 2,
             }}
+            title="Close Whiteboard"
           >
             <X size={16} />
           </button>
         </div>
       </div>
 
-      {/* Canvas */}
+      {/* Canvas Area with Click-to-Type support */}
       <div
         style={{
           flex: 1,
           position: "relative",
-          cursor: "crosshair",
+          cursor: tool === "text" ? "text" : "crosshair",
           touchAction: "none",
+          overflow: "hidden",
         }}
       >
         <canvas
           ref={canvasRef}
-          onMouseDown={startDrawing}
-          onMouseMove={draw}
-          onMouseUp={endDrawing}
-          onMouseLeave={endDrawing}
-          onTouchStart={startDrawing}
-          onTouchMove={draw}
-          onTouchEnd={endDrawing}
+          onMouseDown={handlePointerDown}
+          onMouseMove={handlePointerMove}
+          onMouseUp={handlePointerUp}
+          onMouseLeave={handlePointerUp}
+          onTouchStart={handlePointerDown}
+          onTouchMove={handlePointerMove}
+          onTouchEnd={handlePointerUp}
           style={{ width: "100%", height: "100%", display: "block" }}
         />
+
+        {/* Floating Text Input Box when typing */}
+        {typingState && (
+          <div
+            style={{
+              position: "absolute",
+              left: Math.min(typingState.screenX, (canvasRef.current?.width || 500) - 240),
+              top: Math.max(10, typingState.screenY - 24),
+              zIndex: 30,
+              background: "rgba(18, 30, 23, 0.95)",
+              border: `2px solid ${color}`,
+              borderRadius: 8,
+              padding: "6px 8px",
+              display: "flex",
+              flexDirection: "column",
+              gap: 6,
+              boxShadow: "0 10px 30px rgba(0,0,0,0.8)",
+              minWidth: 220,
+            }}
+          >
+            {/* Quick Musical Symbol Shortcuts */}
+            <div style={{ display: "flex", gap: 3, alignItems: "center" }}>
+              <span style={{ fontSize: 9, color: "#8fcaab" }}>Symbols:</span>
+              {["♯", "♭", "♮", "♩", "♪", "♫", "Am", "C", "G"].map((sym) => (
+                <button
+                  key={sym}
+                  type="button"
+                  onClick={() => {
+                    setTypingState((prev) =>
+                      prev ? { ...prev, text: prev.text + sym } : null
+                    );
+                    textInputRef.current?.focus();
+                  }}
+                  style={{
+                    background: "rgba(255,255,255,0.12)",
+                    border: "none",
+                    borderRadius: 3,
+                    color: "#fff",
+                    fontSize: 10,
+                    fontWeight: 700,
+                    padding: "2px 4px",
+                    cursor: "pointer",
+                  }}
+                >
+                  {sym}
+                </button>
+              ))}
+            </div>
+
+            <div style={{ display: "flex", gap: 4, alignItems: "center" }}>
+              <input
+                ref={textInputRef}
+                type="text"
+                value={typingState.text}
+                placeholder="Type note, chord, lyrics…"
+                onChange={(e) =>
+                  setTypingState((prev) =>
+                    prev ? { ...prev, text: e.target.value } : null
+                  )
+                }
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") commitText();
+                  if (e.key === "Escape") setTypingState(null);
+                }}
+                style={{
+                  flex: 1,
+                  background: "rgba(0,0,0,0.4)",
+                  color: color,
+                  border: "1px solid rgba(255,255,255,0.2)",
+                  borderRadius: 4,
+                  padding: "4px 8px",
+                  fontSize: `${fontSize}px`,
+                  fontWeight: 700,
+                  outline: "none",
+                }}
+              />
+              <button
+                type="button"
+                onClick={commitText}
+                style={{
+                  background: color,
+                  color: "#000",
+                  border: "none",
+                  borderRadius: 4,
+                  padding: "6px 10px",
+                  fontSize: 11,
+                  fontWeight: 700,
+                  cursor: "pointer",
+                }}
+              >
+                Place
+              </button>
+              <button
+                type="button"
+                onClick={() => setTypingState(null)}
+                style={{
+                  background: "transparent",
+                  color: "#888",
+                  border: "none",
+                  padding: "4px 6px",
+                  fontSize: 11,
+                  cursor: "pointer",
+                }}
+              >
+                ✕
+              </button>
+            </div>
+            <div style={{ fontSize: 9, color: "#8fcaab" }}>
+              Press Enter or click Place to stamp onto whiteboard
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );

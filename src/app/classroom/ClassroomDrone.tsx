@@ -4,11 +4,15 @@ import { Disc3, Volume2, VolumeX, X } from "lucide-react";
 
 interface ClassroomDroneProps {
   onClose: () => void;
+  tunerOpen?: boolean;
 }
 
 const NOTES = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"];
 
-export default function ClassroomDrone({ onClose }: ClassroomDroneProps) {
+export default function ClassroomDrone({
+  onClose,
+  tunerOpen = false,
+}: ClassroomDroneProps) {
   const [selectedNote, setSelectedNote] = useState("A");
   const [octave, setOctave] = useState(4);
   const [standardFreq, setStandardFreq] = useState(440); // 440 Hz or 432 Hz
@@ -192,7 +196,7 @@ export default function ClassroomDrone({ onClose }: ClassroomDroneProps) {
       style={{
         position: "absolute",
         top: 55,
-        right: 18,
+        right: tunerOpen ? 320 : 18,
         background: "#16201a",
         border: "1px solid rgba(255, 255, 255, 0.22)",
         borderRadius: 14,

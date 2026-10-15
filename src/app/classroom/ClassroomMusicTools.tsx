@@ -1,7 +1,11 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { useChat, useDataChannel, useRoomContext } from "@livekit/components-react";
+import {
+  useChat,
+  useDataChannel,
+  useRoomContext,
+} from "@livekit/components-react";
 import {
   Bell,
   Disc3,
@@ -63,7 +67,9 @@ export default function ClassroomMusicTools({
   const [musicMode, setMusicMode] = useState(true);
 
   // Student Access Permission State (controlled by SuperAdmin & Assigned Admin Usher)
-  const [studentFeaturesEnabled, setStudentFeaturesEnabled] = useState(initialStudentFeaturesEnabled);
+  const [studentFeaturesEnabled, setStudentFeaturesEnabled] = useState(
+    initialStudentFeaturesEnabled
+  );
   const [togglingAccess, setTogglingAccess] = useState(false);
 
   // Tool Modals / Panels
@@ -102,42 +108,54 @@ export default function ClassroomMusicTools({
   const isFeatureLockedForUser = isRestrictedRole && !studentFeaturesEnabled;
 
   // Master Classroom Broadcast Channel
-  const { send: sendBroadcast } = useDataChannel("classroom_broadcast", (msg) => {
-    try {
-      const decoded = new TextDecoder().decode(msg.payload);
-      const data = JSON.parse(decoded);
+  const { send: sendBroadcast } = useDataChannel(
+    "classroom_broadcast",
+    (msg) => {
+      try {
+        const decoded = new TextDecoder().decode(msg.payload);
+        const data = JSON.parse(decoded);
 
-      if (data.type === "student_access_changed") {
-        const next = Boolean(data.enabled);
-        setStudentFeaturesEnabled(next);
-        if (isRestrictedRole) {
-          if (next) {
-            addFloatingReaction("Supervisor", "🎉", "Music tools & chat unlocked for you!");
-          } else {
-            addFloatingReaction("Supervisor", "🔒", "Tools restricted by lesson supervisor");
-            setPianoOpen(false);
-            setWhiteboardOpen(false);
-            setTunerOpen(false);
-            setDroneOpen(false);
-            setMetronomeOpen(false);
+        if (data.type === "student_access_changed") {
+          const next = Boolean(data.enabled);
+          setStudentFeaturesEnabled(next);
+          if (isRestrictedRole) {
+            if (next) {
+              addFloatingReaction(
+                "Supervisor",
+                "🎉",
+                "Music tools & chat unlocked for you!"
+              );
+            } else {
+              addFloatingReaction(
+                "Supervisor",
+                "🔒",
+                "Tools restricted by lesson supervisor"
+              );
+              setPianoOpen(false);
+              setWhiteboardOpen(false);
+              setTunerOpen(false);
+              setDroneOpen(false);
+              setMetronomeOpen(false);
+            }
           }
+        } else if (data.type === "whiteboard_toggle") {
+          setWhiteboardOpen(Boolean(data.open));
+        } else if (data.type === "piano_toggle") {
+          setPianoOpen(Boolean(data.open));
+        } else if (data.type === "metronome_sync") {
+          if (typeof data.bpm === "number") setBpm(data.bpm);
+          if (typeof data.isPlaying === "boolean")
+            setIsPlayingMetronome(data.isPlaying);
+        } else if (data.type === "reaction") {
+          addFloatingReaction(data.sender, data.emoji, data.label);
+        } else if (data.type === "hand_raise") {
+          addFloatingReaction(data.sender, "✋", "Hand Raised!");
         }
-      } else if (data.type === "whiteboard_toggle") {
-        setWhiteboardOpen(Boolean(data.open));
-      } else if (data.type === "piano_toggle") {
-        setPianoOpen(Boolean(data.open));
-      } else if (data.type === "metronome_sync") {
-        if (typeof data.bpm === "number") setBpm(data.bpm);
-        if (typeof data.isPlaying === "boolean") setIsPlayingMetronome(data.isPlaying);
-      } else if (data.type === "reaction") {
-        addFloatingReaction(data.sender, data.emoji, data.label);
-      } else if (data.type === "hand_raise") {
-        addFloatingReaction(data.sender, "✋", "Hand Raised!");
+      } catch {
+        // ignore
       }
-    } catch {
-      // ignore
     }
-  });
+  );
 
   // Toggle student feature access (SuperAdmin or Assigned Admin Usher only)
   const toggleStudentAccess = async () => {
@@ -176,7 +194,11 @@ export default function ClassroomMusicTools({
   // Check if a tool can be opened
   const requireAccess = (actionName: string): boolean => {
     if (isFeatureLockedForUser) {
-      addFloatingReaction("Supervisor", "🔒", `${actionName} is controlled by your lesson supervisor.`);
+      addFloatingReaction(
+        "Supervisor",
+        "🔒",
+        `${actionName} is controlled by your lesson supervisor.`
+      );
       return false;
     }
     return true;
@@ -190,23 +212,33 @@ export default function ClassroomMusicTools({
       lastMessageTimeRef.current = latest.timestamp;
       // Only show toast if sent by someone else
       if (latest.from?.identity !== room?.localParticipant?.identity) {
-        const sender = latest.from?.name || latest.from?.identity || "Participant";
+        const sender =
+          latest.from?.name || latest.from?.identity || "Participant";
         setChatToast({
           id: String(latest.timestamp),
           sender,
           message: latest.message,
         });
         setTimeout(() => {
-          setChatToast((prev) => (prev?.id === String(latest.timestamp) ? null : prev));
+          setChatToast((prev) =>
+            prev?.id === String(latest.timestamp) ? null : prev
+          );
         }, 5500);
       }
     }
   }, [chatMessages, room?.localParticipant?.identity]);
 
-  const addFloatingReaction = (sender: string, emoji: string, label: string) => {
+  const addFloatingReaction = (
+    sender: string,
+    emoji: string,
+    label: string
+  ) => {
     const id = Math.random().toString(36).slice(2, 9);
     const leftPercent = 20 + Math.random() * 60;
-    setReactions((prev) => [...prev, { id, sender, emoji, label, leftPercent }]);
+    setReactions((prev) => [
+      ...prev,
+      { id, sender, emoji, label, leftPercent },
+    ]);
     setTimeout(() => {
       setReactions((prev) => prev.filter((r) => r.id !== id));
     }, 3500);
@@ -217,7 +249,12 @@ export default function ClassroomMusicTools({
     const sender = room?.localParticipant?.name || "Participant";
     addFloatingReaction("You", emoji, label);
     if (sendBroadcast) {
-      const payload = JSON.stringify({ type: "reaction", sender, emoji, label });
+      const payload = JSON.stringify({
+        type: "reaction",
+        sender,
+        emoji,
+        label,
+      });
       sendBroadcast(new TextEncoder().encode(payload), { reliable: true });
     }
   };
@@ -240,7 +277,6 @@ export default function ClassroomMusicTools({
     if (!requireAccess("Whiteboard")) return;
     const next = !whiteboardOpen;
     setWhiteboardOpen(next);
-    setPianoOpen(false);
     if (sendBroadcast) {
       const payload = JSON.stringify({ type: "whiteboard_toggle", open: next });
       sendBroadcast(new TextEncoder().encode(payload), { reliable: true });
@@ -252,9 +288,6 @@ export default function ClassroomMusicTools({
     if (!requireAccess("Piano")) return;
     const next = !pianoOpen;
     setPianoOpen(next);
-    setWhiteboardOpen(false);
-    setTunerOpen(false);
-    setDroneOpen(false);
     if (sendBroadcast) {
       const payload = JSON.stringify({ type: "piano_toggle", open: next });
       sendBroadcast(new TextEncoder().encode(payload), { reliable: true });
@@ -266,7 +299,9 @@ export default function ClassroomMusicTools({
     const next = !musicMode;
     setMusicMode(next);
     try {
-      const audioTracks = Array.from(room?.localParticipant?.audioTrackPublications.values() || []);
+      const audioTracks = Array.from(
+        room?.localParticipant?.audioTrackPublications.values() || []
+      );
       for (const pub of audioTracks) {
         if (pub.track) {
           const mediaTrack = pub.track.mediaStreamTrack;
@@ -311,7 +346,10 @@ export default function ClassroomMusicTools({
     }
 
     if (!audioCtxRef.current) {
-      const AudioCtx = window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
+      const AudioCtx =
+        window.AudioContext ||
+        (window as unknown as { webkitAudioContext: typeof AudioContext })
+          .webkitAudioContext;
       audioCtxRef.current = new AudioCtx();
     }
     if (audioCtxRef.current.state === "suspended") {
@@ -352,7 +390,9 @@ export default function ClassroomMusicTools({
         if (tapIntervalsRef.current.length > 4) {
           tapIntervalsRef.current.shift();
         }
-        const avg = tapIntervalsRef.current.reduce((a, b) => a + b, 0) / tapIntervalsRef.current.length;
+        const avg =
+          tapIntervalsRef.current.reduce((a, b) => a + b, 0) /
+          tapIntervalsRef.current.length;
         const calculatedBpm = Math.round(60000 / avg);
         setBpm(Math.max(40, Math.min(240, calculatedBpm)));
       } else {
@@ -367,7 +407,11 @@ export default function ClassroomMusicTools({
     const next = !isPlayingMetronome;
     setIsPlayingMetronome(next);
     if (metronomeShared && sendBroadcast) {
-      const payload = JSON.stringify({ type: "metronome_sync", isPlaying: next, bpm });
+      const payload = JSON.stringify({
+        type: "metronome_sync",
+        isPlaying: next,
+        bpm,
+      });
       sendBroadcast(new TextEncoder().encode(payload), { reliable: true });
     }
   };
@@ -376,7 +420,11 @@ export default function ClassroomMusicTools({
     if (!requireAccess("Metronome")) return;
     setBpm(newBpm);
     if (metronomeShared && isPlayingMetronome && sendBroadcast) {
-      const payload = JSON.stringify({ type: "metronome_sync", isPlaying: true, bpm: newBpm });
+      const payload = JSON.stringify({
+        type: "metronome_sync",
+        isPlaying: true,
+        bpm: newBpm,
+      });
       sendBroadcast(new TextEncoder().encode(payload), { reliable: true });
     }
   };
@@ -405,17 +453,37 @@ export default function ClassroomMusicTools({
             color: "#fff",
           }}
         >
-          <MessageSquare size={16} color="#2ed573" style={{ flexShrink: 0, marginTop: 2 }} />
+          <MessageSquare
+            size={16}
+            color="#2ed573"
+            style={{ flexShrink: 0, marginTop: 2 }}
+          />
           <div style={{ flex: 1, minWidth: 0 }}>
-            <div style={{ fontSize: 11, fontWeight: 700, color: "#2ed573" }}>{chatToast.sender}</div>
-            <div style={{ fontSize: 12, color: "#e1e8e4", overflow: "hidden", textOverflow: "ellipsis", wordBreak: "break-word" }}>
+            <div style={{ fontSize: 11, fontWeight: 700, color: "#2ed573" }}>
+              {chatToast.sender}
+            </div>
+            <div
+              style={{
+                fontSize: 12,
+                color: "#e1e8e4",
+                overflow: "hidden",
+                textOverflow: "ellipsis",
+                wordBreak: "break-word",
+              }}
+            >
               {chatToast.message}
             </div>
           </div>
           <button
             type="button"
             onClick={() => setChatToast(null)}
-            style={{ background: "transparent", border: "none", color: "#888", cursor: "pointer", padding: 0 }}
+            style={{
+              background: "transparent",
+              border: "none",
+              color: "#888",
+              cursor: "pointer",
+              padding: 0,
+            }}
           >
             <X size={13} />
           </button>
@@ -450,7 +518,12 @@ export default function ClassroomMusicTools({
               animation: "floatUp 3.2s cubic-bezier(0.2, 0.8, 0.2, 1) forwards",
             }}
           >
-            <span style={{ fontSize: "38px", filter: "drop-shadow(0 4px 10px rgba(0,0,0,0.4))" }}>
+            <span
+              style={{
+                fontSize: "38px",
+                filter: "drop-shadow(0 4px 10px rgba(0,0,0,0.4))",
+              }}
+            >
               {r.emoji}
             </span>
             <span
@@ -493,8 +566,12 @@ export default function ClassroomMusicTools({
                 : "Student access is LOCKED. Click to give student access to music tools and chat."
             }
             style={{
-              background: studentFeaturesEnabled ? "rgba(46, 213, 115, 0.22)" : "rgba(255, 71, 87, 0.22)",
-              border: `1px solid ${studentFeaturesEnabled ? "#2ed573" : "#ff4757"}`,
+              background: studentFeaturesEnabled
+                ? "rgba(46, 213, 115, 0.22)"
+                : "rgba(255, 71, 87, 0.22)",
+              border: `1px solid ${
+                studentFeaturesEnabled ? "#2ed573" : "#ff4757"
+              }`,
               color: studentFeaturesEnabled ? "#2ed573" : "#ff6b81",
               borderRadius: 6,
               padding: "4px 9px",
@@ -507,7 +584,12 @@ export default function ClassroomMusicTools({
             }}
           >
             {studentFeaturesEnabled ? <Unlock size={13} /> : <Lock size={13} />}
-            <span>Student Tools: {studentFeaturesEnabled ? "Unlocked (Active)" : "Locked (Admin Only)"}</span>
+            <span>
+              Student Tools:{" "}
+              {studentFeaturesEnabled
+                ? "Unlocked (Active)"
+                : "Locked (Admin Only)"}
+            </span>
           </button>
         )}
 
@@ -515,8 +597,14 @@ export default function ClassroomMusicTools({
         {isRestrictedRole && (
           <span
             style={{
-              background: studentFeaturesEnabled ? "rgba(46, 213, 115, 0.15)" : "rgba(255, 177, 66, 0.15)",
-              border: `1px solid ${studentFeaturesEnabled ? "rgba(46, 213, 115, 0.3)" : "rgba(255, 177, 66, 0.3)"}`,
+              background: studentFeaturesEnabled
+                ? "rgba(46, 213, 115, 0.15)"
+                : "rgba(255, 177, 66, 0.15)",
+              border: `1px solid ${
+                studentFeaturesEnabled
+                  ? "rgba(46, 213, 115, 0.3)"
+                  : "rgba(255, 177, 66, 0.3)"
+              }`,
               color: studentFeaturesEnabled ? "#2ed573" : "#ffb142",
               borderRadius: 6,
               padding: "3px 8px",
@@ -527,8 +615,16 @@ export default function ClassroomMusicTools({
               gap: 4,
             }}
           >
-            {studentFeaturesEnabled ? <ShieldCheck size={12} /> : <Lock size={12} />}
-            <span>{studentFeaturesEnabled ? "Tools Unlocked by Admin" : "Tools Managed by Supervisor"}</span>
+            {studentFeaturesEnabled ? (
+              <ShieldCheck size={12} />
+            ) : (
+              <Lock size={12} />
+            )}
+            <span>
+              {studentFeaturesEnabled
+                ? "Tools Unlocked by Admin"
+                : "Tools Managed by Supervisor"}
+            </span>
           </span>
         )}
 
@@ -542,8 +638,12 @@ export default function ClassroomMusicTools({
               : "Voice Mode: Noise suppression active"
           }
           style={{
-            background: musicMode ? "rgba(46, 213, 115, 0.18)" : "rgba(255, 255, 255, 0.1)",
-            border: `1px solid ${musicMode ? "#2ed573" : "rgba(255, 255, 255, 0.2)"}`,
+            background: musicMode
+              ? "rgba(46, 213, 115, 0.18)"
+              : "rgba(255, 255, 255, 0.1)",
+            border: `1px solid ${
+              musicMode ? "#2ed573" : "rgba(255, 255, 255, 0.2)"
+            }`,
             color: musicMode ? "#2ed573" : "#fff",
             borderRadius: 6,
             padding: "4px 8px",
@@ -581,7 +681,11 @@ export default function ClassroomMusicTools({
                 ? "#2ed573"
                 : "rgba(255, 255, 255, 0.2)"
             }`,
-            color: isFeatureLockedForUser ? "#777" : pianoOpen ? "#2ed573" : "#fff",
+            color: isFeatureLockedForUser
+              ? "#777"
+              : pianoOpen
+              ? "#2ed573"
+              : "#fff",
             borderRadius: 6,
             padding: "4px 8px",
             fontSize: 11,
@@ -602,8 +706,6 @@ export default function ClassroomMusicTools({
           onClick={() => {
             if (!requireAccess("Metronome")) return;
             setMetronomeOpen((prev) => !prev);
-            setTunerOpen(false);
-            setDroneOpen(false);
           }}
           title={
             isFeatureLockedForUser
@@ -623,7 +725,11 @@ export default function ClassroomMusicTools({
                 ? "#ffb142"
                 : "rgba(255, 255, 255, 0.2)"
             }`,
-            color: isFeatureLockedForUser ? "#777" : metronomeOpen || isPlayingMetronome ? "#ffb142" : "#fff",
+            color: isFeatureLockedForUser
+              ? "#777"
+              : metronomeOpen || isPlayingMetronome
+              ? "#ffb142"
+              : "#fff",
             borderRadius: 6,
             padding: "4px 8px",
             fontSize: 11,
@@ -644,8 +750,6 @@ export default function ClassroomMusicTools({
           onClick={() => {
             if (!requireAccess("Tuner")) return;
             setTunerOpen((prev) => !prev);
-            setMetronomeOpen(false);
-            setDroneOpen(false);
           }}
           title={
             isFeatureLockedForUser
@@ -665,7 +769,11 @@ export default function ClassroomMusicTools({
                 ? "#2ed573"
                 : "rgba(255, 255, 255, 0.2)"
             }`,
-            color: isFeatureLockedForUser ? "#777" : tunerOpen ? "#2ed573" : "#fff",
+            color: isFeatureLockedForUser
+              ? "#777"
+              : tunerOpen
+              ? "#2ed573"
+              : "#fff",
             borderRadius: 6,
             padding: "4px 8px",
             fontSize: 11,
@@ -686,8 +794,6 @@ export default function ClassroomMusicTools({
           onClick={() => {
             if (!requireAccess("Pitch Drone")) return;
             setDroneOpen((prev) => !prev);
-            setMetronomeOpen(false);
-            setTunerOpen(false);
           }}
           title={
             isFeatureLockedForUser
@@ -707,7 +813,11 @@ export default function ClassroomMusicTools({
                 ? "#a55eea"
                 : "rgba(255, 255, 255, 0.2)"
             }`,
-            color: isFeatureLockedForUser ? "#777" : droneOpen ? "#a55eea" : "#fff",
+            color: isFeatureLockedForUser
+              ? "#777"
+              : droneOpen
+              ? "#a55eea"
+              : "#fff",
             borderRadius: 6,
             padding: "4px 8px",
             fontSize: 11,
@@ -744,7 +854,11 @@ export default function ClassroomMusicTools({
                 ? "#2ed573"
                 : "rgba(255, 255, 255, 0.2)"
             }`,
-            color: isFeatureLockedForUser ? "#777" : whiteboardOpen ? "#2ed573" : "#fff",
+            color: isFeatureLockedForUser
+              ? "#777"
+              : whiteboardOpen
+              ? "#2ed573"
+              : "#fff",
             borderRadius: 6,
             padding: "4px 8px",
             fontSize: 11,
@@ -775,7 +889,13 @@ export default function ClassroomMusicTools({
             type="button"
             onClick={() => triggerReaction("🎵", "Bravo!")}
             title="Send Bravo!"
-            style={{ background: "transparent", border: "none", fontSize: 13, cursor: "pointer", padding: "1px" }}
+            style={{
+              background: "transparent",
+              border: "none",
+              fontSize: 13,
+              cursor: "pointer",
+              padding: "1px",
+            }}
           >
             🎵
           </button>
@@ -783,7 +903,13 @@ export default function ClassroomMusicTools({
             type="button"
             onClick={() => triggerReaction("👏", "Applause!")}
             title="Send Applause"
-            style={{ background: "transparent", border: "none", fontSize: 13, cursor: "pointer", padding: "1px" }}
+            style={{
+              background: "transparent",
+              border: "none",
+              fontSize: 13,
+              cursor: "pointer",
+              padding: "1px",
+            }}
           >
             👏
           </button>
@@ -791,7 +917,13 @@ export default function ClassroomMusicTools({
             type="button"
             onClick={() => triggerReaction("🎹", "Piano!")}
             title="Send Piano"
-            style={{ background: "transparent", border: "none", fontSize: 13, cursor: "pointer", padding: "1px" }}
+            style={{
+              background: "transparent",
+              border: "none",
+              fontSize: 13,
+              cursor: "pointer",
+              padding: "1px",
+            }}
           >
             🎹
           </button>
@@ -799,7 +931,13 @@ export default function ClassroomMusicTools({
             type="button"
             onClick={() => triggerReaction("🌟", "Superb!")}
             title="Send Star"
-            style={{ background: "transparent", border: "none", fontSize: 13, cursor: "pointer", padding: "1px" }}
+            style={{
+              background: "transparent",
+              border: "none",
+              fontSize: 13,
+              cursor: "pointer",
+              padding: "1px",
+            }}
           >
             🌟
           </button>
@@ -812,7 +950,9 @@ export default function ClassroomMusicTools({
           title={handRaised ? "Lower Hand" : "Raise Hand to speak"}
           style={{
             background: handRaised ? "#ff4757" : "rgba(255, 255, 255, 0.1)",
-            border: `1px solid ${handRaised ? "#ff4757" : "rgba(255, 255, 255, 0.2)"}`,
+            border: `1px solid ${
+              handRaised ? "#ff4757" : "rgba(255, 255, 255, 0.2)"
+            }`,
             color: "#fff",
             borderRadius: 6,
             padding: "4px 8px",
@@ -836,7 +976,7 @@ export default function ClassroomMusicTools({
           style={{
             position: "absolute",
             top: 55,
-            right: 20,
+            left: 18,
             background: "#1e2922",
             border: "1px solid rgba(255, 255, 255, 0.2)",
             borderRadius: 12,
@@ -847,27 +987,84 @@ export default function ClassroomMusicTools({
             color: "#fff",
           }}
         >
-          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12 }}>
-            <div style={{ display: "flex", alignItems: "center", gap: 6, fontWeight: 700, fontSize: 13, color: "#ffb142" }}>
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "space-between",
+              marginBottom: 12,
+            }}
+          >
+            <div
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: 6,
+                fontWeight: 700,
+                fontSize: 13,
+                color: "#ffb142",
+              }}
+            >
               <Sliders size={15} />
               Academy Metronome
             </div>
             <button
               type="button"
               onClick={() => setMetronomeOpen(false)}
-              style={{ background: "transparent", border: "none", color: "#888", cursor: "pointer", padding: 2 }}
+              style={{
+                background: "transparent",
+                border: "none",
+                color: "#888",
+                cursor: "pointer",
+                padding: 2,
+              }}
             >
               <X size={15} />
             </button>
           </div>
 
           <div style={{ textAlign: "center", margin: "14px 0" }}>
-            <div style={{ fontSize: 36, fontWeight: 800, color: "#fff", lineHeight: 1 }}>{bpm}</div>
-            <div style={{ fontSize: 11, color: "#ffb142", fontWeight: 600, textTransform: "uppercase", marginTop: 4 }}>
-              {bpm < 60 ? "Largo" : bpm < 76 ? "Adagio" : bpm < 108 ? "Andante" : bpm < 120 ? "Moderato" : bpm < 168 ? "Allegro" : "Presto"} BPM
+            <div
+              style={{
+                fontSize: 36,
+                fontWeight: 800,
+                color: "#fff",
+                lineHeight: 1,
+              }}
+            >
+              {bpm}
+            </div>
+            <div
+              style={{
+                fontSize: 11,
+                color: "#ffb142",
+                fontWeight: 600,
+                textTransform: "uppercase",
+                marginTop: 4,
+              }}
+            >
+              {bpm < 60
+                ? "Largo"
+                : bpm < 76
+                ? "Adagio"
+                : bpm < 108
+                ? "Andante"
+                : bpm < 120
+                ? "Moderato"
+                : bpm < 168
+                ? "Allegro"
+                : "Presto"}{" "}
+              BPM
             </div>
 
-            <div style={{ display: "flex", justifyContent: "center", gap: 8, marginTop: 12 }}>
+            <div
+              style={{
+                display: "flex",
+                justifyContent: "center",
+                gap: 8,
+                marginTop: 12,
+              }}
+            >
               {Array.from({ length: beatsPerBar }).map((_, i) => (
                 <span
                   key={i}
@@ -900,7 +1097,11 @@ export default function ClassroomMusicTools({
               value={bpm}
               disabled={isFeatureLockedForUser}
               onChange={(e) => handleBpmChange(Number(e.target.value))}
-              style={{ width: "100%", accentColor: "#ffb142", cursor: isFeatureLockedForUser ? "not-allowed" : "pointer" }}
+              style={{
+                width: "100%",
+                accentColor: "#ffb142",
+                cursor: isFeatureLockedForUser ? "not-allowed" : "pointer",
+              }}
             />
           </div>
 
@@ -925,7 +1126,11 @@ export default function ClassroomMusicTools({
                 gap: 6,
               }}
             >
-              {isPlayingMetronome ? <VolumeX size={14} /> : <Volume2 size={14} />}
+              {isPlayingMetronome ? (
+                <VolumeX size={14} />
+              ) : (
+                <Volume2 size={14} />
+              )}
               {isPlayingMetronome ? "Stop Metronome" : "Start Metronome"}
             </button>
             <button
@@ -948,8 +1153,24 @@ export default function ClassroomMusicTools({
             </button>
           </div>
 
-          <div style={{ marginTop: 10, display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-            <label style={{ fontSize: 11, color: "#aaa", display: "inline-flex", alignItems: "center", gap: 6, cursor: "pointer" }}>
+          <div
+            style={{
+              marginTop: 10,
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "space-between",
+            }}
+          >
+            <label
+              style={{
+                fontSize: 11,
+                color: "#aaa",
+                display: "inline-flex",
+                alignItems: "center",
+                gap: 6,
+                cursor: "pointer",
+              }}
+            >
               <input
                 type="checkbox"
                 checked={metronomeShared}
@@ -958,7 +1179,12 @@ export default function ClassroomMusicTools({
               />
               Sync click sound to student
             </label>
-            <span style={{ fontSize: 10, color: metronomeShared ? "#ffb142" : "#666" }}>
+            <span
+              style={{
+                fontSize: 10,
+                color: metronomeShared ? "#ffb142" : "#666",
+              }}
+            >
               {metronomeShared ? "● Synchronized" : "Local only"}
             </span>
           </div>
@@ -972,10 +1198,20 @@ export default function ClassroomMusicTools({
       {tunerOpen && <ClassroomTuner onClose={() => setTunerOpen(false)} />}
 
       {/* Pitch Drone Component */}
-      {droneOpen && <ClassroomDrone onClose={() => setDroneOpen(false)} />}
+      {droneOpen && (
+        <ClassroomDrone
+          onClose={() => setDroneOpen(false)}
+          tunerOpen={tunerOpen}
+        />
+      )}
 
       {/* Musical Staff Whiteboard Component */}
-      {whiteboardOpen && <ClassroomWhiteboard onClose={() => setWhiteboardOpen(false)} />}
+      {whiteboardOpen && (
+        <ClassroomWhiteboard
+          onClose={() => setWhiteboardOpen(false)}
+          pianoOpen={pianoOpen}
+        />
+      )}
     </>
   );
 }
