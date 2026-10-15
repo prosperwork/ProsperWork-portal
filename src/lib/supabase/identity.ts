@@ -23,25 +23,6 @@ export async function identity(options: { allowPolicy?: boolean; rawOwner?: bool
   let { data, error: profileError } = await client.from("pw_profiles")
     .select("id,name,email,role,status,timezone,username").eq("id", user.id).single();
   if (profileError || !data) throw new Error("Academy account configuration is unavailable.");
-  const owner = process.env.PROSPERWORK_OWNER_EMAIL?.trim().toLowerCase();
-  if (owner && data.role !== "super_admin" && user.email_confirmed_at && user.email?.toLowerCase() === owner) {
-    const settingsResponse = await fetch(new URL("/auth/v1/settings", process.env.NEXT_PUBLIC_SUPABASE_URL!), {
-      headers: { apikey: process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY! }, cache: "no-store",
-    });
-    const settings = await settingsResponse.json().catch(() => null);
-    // Auto-confirming a public registration does not prove email ownership.
-    if (!settingsResponse.ok || settings?.mailer_autoconfirm !== false) {
-      throw new Error("Enable email confirmations in Supabase before activating the owner account.");
-    }
-    const admin = provisioningClient();
-    // This RPC is callable by service_role only, and takes a transaction lock.
-    const { error: setupError } = await admin.rpc("pw_bootstrap_owner", { target: user.id, designated_email: owner });
-    if (setupError) throw new Error("Owner activation could not be completed.");
-    const activated = await client.from("pw_profiles")
-      .select("id,name,email,role,status,timezone,username").eq("id", user.id).single();
-    data = activated.data; profileError = activated.error;
-    if (profileError || !data) throw new Error("Owner activation could not be verified.");
-  }
 
   // Super Admin "View As Any User" Impersonation:
   if (!options.rawOwner && data.role === "super_admin" && data.status === "active") {

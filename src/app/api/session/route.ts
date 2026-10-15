@@ -18,7 +18,7 @@ export async function GET() {
       }, { status: 401 });
     }
 
-    return NextResponse.json({ profile, setupRequired: !process.env.PROSPERWORK_OWNER_EMAIL }, {
+    return NextResponse.json({ profile, setupRequired: false }, {
       headers: { "Cache-Control": "private, no-store" },
     });
   } catch {
