@@ -1,6 +1,5 @@
 import {createCipheriv,createDecipheriv,createHash,randomBytes,scryptSync,timingSafeEqual} from "node:crypto";
 export interface SavedParent{id:string;child:string;session:string;access:string;refresh:string;until:number;}
-function key(){if(!process.env.SESSION_SECRET)throw Error("Family security is not configured.");return createHash("sha256").update(process.env.SESSION_SECRET).digest();}
 function key(){const secret=process.env.SESSION_SECRET||process.env.SUPABASE_SERVICE_ROLE_KEY;if(!secret)throw Error("Family security is not configured.");return createHash("sha256").update(secret).digest();}
 export function seal(value:SavedParent){const iv=randomBytes(12),c=createCipheriv("aes-256-gcm",key(),iv);const bytes=Buffer.concat([c.update(JSON.stringify(value)),c.final()]);return Buffer.concat([iv,c.getAuthTag(),bytes]).toString("base64url");}
 export function open(value:string):SavedParent|null{try{const b=Buffer.from(value,"base64url"),d=createDecipheriv("aes-256-gcm",key(),b.subarray(0,12));d.setAuthTag(b.subarray(12,28));const saved=JSON.parse(Buffer.concat([d.update(b.subarray(28)),d.final()]).toString()) as SavedParent;return saved.until>Date.now()&&saved.id&&saved.child&&saved.session?saved:null;}catch{return null;}}
