@@ -1,6 +1,5 @@
-"use client";
-
 import { useEffect, useRef, useState } from "react";
+import { useDataChannel } from "@livekit/components-react";
 import { Disc3, Volume2, VolumeX, X } from "lucide-react";
 
 interface ClassroomDroneProps {
@@ -22,13 +21,43 @@ export default function ClassroomDrone({ onClose }: ClassroomDroneProps) {
   const fifthOscRef = useRef<OscillatorNode | null>(null);
   const masterGainRef = useRef<GainNode | null>(null);
 
+  // Sync drone state across call
+  const { send: sendDrone } = useDataChannel("drone_sync", (msg) => {
+    try {
+      const decoded = new TextDecoder().decode(msg.payload);
+      const data = JSON.parse(decoded);
+      if (data.type === "play") {
+        setSelectedNote(data.note);
+        setOctave(data.octave);
+        setStandardFreq(data.standardFreq);
+        setIncludeFifth(Boolean(data.includeFifth));
+        if (!isPlaying)
+          startDroneAudio(
+            data.note,
+            data.octave,
+            data.standardFreq,
+            data.includeFifth
+          );
+      } else if (data.type === "stop") {
+        stopDroneAudio();
+      }
+    } catch {
+      // ignore
+    }
+  });
+
   const getFreq = (noteName: string, oct: number, baseA = 440) => {
     const semitone = NOTES.indexOf(noteName);
     const midi = (oct + 1) * 12 + semitone;
     return baseA * Math.pow(2, (midi - 69) / 12);
   };
 
-  const startDrone = () => {
+  const startDroneAudio = (
+    note = selectedNote,
+    oct = octave,
+    baseA = standardFreq,
+    fifth = includeFifth
+  ) => {
     try {
       const AudioCtx =
         window.AudioContext ||
@@ -39,6 +68,10 @@ export default function ClassroomDrone({ onClose }: ClassroomDroneProps) {
 
       if (ctx.state === "suspended") void ctx.resume();
 
+      // Stop previous if active
+      if (rootOscRef.current) rootOscRef.current.stop();
+      if (fifthOscRef.current) fifthOscRef.current.stop();
+
       // Master Gain
       const masterGain = ctx.createGain();
       masterGain.gain.setValueAtTime(0.001, ctx.currentTime);
@@ -47,7 +80,7 @@ export default function ClassroomDrone({ onClose }: ClassroomDroneProps) {
       masterGainRef.current = masterGain;
 
       // Root Oscillator
-      const rootFreq = getFreq(selectedNote, octave, standardFreq);
+      const rootFreq = getFreq(note, oct, baseA);
       const rootOsc = ctx.createOscillator();
       rootOsc.type = "sine";
       rootOsc.frequency.setValueAtTime(rootFreq, ctx.currentTime);
@@ -56,7 +89,7 @@ export default function ClassroomDrone({ onClose }: ClassroomDroneProps) {
       rootOscRef.current = rootOsc;
 
       // Fifth Harmonic Oscillator
-      if (includeFifth) {
+      if (fifth) {
         const fifthFreq = rootFreq * 1.498307; // perfect fifth interval (7 semitones)
         const fifthOsc = ctx.createOscillator();
         const fifthGain = ctx.createGain();
@@ -75,7 +108,7 @@ export default function ClassroomDrone({ onClose }: ClassroomDroneProps) {
     }
   };
 
-  const stopDrone = () => {
+  const stopDroneAudio = () => {
     if (audioCtxRef.current && masterGainRef.current) {
       try {
         const ctx = audioCtxRef.current;
@@ -94,6 +127,28 @@ export default function ClassroomDrone({ onClose }: ClassroomDroneProps) {
       }
     }
     setIsPlaying(false);
+  };
+
+  const startDrone = () => {
+    startDroneAudio(selectedNote, octave, standardFreq, includeFifth);
+    if (sendDrone) {
+      const payload = JSON.stringify({
+        type: "play",
+        note: selectedNote,
+        octave,
+        standardFreq,
+        includeFifth,
+      });
+      sendDrone(new TextEncoder().encode(payload), { reliable: true });
+    }
+  };
+
+  const stopDrone = () => {
+    stopDroneAudio();
+    if (sendDrone) {
+      const payload = JSON.stringify({ type: "stop" });
+      sendDrone(new TextEncoder().encode(payload), { reliable: true });
+    }
   };
 
   // Re-tune active oscillator if parameters change while playing

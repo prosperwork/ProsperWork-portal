@@ -1,11 +1,13 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { useDataChannel, useRoomContext } from "@livekit/components-react";
+import { useChat, useDataChannel, useRoomContext } from "@livekit/components-react";
 import {
+  Bell,
   Disc3,
   Edit3,
   Hand,
+  MessageSquare,
   Mic,
   Music,
   Music2,
@@ -29,8 +31,16 @@ interface FloatingReaction {
   leftPercent: number;
 }
 
+interface ChatToast {
+  id: string;
+  sender: string;
+  message: string;
+}
+
 export default function ClassroomMusicTools() {
   const room = useRoomContext();
+  const { chatMessages } = useChat();
+
   const [musicMode, setMusicMode] = useState(true);
 
   // Tool Modals / Panels
@@ -45,10 +55,15 @@ export default function ClassroomMusicTools() {
   const [isPlayingMetronome, setIsPlayingMetronome] = useState(false);
   const [beatsPerBar, setBeatsPerBar] = useState(4);
   const [currentBeat, setCurrentBeat] = useState(0);
+  const [metronomeShared, setMetronomeShared] = useState(true);
 
   // Reactions & Hand Raise
   const [reactions, setReactions] = useState<FloatingReaction[]>([]);
   const [handRaised, setHandRaised] = useState(false);
+
+  // Chat Notifications
+  const [chatToast, setChatToast] = useState<ChatToast | null>(null);
+  const lastMessageTimeRef = useRef<number>(Date.now());
 
   // Audio Context Ref for synthetic woodblock metronome
   const audioCtxRef = useRef<AudioContext | null>(null);
@@ -58,32 +73,49 @@ export default function ClassroomMusicTools() {
   const lastTapRef = useRef<number>(0);
   const tapIntervalsRef = useRef<number[]>([]);
 
-  // Setup LiveKit Data Channel for reactions & metronome sync
-  const { send: sendReaction } = useDataChannel("reactions", (msg) => {
+  // Master Classroom Broadcast Channel
+  const { send: sendBroadcast } = useDataChannel("classroom_broadcast", (msg) => {
     try {
       const decoded = new TextDecoder().decode(msg.payload);
       const data = JSON.parse(decoded);
-      if (data.type === "reaction") {
+
+      if (data.type === "whiteboard_toggle") {
+        setWhiteboardOpen(Boolean(data.open));
+      } else if (data.type === "piano_toggle") {
+        setPianoOpen(Boolean(data.open));
+      } else if (data.type === "metronome_sync") {
+        if (typeof data.bpm === "number") setBpm(data.bpm);
+        if (typeof data.isPlaying === "boolean") setIsPlayingMetronome(data.isPlaying);
+      } else if (data.type === "reaction") {
         addFloatingReaction(data.sender, data.emoji, data.label);
       } else if (data.type === "hand_raise") {
         addFloatingReaction(data.sender, "✋", "Hand Raised!");
       }
     } catch {
-      // ignore malformed payloads
-    }
-  });
-
-  const { send: sendMetronome } = useDataChannel("metronome", (msg) => {
-    try {
-      const decoded = new TextDecoder().decode(msg.payload);
-      const data = JSON.parse(decoded);
-      if (data.type === "sync_bpm" && typeof data.bpm === "number") {
-        setBpm(Math.max(40, Math.min(260, data.bpm)));
-      }
-    } catch {
       // ignore
     }
   });
+
+  // Monitor chat messages and show in-call toast so no one misses messages
+  useEffect(() => {
+    if (!chatMessages || chatMessages.length === 0) return;
+    const latest = chatMessages[chatMessages.length - 1];
+    if (latest.timestamp > lastMessageTimeRef.current) {
+      lastMessageTimeRef.current = latest.timestamp;
+      // Only show toast if sent by someone else
+      if (latest.from?.identity !== room?.localParticipant?.identity) {
+        const sender = latest.from?.name || latest.from?.identity || "Participant";
+        setChatToast({
+          id: String(latest.timestamp),
+          sender,
+          message: latest.message,
+        });
+        setTimeout(() => {
+          setChatToast((prev) => (prev?.id === String(latest.timestamp) ? null : prev));
+        }, 5500);
+      }
+    }
+  }, [chatMessages, room?.localParticipant?.identity]);
 
   const addFloatingReaction = (sender: string, emoji: string, label: string) => {
     const id = Math.random().toString(36).slice(2, 9);
@@ -97,9 +129,9 @@ export default function ClassroomMusicTools() {
   const triggerReaction = (emoji: string, label: string) => {
     const sender = room?.localParticipant?.name || "Participant";
     addFloatingReaction("You", emoji, label);
-    if (sendReaction) {
+    if (sendBroadcast) {
       const payload = JSON.stringify({ type: "reaction", sender, emoji, label });
-      sendReaction(new TextEncoder().encode(payload), { reliable: true });
+      sendBroadcast(new TextEncoder().encode(payload), { reliable: true });
     }
   };
 
@@ -109,10 +141,34 @@ export default function ClassroomMusicTools() {
     const sender = room?.localParticipant?.name || "Participant";
     if (next) {
       addFloatingReaction("You", "✋", "Hand Raised");
-      if (sendReaction) {
+      if (sendBroadcast) {
         const payload = JSON.stringify({ type: "hand_raise", sender });
-        sendReaction(new TextEncoder().encode(payload), { reliable: true });
+        sendBroadcast(new TextEncoder().encode(payload), { reliable: true });
       }
+    }
+  };
+
+  // Toggle Whiteboard with synchronized open/close for everyone
+  const toggleWhiteboard = () => {
+    const next = !whiteboardOpen;
+    setWhiteboardOpen(next);
+    setPianoOpen(false);
+    if (sendBroadcast) {
+      const payload = JSON.stringify({ type: "whiteboard_toggle", open: next });
+      sendBroadcast(new TextEncoder().encode(payload), { reliable: true });
+    }
+  };
+
+  // Toggle Piano with synchronized open for everyone
+  const togglePiano = () => {
+    const next = !pianoOpen;
+    setPianoOpen(next);
+    setWhiteboardOpen(false);
+    setTunerOpen(false);
+    setDroneOpen(false);
+    if (sendBroadcast) {
+      const payload = JSON.stringify({ type: "piano_toggle", open: next });
+      sendBroadcast(new TextEncoder().encode(payload), { reliable: true });
     }
   };
 
@@ -216,15 +272,64 @@ export default function ClassroomMusicTools() {
     lastTapRef.current = now;
   };
 
-  const broadcastBpm = () => {
-    if (sendMetronome) {
-      const payload = JSON.stringify({ type: "sync_bpm", bpm });
-      sendMetronome(new TextEncoder().encode(payload), { reliable: true });
+  const toggleMetronomePlay = () => {
+    const next = !isPlayingMetronome;
+    setIsPlayingMetronome(next);
+    if (metronomeShared && sendBroadcast) {
+      const payload = JSON.stringify({ type: "metronome_sync", isPlaying: next, bpm });
+      sendBroadcast(new TextEncoder().encode(payload), { reliable: true });
+    }
+  };
+
+  const handleBpmChange = (newBpm: number) => {
+    setBpm(newBpm);
+    if (metronomeShared && isPlayingMetronome && sendBroadcast) {
+      const payload = JSON.stringify({ type: "metronome_sync", isPlaying: true, bpm: newBpm });
+      sendBroadcast(new TextEncoder().encode(payload), { reliable: true });
     }
   };
 
   return (
     <>
+      {/* Floating In-Call Chat Notification Toast */}
+      {chatToast && (
+        <div
+          className="pc-chat-toast"
+          style={{
+            position: "fixed",
+            bottom: "85px",
+            right: "24px",
+            background: "#18221c",
+            border: "1px solid rgba(46, 213, 115, 0.4)",
+            borderRadius: 10,
+            padding: "10px 14px",
+            boxShadow: "0 10px 30px rgba(0,0,0,0.6)",
+            zIndex: 9999,
+            maxWidth: 320,
+            display: "flex",
+            alignItems: "flex-start",
+            gap: 10,
+            animation: "fadeIn 0.25s ease",
+            color: "#fff",
+          }}
+        >
+          <MessageSquare size={16} color="#2ed573" style={{ flexShrink: 0, marginTop: 2 }} />
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div style={{ fontSize: 11, fontWeight: 700, color: "#2ed573" }}>{chatToast.sender}</div>
+            <div style={{ fontSize: 12, color: "#e1e8e4", overflow: "hidden", textOverflow: "ellipsis", wordBreak: "break-word" }}>
+              {chatToast.message}
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={() => setChatToast(null)}
+            style={{ background: "transparent", border: "none", color: "#888", cursor: "pointer", padding: 0 }}
+          >
+            <X size={13} />
+          </button>
+        </div>
+      )}
+
       {/* Floating Animated In-Call Reactions */}
       <div
         className="pc-floating-reactions-container"
@@ -314,13 +419,8 @@ export default function ClassroomMusicTools() {
         {/* Visual Piano & MIDI Keyboard */}
         <button
           type="button"
-          onClick={() => {
-            setPianoOpen((prev) => !prev);
-            setTunerOpen(false);
-            setDroneOpen(false);
-            setWhiteboardOpen(false);
-          }}
-          title="Interactive Visual Piano & Web MIDI visualizer"
+          onClick={togglePiano}
+          title="Interactive Visual Piano: Synchronizes notes & sound with everyone in room"
           style={{
             background: pianoOpen ? "rgba(46, 213, 115, 0.25)" : "rgba(255, 255, 255, 0.1)",
             border: `1px solid ${pianoOpen ? "#2ed573" : "rgba(255, 255, 255, 0.2)"}`,
@@ -336,7 +436,7 @@ export default function ClassroomMusicTools() {
           }}
         >
           <Music2 size={13} />
-          <span>Piano</span>
+          <span>Piano {pianoOpen ? "● Live" : ""}</span>
         </button>
 
         {/* Metronome */}
@@ -347,7 +447,7 @@ export default function ClassroomMusicTools() {
             setTunerOpen(false);
             setDroneOpen(false);
           }}
-          title="Academy Metronome & Tempo Tool"
+          title="Academy Metronome: Syncs tempo with everyone in room"
           style={{
             background: metronomeOpen || isPlayingMetronome ? "rgba(255, 177, 66, 0.22)" : "rgba(255, 255, 255, 0.1)",
             border: `1px solid ${metronomeOpen || isPlayingMetronome ? "#ffb142" : "rgba(255, 255, 255, 0.2)"}`,
@@ -420,14 +520,11 @@ export default function ClassroomMusicTools() {
           <span>Drone</span>
         </button>
 
-        {/* Music Staff Whiteboard */}
+        {/* Collaborative Whiteboard */}
         <button
           type="button"
-          onClick={() => {
-            setWhiteboardOpen((prev) => !prev);
-            setPianoOpen(false);
-          }}
-          title="Collaborative Music Staff & Whiteboard Canvas"
+          onClick={toggleWhiteboard}
+          title="Collaborative Music Staff Whiteboard: Opens on everyone's screen in real time"
           style={{
             background: whiteboardOpen ? "rgba(46, 213, 115, 0.25)" : "rgba(255, 255, 255, 0.1)",
             border: `1px solid ${whiteboardOpen ? "#2ed573" : "rgba(255, 255, 255, 0.2)"}`,
@@ -443,7 +540,7 @@ export default function ClassroomMusicTools() {
           }}
         >
           <Edit3 size={13} />
-          <span>Whiteboard</span>
+          <span>Whiteboard {whiteboardOpen ? "● Shared" : ""}</span>
         </button>
 
         {/* Quick Reactions Bar */}
@@ -530,7 +627,7 @@ export default function ClassroomMusicTools() {
             padding: "16px 20px",
             boxShadow: "0 12px 36px rgba(0,0,0,0.6)",
             zIndex: 999,
-            width: 270,
+            width: 280,
             color: "#fff",
           }}
         >
@@ -585,7 +682,7 @@ export default function ClassroomMusicTools() {
               min={40}
               max={220}
               value={bpm}
-              onChange={(e) => setBpm(Number(e.target.value))}
+              onChange={(e) => handleBpmChange(Number(e.target.value))}
               style={{ width: "100%", accentColor: "#ffb142", cursor: "pointer" }}
             />
           </div>
@@ -593,7 +690,7 @@ export default function ClassroomMusicTools() {
           <div style={{ display: "flex", gap: 8, marginTop: 10 }}>
             <button
               type="button"
-              onClick={() => setIsPlayingMetronome((prev) => !prev)}
+              onClick={toggleMetronomePlay}
               style={{
                 flex: 1,
                 background: isPlayingMetronome ? "#ff4757" : "#2ed573",
@@ -632,23 +729,20 @@ export default function ClassroomMusicTools() {
             </button>
           </div>
 
-          <button
-            type="button"
-            onClick={broadcastBpm}
-            style={{
-              width: "100%",
-              marginTop: 10,
-              background: "transparent",
-              border: "1px dashed rgba(255,255,255,0.3)",
-              color: "#a4b0be",
-              borderRadius: 6,
-              padding: "5px",
-              fontSize: 10,
-              cursor: "pointer",
-            }}
-          >
-            Broadcast {bpm} BPM to everyone in room
-          </button>
+          <div style={{ marginTop: 10, display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+            <label style={{ fontSize: 11, color: "#aaa", display: "inline-flex", alignItems: "center", gap: 6, cursor: "pointer" }}>
+              <input
+                type="checkbox"
+                checked={metronomeShared}
+                onChange={(e) => setMetronomeShared(e.target.checked)}
+                style={{ accentColor: "#ffb142" }}
+              />
+              Sync click sound to student
+            </label>
+            <span style={{ fontSize: 10, color: metronomeShared ? "#ffb142" : "#666" }}>
+              {metronomeShared ? "● Synchronized" : "Local only"}
+            </span>
+          </div>
         </div>
       )}
 
