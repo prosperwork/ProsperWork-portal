@@ -125,15 +125,19 @@ export default function HiringCandidateForm({
                   .filter(
                     (person) =>
                       person.status === "active" &&
-                      (roleKey(person.role) === supervisorRole || person.role === "super_admin")
+                      (roleKey(person.role) === supervisorRole ||
+                        person.role === "super_admin")
                   )
                   .map((person) => (
                     <option value={person.id} key={person.id}>
                       {person.name} · {roleLabel(person.role)}{" "}
-                      {person.id === data.profile.id ? "(You - Direct Oversight)" : person.role === "super_admin" ? "(Super Admin)" : ""}
+                      {person.id === data.profile.id
+                        ? "(You - Direct Oversight)"
+                        : person.role === "super_admin"
+                        ? "(Super Admin)"
+                        : ""}
                     </option>
                   ))}
-
               </select>
               <small>
                 Default supervisor ({roleLabel(supervisorRole)}) or Super Admin

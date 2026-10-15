@@ -276,11 +276,14 @@ export default function HiringPage() {
       (person) =>
         person.id === formData.reviewerId &&
         person.status === "active" &&
-        (roleKey(person.role) === supervisorRole || person.role === "super_admin")
+        (roleKey(person.role) === supervisorRole ||
+          person.role === "super_admin")
     );
     if (!supervisor) {
       setActionError(
-        `Choose an active, independent ${roleLabel(supervisorRole)} reviewer or Super Admin.`
+        `Choose an active, independent ${roleLabel(
+          supervisorRole
+        )} reviewer or Super Admin.`
       );
       return false;
     }
