@@ -69,3 +69,5 @@ Desktop.ini
 # Temporary / Scratch
 *.tmp
 *.temp
+*.sql
+
