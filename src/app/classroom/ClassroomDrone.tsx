@@ -30,7 +30,10 @@ export default function ClassroomDrone({ onClose }: ClassroomDroneProps) {
 
   const startDrone = () => {
     try {
-      const AudioCtx = window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
+      const AudioCtx =
+        window.AudioContext ||
+        (window as unknown as { webkitAudioContext: typeof AudioContext })
+          .webkitAudioContext;
       const ctx = audioCtxRef.current || new AudioCtx();
       audioCtxRef.current = ctx;
 
@@ -76,7 +79,10 @@ export default function ClassroomDrone({ onClose }: ClassroomDroneProps) {
     if (audioCtxRef.current && masterGainRef.current) {
       try {
         const ctx = audioCtxRef.current;
-        masterGainRef.current.gain.linearRampToValueAtTime(0.0001, ctx.currentTime + 0.1);
+        masterGainRef.current.gain.linearRampToValueAtTime(
+          0.0001,
+          ctx.currentTime + 0.1
+        );
         setTimeout(() => {
           rootOscRef.current?.stop();
           fifthOscRef.current?.stop();
@@ -94,16 +100,28 @@ export default function ClassroomDrone({ onClose }: ClassroomDroneProps) {
   useEffect(() => {
     if (isPlaying && rootOscRef.current && audioCtxRef.current) {
       const rootFreq = getFreq(selectedNote, octave, standardFreq);
-      rootOscRef.current.frequency.setTargetAtTime(rootFreq, audioCtxRef.current.currentTime, 0.05);
+      rootOscRef.current.frequency.setTargetAtTime(
+        rootFreq,
+        audioCtxRef.current.currentTime,
+        0.05
+      );
       if (fifthOscRef.current) {
-        fifthOscRef.current.frequency.setTargetAtTime(rootFreq * 1.498307, audioCtxRef.current.currentTime, 0.05);
+        fifthOscRef.current.frequency.setTargetAtTime(
+          rootFreq * 1.498307,
+          audioCtxRef.current.currentTime,
+          0.05
+        );
       }
     }
   }, [selectedNote, octave, standardFreq, isPlaying]);
 
   useEffect(() => {
     if (masterGainRef.current && audioCtxRef.current) {
-      masterGainRef.current.gain.setTargetAtTime(volume, audioCtxRef.current.currentTime, 0.05);
+      masterGainRef.current.gain.setTargetAtTime(
+        volume,
+        audioCtxRef.current.currentTime,
+        0.05
+      );
     }
   }, [volume]);
 
@@ -139,29 +157,54 @@ export default function ClassroomDrone({ onClose }: ClassroomDroneProps) {
           marginBottom: 12,
         }}
       >
-        <div style={{ display: "flex", alignItems: "center", gap: 7, color: "#a55eea", fontWeight: 700, fontSize: 13 }}>
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: 7,
+            color: "#a55eea",
+            fontWeight: 700,
+            fontSize: 13,
+          }}
+        >
           <Disc3 size={16} />
           Pitch Drone &amp; Ear Training
         </div>
         <button
           type="button"
           onClick={onClose}
-          style={{ background: "transparent", border: "none", color: "#aaa", cursor: "pointer", padding: 2 }}
+          style={{
+            background: "transparent",
+            border: "none",
+            color: "#aaa",
+            cursor: "pointer",
+            padding: 2,
+          }}
         >
           <X size={15} />
         </button>
       </div>
 
       {/* Note Grid */}
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(6, 1fr)", gap: 5, marginBottom: 12 }}>
+      <div
+        style={{
+          display: "grid",
+          gridTemplateColumns: "repeat(6, 1fr)",
+          gap: 5,
+          marginBottom: 12,
+        }}
+      >
         {NOTES.map((n) => (
           <button
             key={n}
             type="button"
             onClick={() => setSelectedNote(n)}
             style={{
-              background: selectedNote === n ? "#a55eea" : "rgba(255,255,255,0.08)",
-              border: `1px solid ${selectedNote === n ? "#a55eea" : "rgba(255,255,255,0.15)"}`,
+              background:
+                selectedNote === n ? "#a55eea" : "rgba(255,255,255,0.08)",
+              border: `1px solid ${
+                selectedNote === n ? "#a55eea" : "rgba(255,255,255,0.15)"
+              }`,
               color: "#fff",
               borderRadius: 6,
               padding: "6px 0",
@@ -178,7 +221,16 @@ export default function ClassroomDrone({ onClose }: ClassroomDroneProps) {
       {/* Octave & Reference Frequency */}
       <div style={{ display: "flex", gap: 8, marginBottom: 12 }}>
         <div style={{ flex: 1 }}>
-          <label style={{ fontSize: 10, color: "#aaa", display: "block", marginBottom: 3 }}>Octave</label>
+          <label
+            style={{
+              fontSize: 10,
+              color: "#aaa",
+              display: "block",
+              marginBottom: 3,
+            }}
+          >
+            Octave
+          </label>
           <div style={{ display: "flex", gap: 4 }}>
             {[3, 4, 5].map((o) => (
               <button
@@ -187,8 +239,13 @@ export default function ClassroomDrone({ onClose }: ClassroomDroneProps) {
                 onClick={() => setOctave(o)}
                 style={{
                   flex: 1,
-                  background: octave === o ? "rgba(165, 94, 234, 0.3)" : "rgba(255,255,255,0.06)",
-                  border: `1px solid ${octave === o ? "#a55eea" : "rgba(255,255,255,0.12)"}`,
+                  background:
+                    octave === o
+                      ? "rgba(165, 94, 234, 0.3)"
+                      : "rgba(255,255,255,0.06)",
+                  border: `1px solid ${
+                    octave === o ? "#a55eea" : "rgba(255,255,255,0.12)"
+                  }`,
                   color: "#fff",
                   borderRadius: 4,
                   padding: "4px 0",
@@ -203,7 +260,16 @@ export default function ClassroomDrone({ onClose }: ClassroomDroneProps) {
         </div>
 
         <div style={{ flex: 1 }}>
-          <label style={{ fontSize: 10, color: "#aaa", display: "block", marginBottom: 3 }}>Standard Pitch</label>
+          <label
+            style={{
+              fontSize: 10,
+              color: "#aaa",
+              display: "block",
+              marginBottom: 3,
+            }}
+          >
+            Standard Pitch
+          </label>
           <div style={{ display: "flex", gap: 4 }}>
             {[440, 432].map((hz) => (
               <button
@@ -212,8 +278,13 @@ export default function ClassroomDrone({ onClose }: ClassroomDroneProps) {
                 onClick={() => setStandardFreq(hz)}
                 style={{
                   flex: 1,
-                  background: standardFreq === hz ? "rgba(165, 94, 234, 0.3)" : "rgba(255,255,255,0.06)",
-                  border: `1px solid ${standardFreq === hz ? "#a55eea" : "rgba(255,255,255,0.12)"}`,
+                  background:
+                    standardFreq === hz
+                      ? "rgba(165, 94, 234, 0.3)"
+                      : "rgba(255,255,255,0.06)",
+                  border: `1px solid ${
+                    standardFreq === hz ? "#a55eea" : "rgba(255,255,255,0.12)"
+                  }`,
                   color: "#fff",
                   borderRadius: 4,
                   padding: "4px 0",
@@ -229,8 +300,24 @@ export default function ClassroomDrone({ onClose }: ClassroomDroneProps) {
       </div>
 
       {/* Root + 5th Checkbox & Volume */}
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12 }}>
-        <label style={{ fontSize: 11, color: "#ccc", display: "inline-flex", alignItems: "center", gap: 6, cursor: "pointer" }}>
+      <div
+        style={{
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "space-between",
+          marginBottom: 12,
+        }}
+      >
+        <label
+          style={{
+            fontSize: 11,
+            color: "#ccc",
+            display: "inline-flex",
+            alignItems: "center",
+            gap: 6,
+            cursor: "pointer",
+          }}
+        >
           <input
             type="checkbox"
             checked={includeFifth}
@@ -265,9 +352,10 @@ export default function ClassroomDrone({ onClose }: ClassroomDroneProps) {
         }}
       >
         {isPlaying ? <VolumeX size={15} /> : <Volume2 size={15} />}
-        {isPlaying ? `Stop ${selectedNote}${octave} Drone` : `Play ${selectedNote}${octave} Drone`}
+        {isPlaying
+          ? `Stop ${selectedNote}${octave} Drone`
+          : `Play ${selectedNote}${octave} Drone`}
       </button>
     </div>
   );
 }
-

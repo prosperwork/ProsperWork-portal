@@ -2,14 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { useDataChannel, useRoomContext } from "@livekit/components-react";
-import {
-  Eraser,
-  Highlighter,
-  Pen,
-  RotateCcw,
-  Trash2,
-  X,
-} from "lucide-react";
+import { Eraser, Highlighter, Pen, RotateCcw, Trash2, X } from "lucide-react";
 
 interface ClassroomWhiteboardProps {
   onClose: () => void;
@@ -27,7 +20,9 @@ interface DrawStroke {
   isHighlighter?: boolean;
 }
 
-export default function ClassroomWhiteboard({ onClose }: ClassroomWhiteboardProps) {
+export default function ClassroomWhiteboard({
+  onClose,
+}: ClassroomWhiteboardProps) {
   const room = useRoomContext();
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const [tool, setTool] = useState<"pen" | "highlighter" | "eraser">("pen");
@@ -53,7 +48,11 @@ export default function ClassroomWhiteboard({ onClose }: ClassroomWhiteboardProp
     }
   });
 
-  const drawStaffLines = (ctx: CanvasRenderingContext2D, width: number, height: number) => {
+  const drawStaffLines = (
+    ctx: CanvasRenderingContext2D,
+    width: number,
+    height: number
+  ) => {
     if (!showStaff) return;
     ctx.save();
     ctx.strokeStyle = "rgba(255, 255, 255, 0.18)";
@@ -112,16 +111,24 @@ export default function ClassroomWhiteboard({ onClose }: ClassroomWhiteboardProp
 
     if (stroke.points.length > 1) {
       ctx.beginPath();
-      ctx.moveTo(stroke.points[0].x * canvas.width, stroke.points[0].y * canvas.height);
+      ctx.moveTo(
+        stroke.points[0].x * canvas.width,
+        stroke.points[0].y * canvas.height
+      );
       for (let i = 1; i < stroke.points.length; i++) {
-        ctx.lineTo(stroke.points[i].x * canvas.width, stroke.points[i].y * canvas.height);
+        ctx.lineTo(
+          stroke.points[i].x * canvas.width,
+          stroke.points[i].y * canvas.height
+        );
       }
       ctx.stroke();
     }
     ctx.restore();
   };
 
-  const getCoordinates = (e: React.MouseEvent | React.TouchEvent): DrawPoint | null => {
+  const getCoordinates = (
+    e: React.MouseEvent | React.TouchEvent
+  ): DrawPoint | null => {
     const canvas = canvasRef.current;
     if (!canvas) return null;
     const rect = canvas.getBoundingClientRect();
@@ -237,10 +244,20 @@ export default function ClassroomWhiteboard({ onClose }: ClassroomWhiteboardProp
         }}
       >
         <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-          <strong style={{ fontSize: 13, color: "#2ed573" }}>Music Staff &amp; Whiteboard</strong>
+          <strong style={{ fontSize: 13, color: "#2ed573" }}>
+            Music Staff &amp; Whiteboard
+          </strong>
 
           {/* Tools */}
-          <div style={{ display: "flex", gap: 4, background: "rgba(0,0,0,0.3)", padding: 3, borderRadius: 6 }}>
+          <div
+            style={{
+              display: "flex",
+              gap: 4,
+              background: "rgba(0,0,0,0.3)",
+              padding: 3,
+              borderRadius: 6,
+            }}
+          >
             <button
               type="button"
               onClick={() => setTool("pen")}
@@ -303,21 +320,26 @@ export default function ClassroomWhiteboard({ onClose }: ClassroomWhiteboardProp
           {/* Colors */}
           {tool !== "eraser" && (
             <div style={{ display: "flex", gap: 5, alignItems: "center" }}>
-              {["#2ed573", "#ff4757", "#ffb142", "#70a1ff", "#ffffff"].map((c) => (
-                <button
-                  key={c}
-                  type="button"
-                  onClick={() => setColor(c)}
-                  style={{
-                    width: 18,
-                    height: 18,
-                    borderRadius: "50%",
-                    background: c,
-                    border: color === c ? "2px solid #fff" : "1px solid rgba(0,0,0,0.4)",
-                    cursor: "pointer",
-                  }}
-                />
-              ))}
+              {["#2ed573", "#ff4757", "#ffb142", "#70a1ff", "#ffffff"].map(
+                (c) => (
+                  <button
+                    key={c}
+                    type="button"
+                    onClick={() => setColor(c)}
+                    style={{
+                      width: 18,
+                      height: 18,
+                      borderRadius: "50%",
+                      background: c,
+                      border:
+                        color === c
+                          ? "2px solid #fff"
+                          : "1px solid rgba(0,0,0,0.4)",
+                      cursor: "pointer",
+                    }}
+                  />
+                )
+              )}
             </div>
           )}
 
@@ -326,8 +348,12 @@ export default function ClassroomWhiteboard({ onClose }: ClassroomWhiteboardProp
             type="button"
             onClick={() => setShowStaff((prev) => !prev)}
             style={{
-              background: showStaff ? "rgba(46, 213, 115, 0.2)" : "rgba(255,255,255,0.1)",
-              border: `1px solid ${showStaff ? "#2ed573" : "rgba(255,255,255,0.2)"}`,
+              background: showStaff
+                ? "rgba(46, 213, 115, 0.2)"
+                : "rgba(255,255,255,0.1)",
+              border: `1px solid ${
+                showStaff ? "#2ed573" : "rgba(255,255,255,0.2)"
+              }`,
               color: showStaff ? "#2ed573" : "#fff",
               borderRadius: 4,
               padding: "3px 8px",
@@ -375,7 +401,14 @@ export default function ClassroomWhiteboard({ onClose }: ClassroomWhiteboardProp
       </div>
 
       {/* Canvas */}
-      <div style={{ flex: 1, position: "relative", cursor: "crosshair", touchAction: "none" }}>
+      <div
+        style={{
+          flex: 1,
+          position: "relative",
+          cursor: "crosshair",
+          touchAction: "none",
+        }}
+      >
         <canvas
           ref={canvasRef}
           onMouseDown={startDrawing}
@@ -391,4 +424,3 @@ export default function ClassroomWhiteboard({ onClose }: ClassroomWhiteboardProp
     </div>
   );
 }
-

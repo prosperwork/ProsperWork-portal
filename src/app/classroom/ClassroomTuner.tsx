@@ -7,7 +7,20 @@ interface ClassroomTunerProps {
   onClose: () => void;
 }
 
-const NOTE_STRINGS = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"];
+const NOTE_STRINGS = [
+  "C",
+  "C#",
+  "D",
+  "D#",
+  "E",
+  "F",
+  "F#",
+  "G",
+  "G#",
+  "A",
+  "A#",
+  "B",
+];
 
 export default function ClassroomTuner({ onClose }: ClassroomTunerProps) {
   const [listening, setListening] = useState(false);
@@ -35,7 +48,10 @@ export default function ClassroomTuner({ onClose }: ClassroomTunerProps) {
       });
       streamRef.current = stream;
 
-      const AudioCtx = window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
+      const AudioCtx =
+        window.AudioContext ||
+        (window as unknown as { webkitAudioContext: typeof AudioContext })
+          .webkitAudioContext;
       const ctx = new AudioCtx();
       audioCtxRef.current = ctx;
 
@@ -49,12 +65,17 @@ export default function ClassroomTuner({ onClose }: ClassroomTunerProps) {
       setListening(true);
       detectPitch();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Could not access microphone for tuner.");
+      setError(
+        err instanceof Error
+          ? err.message
+          : "Could not access microphone for tuner."
+      );
     }
   };
 
   const stopTuner = () => {
-    if (animationFrameRef.current) cancelAnimationFrame(animationFrameRef.current);
+    if (animationFrameRef.current)
+      cancelAnimationFrame(animationFrameRef.current);
     if (streamRef.current) {
       for (const track of streamRef.current.getTracks()) track.stop();
     }
@@ -141,7 +162,9 @@ export default function ClassroomTuner({ onClose }: ClassroomTunerProps) {
 
       // Nearest frequency
       const targetFreq = 440 * Math.pow(2, (roundedMidi - 69) / 12);
-      const centDiff = Math.floor((1200 * Math.log(freq / targetFreq)) / Math.log(2));
+      const centDiff = Math.floor(
+        (1200 * Math.log(freq / targetFreq)) / Math.log(2)
+      );
 
       setNote(noteName);
       setOctave(oct);
@@ -187,21 +210,45 @@ export default function ClassroomTuner({ onClose }: ClassroomTunerProps) {
           marginBottom: 12,
         }}
       >
-        <div style={{ display: "flex", alignItems: "center", gap: 7, color: "#2ed573", fontWeight: 700, fontSize: 13 }}>
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: 7,
+            color: "#2ed573",
+            fontWeight: 700,
+            fontSize: 13,
+          }}
+        >
           <Radio size={16} />
           Chromatic Tuner
         </div>
         <button
           type="button"
           onClick={onClose}
-          style={{ background: "transparent", border: "none", color: "#aaa", cursor: "pointer", padding: 2 }}
+          style={{
+            background: "transparent",
+            border: "none",
+            color: "#aaa",
+            cursor: "pointer",
+            padding: 2,
+          }}
         >
           <X size={15} />
         </button>
       </div>
 
       {error ? (
-        <div style={{ color: "#ff4757", fontSize: 11, textAlign: "center", padding: "10px 0" }}>{error}</div>
+        <div
+          style={{
+            color: "#ff4757",
+            fontSize: 11,
+            textAlign: "center",
+            padding: "10px 0",
+          }}
+        >
+          {error}
+        </div>
       ) : (
         <>
           {/* Note Display */}
@@ -211,20 +258,44 @@ export default function ClassroomTuner({ onClose }: ClassroomTunerProps) {
                 fontSize: 54,
                 fontWeight: 900,
                 lineHeight: 1,
-                color: inTune ? "#2ed573" : cents === 0 ? "#fff" : cents < 0 ? "#ffb142" : "#ff4757",
-                textShadow: inTune ? "0 0 16px rgba(46, 213, 115, 0.6)" : "none",
+                color: inTune
+                  ? "#2ed573"
+                  : cents === 0
+                  ? "#fff"
+                  : cents < 0
+                  ? "#ffb142"
+                  : "#ff4757",
+                textShadow: inTune
+                  ? "0 0 16px rgba(46, 213, 115, 0.6)"
+                  : "none",
                 transition: "color 0.1s ease",
               }}
             >
               {note}
               {octave !== null && (
-                <small style={{ fontSize: 24, verticalAlign: "super", marginLeft: 4, opacity: 0.8 }}>
+                <small
+                  style={{
+                    fontSize: 24,
+                    verticalAlign: "super",
+                    marginLeft: 4,
+                    opacity: 0.8,
+                  }}
+                >
                   {octave}
                 </small>
               )}
             </div>
-            <div style={{ fontSize: 12, color: "#8fcaab", marginTop: 4, fontWeight: 600 }}>
-              {frequency > 0 ? `${frequency.toFixed(1)} Hz` : "Play or sing a note…"}
+            <div
+              style={{
+                fontSize: 12,
+                color: "#8fcaab",
+                marginTop: 4,
+                fontWeight: 600,
+              }}
+            >
+              {frequency > 0
+                ? `${frequency.toFixed(1)} Hz`
+                : "Play or sing a note…"}
             </div>
           </div>
 
@@ -242,7 +313,11 @@ export default function ClassroomTuner({ onClose }: ClassroomTunerProps) {
             >
               <span>-50 Flat</span>
               <span style={{ color: inTune ? "#2ed573" : "#aaa" }}>
-                {inTune ? "IN TUNE" : cents > 0 ? `+${cents}c Sharp` : `${cents}c Flat`}
+                {inTune
+                  ? "IN TUNE"
+                  : cents > 0
+                  ? `+${cents}c Sharp`
+                  : `${cents}c Flat`}
               </span>
               <span>+50 Sharp</span>
             </div>
@@ -275,7 +350,11 @@ export default function ClassroomTuner({ onClose }: ClassroomTunerProps) {
                   left: `${((cents + 50) / 100) * 100}%`,
                   width: 4,
                   height: "100%",
-                  background: inTune ? "#2ed573" : cents < 0 ? "#ffb142" : "#ff4757",
+                  background: inTune
+                    ? "#2ed573"
+                    : cents < 0
+                    ? "#ffb142"
+                    : "#ff4757",
                   transform: "translateX(-50%)",
                   boxShadow: inTune ? "0 0 8px #2ed573" : "none",
                   transition: "left 0.08s ease, background 0.1s ease",
@@ -291,7 +370,9 @@ export default function ClassroomTuner({ onClose }: ClassroomTunerProps) {
               onClick={listening ? stopTuner : () => void startTuner()}
               style={{
                 flex: 1,
-                background: listening ? "rgba(255, 71, 87, 0.2)" : "rgba(46, 213, 115, 0.2)",
+                background: listening
+                  ? "rgba(255, 71, 87, 0.2)"
+                  : "rgba(46, 213, 115, 0.2)",
                 border: `1px solid ${listening ? "#ff4757" : "#2ed573"}`,
                 color: listening ? "#ff4757" : "#2ed573",
                 borderRadius: 8,
@@ -314,4 +395,3 @@ export default function ClassroomTuner({ onClose }: ClassroomTunerProps) {
     </div>
   );
 }
-
