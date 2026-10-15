@@ -1,6 +1,12 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState, type FormEvent } from "react";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useState,
+  type FormEvent,
+} from "react";
 import {
   AlertCircle,
   Check,
@@ -16,12 +22,7 @@ import {
   User,
 } from "lucide-react";
 import ProfileAvatar from "../_components/ProfileAvatar";
-import {
-  Empty,
-  Pill,
-  SectionTitle,
-  niceDate,
-} from "../_lib/portal-formatters";
+import { Empty, Pill, SectionTitle, niceDate } from "../_lib/portal-formatters";
 import {
   COMPLAINT_CATEGORIES,
   categoryLabel,
@@ -47,8 +48,7 @@ export default function ComplaintsPage() {
   const [selectedComplaintId, setSelectedComplaintId] = useState<string | null>(
     null
   );
-  const [actionStatus, setActionStatus] =
-    useState<ComplaintStatus>("resolved");
+  const [actionStatus, setActionStatus] = useState<ComplaintStatus>("resolved");
   const [actionNotes, setActionNotes] = useState("");
   const [notifyParent, setNotifyParent] = useState(true);
   const [actionBusy, setActionBusy] = useState(false);
@@ -231,7 +231,9 @@ export default function ComplaintsPage() {
     e.preventDefault();
     if (!selectedComplaint) return;
     if (actionNotes.trim().length < 3) {
-      setActionError("Please provide resolution or update notes for the parent.");
+      setActionError(
+        "Please provide resolution or update notes for the parent."
+      );
       return;
     }
 
@@ -284,7 +286,8 @@ export default function ComplaintsPage() {
           <span className="eyebrow">Quality &amp; Operations</span>
           <h1>Complaints &amp; Support</h1>
           <p className="page-subtitle">
-            Review, investigate, and resolve grievances raised by academy parents and families.
+            Review, investigate, and resolve grievances raised by academy
+            parents and families.
           </p>
         </div>
         <div className="heading-actions">
@@ -527,7 +530,9 @@ export default function ComplaintsPage() {
             <Empty
               title="No tickets found"
               detail={
-                searchQuery || categoryFilter !== "all" || statusFilter !== "all"
+                searchQuery ||
+                categoryFilter !== "all" ||
+                statusFilter !== "all"
                   ? "No tickets match the selected filters."
                   : "No parent complaints or inquiries recorded."
               }
@@ -684,8 +689,16 @@ export default function ComplaintsPage() {
                       flexWrap: "wrap",
                     }}
                   >
-                    <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-                      <strong style={{ fontSize: "13px", color: "var(--pine-950)" }}>
+                    <div
+                      style={{
+                        display: "flex",
+                        alignItems: "center",
+                        gap: "8px",
+                      }}
+                    >
+                      <strong
+                        style={{ fontSize: "13px", color: "var(--pine-950)" }}
+                      >
                         {selectedComplaint.parent_name}
                       </strong>
                       <Pill tone="amber">Parent (Initial Ticket)</Pill>
@@ -707,63 +720,81 @@ export default function ComplaintsPage() {
                 </div>
 
                 {/* All Subsequent Replies */}
-                {selectedComplaint.messages && selectedComplaint.messages.length > 0 ? (
-                  selectedComplaint.messages.map((msg) => {
-                    const isStaff = msg.sender_role !== "parent";
-                    return (
-                      <div
-                        key={msg.id}
-                        style={{
-                          border: isStaff ? "1px solid #bbf7d0" : "1px solid #dce8df",
-                          borderRadius: "10px",
-                          background: isStaff ? "#f0fdf4" : "#ffffff",
-                          padding: "14px 16px",
-                          borderLeft: isStaff ? "4px solid #16a34a" : "4px solid #d97706",
-                          marginLeft: isStaff ? "20px" : "0",
-                          marginRight: isStaff ? "0" : "20px",
-                        }}
-                      >
+                {selectedComplaint.messages &&
+                selectedComplaint.messages.length > 0
+                  ? selectedComplaint.messages.map((msg) => {
+                      const isStaff = msg.sender_role !== "parent";
+                      return (
                         <div
+                          key={msg.id}
                           style={{
-                            display: "flex",
-                            justifyContent: "space-between",
-                            alignItems: "center",
-                            marginBottom: "6px",
-                            gap: "8px",
-                            flexWrap: "wrap",
+                            border: isStaff
+                              ? "1px solid #bbf7d0"
+                              : "1px solid #dce8df",
+                            borderRadius: "10px",
+                            background: isStaff ? "#f0fdf4" : "#ffffff",
+                            padding: "14px 16px",
+                            borderLeft: isStaff
+                              ? "4px solid #16a34a"
+                              : "4px solid #d97706",
+                            marginLeft: isStaff ? "20px" : "0",
+                            marginRight: isStaff ? "0" : "20px",
                           }}
                         >
-                          <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-                            <strong
+                          <div
+                            style={{
+                              display: "flex",
+                              justifyContent: "space-between",
+                              alignItems: "center",
+                              marginBottom: "6px",
+                              gap: "8px",
+                              flexWrap: "wrap",
+                            }}
+                          >
+                            <div
                               style={{
-                                fontSize: "13px",
-                                color: isStaff ? "#14532d" : "var(--pine-950)",
+                                display: "flex",
+                                alignItems: "center",
+                                gap: "8px",
                               }}
                             >
-                              {msg.sender_name}
-                            </strong>
-                            <Pill tone={isStaff ? "green" : "amber"}>
-                              {isStaff ? "Academy Staff" : "Parent"}
-                            </Pill>
+                              <strong
+                                style={{
+                                  fontSize: "13px",
+                                  color: isStaff
+                                    ? "#14532d"
+                                    : "var(--pine-950)",
+                                }}
+                              >
+                                {msg.sender_name}
+                              </strong>
+                              <Pill tone={isStaff ? "green" : "amber"}>
+                                {isStaff ? "Academy Staff" : "Parent"}
+                              </Pill>
+                            </div>
+                            <span
+                              style={{
+                                fontSize: "11px",
+                                color: "var(--muted)",
+                              }}
+                            >
+                              {niceDate(msg.created_at)}
+                            </span>
                           </div>
-                          <span style={{ fontSize: "11px", color: "var(--muted)" }}>
-                            {niceDate(msg.created_at)}
-                          </span>
+                          <div
+                            style={{
+                              fontSize: "13px",
+                              lineHeight: "1.6",
+                              color: isStaff ? "#14532d" : "var(--ink)",
+                              whiteSpace: "pre-wrap",
+                            }}
+                          >
+                            {msg.message}
+                          </div>
                         </div>
-                        <div
-                          style={{
-                            fontSize: "13px",
-                            lineHeight: "1.6",
-                            color: isStaff ? "#14532d" : "var(--ink)",
-                            whiteSpace: "pre-wrap",
-                          }}
-                        >
-                          {msg.message}
-                        </div>
-                      </div>
-                    );
-                  })
-                ) : null}
+                      );
+                    })
+                  : null}
               </div>
 
               {/* Reply Input Box */}
@@ -790,7 +821,11 @@ export default function ComplaintsPage() {
                 </div>
 
                 {replyError && (
-                  <p role="alert" className="form-error" style={{ marginTop: "8px" }}>
+                  <p
+                    role="alert"
+                    className="form-error"
+                    style={{ marginTop: "8px" }}
+                  >
                     {replyError}
                   </p>
                 )}
@@ -894,7 +929,8 @@ export default function ComplaintsPage() {
 
                   <div className="field full">
                     <label htmlFor="resolution-notes">
-                      Resolution / Investigation Notes (Included in parent notification) *
+                      Resolution / Investigation Notes (Included in parent
+                      notification) *
                     </label>
                     <textarea
                       id="resolution-notes"
