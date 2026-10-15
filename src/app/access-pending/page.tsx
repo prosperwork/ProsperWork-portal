@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { hiringRoles } from "../../lib/academy/hiring";
+import { clearAcademyCache } from "../../lib/storage";
 
 type Profile = {
   id: string | number;
@@ -96,6 +97,7 @@ export default function AccessPendingPage() {
   async function signOut() {
     setPending(true);
     setError("");
+    clearAcademyCache();
     try {
       const response = await fetch("/api/auth", {
         method: "POST",

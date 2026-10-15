@@ -1259,6 +1259,33 @@ td strong {
     transform: translateY(0);
   }
 }
+.sync-indicator {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  color: var(--muted, #64748b);
+  margin: 4px 0 12px;
+}
+.sync-indicator .dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background-color: #10b981;
+  opacity: 0.85;
+  animation: sync-pulse 1.4s ease-in-out infinite;
+}
+@keyframes sync-pulse {
+  0%,
+  100% {
+    opacity: 0.35;
+    transform: scale(0.85);
+  }
+  50% {
+    opacity: 1;
+    transform: scale(1.15);
+  }
+}
 @media (max-width: 1050px) {
   .sidebar {
     width: 215px;

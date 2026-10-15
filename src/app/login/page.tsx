@@ -6,6 +6,7 @@ import {
   PARENT_TERMS_VERSION,
   PRIVACY_POLICY_VERSION,
 } from "@/lib/legal/consent-versions";
+import { clearAcademyCache } from "@/lib/storage";
 
 type Mode = "login" | "register" | "forgot";
 type Feedback = { kind: "error" | "success" | "info"; text: string } | null;
@@ -245,6 +246,7 @@ export default function LoginPage() {
         if (safeNext && destination === "/welcome") {
           destination = `/welcome?next=${encodeURIComponent(safeNext)}`;
         }
+        clearAcademyCache();
         window.location.assign(destination);
       } else if (mode === "register") {
         setRegisteredEmail(email);

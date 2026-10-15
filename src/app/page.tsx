@@ -111,8 +111,17 @@ export default function HomePage() {
   // --------------------------------------------------------------------------
   // Academy Data & Profile State
   // --------------------------------------------------------------------------
-  const { data, profile, ready, saving, error, updateData, reload, afterSave } =
-    useAcademyData();
+  const {
+    data,
+    profile,
+    ready,
+    saving,
+    revalidating,
+    error,
+    updateData,
+    reload,
+    afterSave,
+  } = useAcademyData();
   const ownTimezone = profile?.timezone || "Africa/Lagos";
 
   const dayKey = (value: string | Date) =>
@@ -1061,6 +1070,12 @@ export default function HomePage() {
         </div>
       </div>
       {saving && <p role="status">Saving to the academy database…</p>}
+      {!saving && revalidating && (
+        <div role="status" className="sync-indicator">
+          <span className="dot" />
+          <span>Refreshing workspace in background…</span>
+        </div>
+      )}
       {error && (
         <div role="alert" className="form-error" style={{ marginBottom: 16 }}>
           {error}

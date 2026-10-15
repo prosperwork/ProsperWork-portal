@@ -17,6 +17,7 @@ import {
   ArrowLeft,
 } from "lucide-react";
 import type { Role } from "@/lib/types";
+import { clearAcademyCache, getCachedWorkspace } from "@/lib/storage";
 import { portalNavigation } from "../_lib/portal-navigation";
 import WorkspacePageFrame from "./WorkspacePageFrame";
 import PortalAiChatBubble from "./PortalAiChatBubble";
@@ -108,10 +109,12 @@ export default function PortalShell({
       });
       const result = await response.json().catch(() => ({}));
       if (result?.reason === "email_changed") {
+        clearAcademyCache();
         window.location.assign("/login?reason=email_changed");
         return;
       }
       if (result?.reason === "password_changed") {
+        clearAcademyCache();
         window.location.assign("/login?reason=password_changed");
         return;
       }
@@ -134,6 +137,11 @@ export default function PortalShell({
   }, [refreshProfile]);
 
   useEffect(() => {
+    const cached = getCachedWorkspace();
+    if (cached?.profile) {
+      setProfile(cached.profile as unknown as Profile);
+      setSessionLoading(false);
+    }
     void loadSession();
   }, [loadSession]);
 
@@ -285,6 +293,7 @@ export default function PortalShell({
   async function signOut() {
     setAccountMenuOpen(false);
     setSessionError("");
+    clearAcademyCache();
     try {
       const response = await fetch("/api/auth", {
         method: "POST",
