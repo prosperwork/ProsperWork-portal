@@ -53,12 +53,18 @@ function roleLabel(role: Role): string {
 function roleSuggestionChips(role: Role): string[] {
   switch (role) {
     case "parent":
-    case "student":
       return [
         "How do I upload my payment receipt?",
         "Where is my lesson schedule?",
         "How do I submit homework?",
+        "I have an issue or complaint to report",
+      ];
+    case "student":
+      return [
+        "Where is my lesson schedule?",
+        "How do I submit homework?",
         "How do I join the classroom?",
+        "Can you give me a practice tip?",
       ];
     case "teacher":
     case "qc":
@@ -1122,6 +1128,47 @@ export default function PortalAiChatBubble({
                       {msg.role === "assistant"
                         ? formatAssistantResponse(msg.content)
                         : msg.content}
+
+                      {msg.role === "assistant" &&
+                        /complaint|grievance|complaints & support|raise an inquiry|official ticket|inquiry ticket/i.test(
+                          msg.content
+                        ) && (
+                          <div
+                            style={{
+                              marginTop: "10px",
+                              paddingTop: "8px",
+                              borderTop: "1px dashed #dce8df",
+                            }}
+                          >
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setActiveTab("complaints");
+                                if (profile.role === "parent") {
+                                  setShowCreateComplaint(true);
+                                }
+                              }}
+                              style={{
+                                display: "inline-flex",
+                                alignItems: "center",
+                                gap: "6px",
+                                background: "#135B45",
+                                color: "#ffffff",
+                                padding: "6px 12px",
+                                borderRadius: "8px",
+                                border: "none",
+                                fontSize: "11.5px",
+                                fontWeight: 600,
+                                cursor: "pointer",
+                                boxShadow: "0 2px 4px rgba(19,91,69,0.18)",
+                                transition: "all 0.15s ease",
+                              }}
+                            >
+                              <MessageSquare size={13} />
+                              <span>Open Complaints &amp; Support &rarr;</span>
+                            </button>
+                          </div>
+                        )}
                     </div>
 
                     {msg.role === "user" && (
