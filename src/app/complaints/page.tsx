@@ -247,7 +247,7 @@ export default function ComplaintsPage() {
           action: "update_status",
           complaintId: selectedComplaint.id,
           status: newStatus,
-          notifyParent: false,
+          notifyParent: newStatus === "resolved",
         }),
       });
 
@@ -268,9 +268,11 @@ export default function ComplaintsPage() {
       };
 
       showToast(
-        `Ticket #${updated.ticket_number} status set to ${
-          statusLabels[updated.status] || updated.status
-        }.`
+        newStatus === "resolved"
+          ? `Ticket #${updated.ticket_number} marked as resolved. Confirmation email dispatched to ${updated.parent_name}.`
+          : `Ticket #${updated.ticket_number} status set to ${
+              statusLabels[updated.status] || updated.status
+            }.`
       );
     } catch (err) {
       showToast(

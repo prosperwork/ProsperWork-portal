@@ -155,6 +155,29 @@ export async function syncComplaintEmailReplies(): Promise<SyncResult> {
 
           // Check if sender matches parent or administration
           const senderEmail = parsed.from?.value?.[0]?.address?.toLowerCase() || "";
+          const subjectLower = subject.toLowerCase().trim();
+
+          // Strictly ignore system-generated alerts sent to the complaints desk
+          const isSystemGenerated =
+            senderEmail.includes("complaints@prosperworkmusic.com") &&
+            !subjectLower.startsWith("re:") &&
+            !subjectLower.startsWith("fwd:") &&
+            !parsed.inReplyTo;
+
+          if (isSystemGenerated) {
+            continue;
+          }
+
+          // Also ignore if the text is our own system notification template
+          if (
+            cleanedText.includes("Attention Academy Administration") ||
+            cleanedText.includes("A new parent complaint") ||
+            cleanedText.includes("Official Ticket Receipt") ||
+            cleanedText.includes("Review and resolve this ticket")
+          ) {
+            continue;
+          }
+
           const isFromParent =
             senderEmail === complaint.parent_email.toLowerCase() ||
             !senderEmail.includes("prosperworkmusic.com");

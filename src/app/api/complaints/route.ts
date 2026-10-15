@@ -203,44 +203,44 @@ export async function POST(request: Request) {
 
       const complaint = insertResult.data as ComplaintRecord;
 
-      // Send operational email alert to academy complaints inbox (guaranteed retry)
-      void sendOrQueueEmail({
-        recipientId: profile.id,
-        email: "complaints@prosperworkmusic.com",
-        subject: `[Complaint ${complaint.ticket_number}] ${complaint.urgency.toUpperCase()}: ${complaint.subject}`,
-        template: "parent_complaint_alert",
-        payload: {
-          ticketNumber: complaint.ticket_number,
-          parentName: complaint.parent_name,
-          parentEmail: complaint.parent_email,
-          studentName: complaint.student_name,
-          category: complaint.category,
-          categoryLabel: categoryLabel(complaint.category),
-          urgency: complaint.urgency,
-          subject: complaint.subject,
-          message: complaint.message,
-        },
-        appUrl,
-      });
-
-      // Send confirmation receipt to parent (guaranteed retry)
-      void sendOrQueueEmail({
-        recipientId: complaint.parent_id,
-        email: complaint.parent_email,
-        subject: `[Receipt #${complaint.ticket_number}] Inquiry Logged: ${complaint.subject}`,
-        template: "parent_complaint_acknowledgement",
-        payload: {
-          ticketNumber: complaint.ticket_number,
-          parentName: complaint.parent_name,
-          studentName: complaint.student_name,
-          category: complaint.category,
-          categoryLabel: categoryLabel(complaint.category),
-          urgency: complaint.urgency,
-          subject: complaint.subject,
-          message: complaint.message,
-        },
-        appUrl,
-      });
+      // Send operational email alert to academy complaints inbox and receipt to parent (guaranteed delivery)
+      await Promise.allSettled([
+        sendOrQueueEmail({
+          recipientId: profile.id,
+          email: "complaints@prosperworkmusic.com",
+          subject: `[Complaint ${complaint.ticket_number}] ${complaint.urgency.toUpperCase()}: ${complaint.subject}`,
+          template: "parent_complaint_alert",
+          payload: {
+            ticketNumber: complaint.ticket_number,
+            parentName: complaint.parent_name,
+            parentEmail: complaint.parent_email,
+            studentName: complaint.student_name,
+            category: complaint.category,
+            categoryLabel: categoryLabel(complaint.category),
+            urgency: complaint.urgency,
+            subject: complaint.subject,
+            message: complaint.message,
+          },
+          appUrl,
+        }),
+        sendOrQueueEmail({
+          recipientId: complaint.parent_id,
+          email: complaint.parent_email,
+          subject: `[Receipt #${complaint.ticket_number}] Inquiry Logged: ${complaint.subject}`,
+          template: "parent_complaint_acknowledgement",
+          payload: {
+            ticketNumber: complaint.ticket_number,
+            parentName: complaint.parent_name,
+            studentName: complaint.student_name,
+            category: complaint.category,
+            categoryLabel: categoryLabel(complaint.category),
+            urgency: complaint.urgency,
+            subject: complaint.subject,
+            message: complaint.message,
+          },
+          appUrl,
+        }),
+      ]);
 
       return reply({
         ok: true,
@@ -308,20 +308,24 @@ export async function POST(request: Request) {
 
       const updated = updateResult.data as ComplaintRecord;
 
-      // Notify parent via email if explicitly requested (guaranteed retry)
-      if (input.notifyParent === true && updated.parent_email) {
-        void sendOrQueueEmail({
+      // When resolved or requested, send official resolution email to parent (guaranteed retry)
+      if ((isResolved || input.notifyParent === true) && updated.parent_email) {
+        await sendOrQueueEmail({
           recipientId: updated.parent_id,
           email: updated.parent_email,
-          subject: `[${updated.ticket_number}] Update on your inquiry: ${updated.subject}`,
+          subject: isResolved
+            ? `[Resolved #${updated.ticket_number}] Issue Resolved: ${updated.subject}`
+            : `[Update #${updated.ticket_number}] Status Update: ${updated.subject}`,
           template: "parent_complaint_resolved",
           payload: {
             ticketNumber: updated.ticket_number,
             parentName: updated.parent_name,
             subject: updated.subject,
             status: updated.status,
-            resolutionNotes: updated.resolution_notes,
-            resolvedByName: updated.resolved_by_name,
+            resolutionNotes:
+              updated.resolution_notes ||
+              "Your inquiry has been investigated and marked as resolved by Academy Administration. Thank you for your partnership.",
+            resolvedByName: updated.resolved_by_name || profile.name || "Academy Administration",
           },
           appUrl,
         });
@@ -424,7 +428,7 @@ export async function POST(request: Request) {
         : "Academy Administration";
 
       if (recipientEmail) {
-        void sendOrQueueEmail({
+        await sendOrQueueEmail({
           recipientId: isStaff ? complaint.parent_id : profile.id,
           email: recipientEmail,
           subject: isStaff
