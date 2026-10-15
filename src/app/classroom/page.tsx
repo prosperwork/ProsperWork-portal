@@ -15,7 +15,9 @@ import {
   Clock3,
   Headphones,
   LockKeyhole,
+  Maximize2,
   Mic,
+  Minimize2,
   RefreshCw,
   ShieldCheck,
   Video,
@@ -92,6 +94,28 @@ export default function ClassroomPage() {
   const [roomEnded, setRoomEnded] = useState(false);
   const [serverOffset, setServerOffset] = useState(0);
   const [clockNow, setClockNow] = useState(Date.now());
+  const [isFullscreen, setIsFullscreen] = useState(false);
+
+  useEffect(() => {
+    const handleFullscreenChange = () => {
+      setIsFullscreen(Boolean(document.fullscreenElement));
+    };
+    document.addEventListener("fullscreenchange", handleFullscreenChange);
+    return () =>
+      document.removeEventListener("fullscreenchange", handleFullscreenChange);
+  }, []);
+
+  const toggleFullscreen = async () => {
+    try {
+      if (!document.fullscreenElement) {
+        await document.documentElement.requestFullscreen();
+      } else {
+        await document.exitFullscreen();
+      }
+    } catch {
+      // browser may restrict programmatic fullscreen without direct interaction
+    }
+  };
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
@@ -215,6 +239,9 @@ export default function ClassroomPage() {
         serverUrl: result.serverUrl,
         roomName: result.roomName || data.lesson.title,
         closesAt: result.closesAt,
+        canRecord:
+          typeof result.canRecord === "boolean" ? result.canRecord : true,
+        lessonId: (result.lessonId as string) || lessonId,
       });
       setDevices(values);
       setPreviewOpen(false);
@@ -253,47 +280,51 @@ export default function ClassroomPage() {
       )
     : 0;
   return (
-    <main className="pw-classroom">
-      <div className="pc-topline" />
-      <header className="pc-header">
-        <a
-          className="pc-brand"
-          href="/"
-          aria-label="ProsperWork Music Concepts home"
-        >
-          <span className="pc-mark" aria-hidden="true">
-            <img src="/favicon-192x192.png" alt="" />
-          </span>
-          <span>
-            <strong>ProsperWork</strong>
-            <small>Music Concepts</small>
-          </span>
-        </a>
-        <a className="pc-back" href="/">
-          <ArrowLeft size={15} />
-          Workspace
-        </a>
-      </header>
-      <div className="pc-content">
-        <section className="pc-intro">
-          <div>
-            <div className="pc-eyebrow">
-              <span /> Private lesson room
-            </div>
-            <h1>Make space for music.</h1>
-            <p>
-              A secure room for your scheduled lesson. Join only when the room
-              window opens.
-            </p>
-          </div>
-          <div className="pc-privacy">
-            <ShieldCheck size={17} />
-            <span>
-              <strong>Private by design</strong>
-              <small>No recording starts automatically</small>
+    <main className={`pw-classroom ${ticket ? "in-call" : ""}`}>
+      {!ticket && <div className="pc-topline" />}
+      {!ticket && (
+        <header className="pc-header">
+          <a
+            className="pc-brand"
+            href="/"
+            aria-label="ProsperWork Music Concepts home"
+          >
+            <span className="pc-mark" aria-hidden="true">
+              <img src="/favicon-192x192.png" alt="" />
             </span>
-          </div>
-        </section>
+            <span>
+              <strong>ProsperWork</strong>
+              <small>Music Concepts</small>
+            </span>
+          </a>
+          <a className="pc-back" href="/">
+            <ArrowLeft size={15} />
+            Workspace
+          </a>
+        </header>
+      )}
+      <div className="pc-content">
+        {!ticket && (
+          <section className="pc-intro">
+            <div>
+              <div className="pc-eyebrow">
+                <span /> Private lesson room
+              </div>
+              <h1>Make space for music.</h1>
+              <p>
+                A secure room for your scheduled lesson. Join only when the room
+                window opens.
+              </p>
+            </div>
+            <div className="pc-privacy">
+              <ShieldCheck size={17} />
+              <span>
+                <strong>Private by design</strong>
+                <small>No recording starts automatically</small>
+              </span>
+            </div>
+          </section>
+        )}
         {!lessonId ? (
           <section className="pc-empty">
             <span className="pc-empty-mark">
@@ -345,9 +376,31 @@ export default function ClassroomPage() {
                 {ticket ? (
                   <div className="pc-live-wrap">
                     <div className="pc-live-head">
-                      <span className="pc-live-indicator">
-                        <i /> In the lesson
-                      </span>
+                      <div
+                        style={{
+                          display: "flex",
+                          alignItems: "center",
+                          gap: 10,
+                          minWidth: 0,
+                        }}
+                      >
+                        <span className="pc-live-indicator">
+                          <i /> In the lesson
+                        </span>
+                        <span
+                          style={{
+                            fontSize: 12,
+                            fontWeight: 700,
+                            color: "#d1ded5",
+                            overflow: "hidden",
+                            textOverflow: "ellipsis",
+                            whiteSpace: "nowrap",
+                          }}
+                        >
+                          · {data.lesson.title || "Music Lesson"} (
+                          {data.lesson.studentName})
+                        </span>
+                      </div>
                       <div
                         style={{
                           display: "flex",
@@ -357,7 +410,7 @@ export default function ClassroomPage() {
                       >
                         {ticket.canRecord && (
                           <ClassroomRecorder
-                            lessonId={lessonId}
+                            lessonId={ticket.lessonId || lessonId}
                             onRecordingSaved={() =>
                               setNotice(
                                 "Recording saved to lesson notebook and QC video queue."
@@ -368,6 +421,38 @@ export default function ClassroomPage() {
                         <span className="pc-countdown">
                           <Clock3 size={13} /> Room closes in {remaining}
                         </span>
+                        <button
+                          type="button"
+                          onClick={toggleFullscreen}
+                          className="pc-fullscreen-btn"
+                          title={
+                            isFullscreen
+                              ? "Exit Fullscreen"
+                              : "Fullscreen Mode (Zoom / Meet Style)"
+                          }
+                          style={{
+                            background: "rgba(255, 255, 255, 0.12)",
+                            border: "1px solid rgba(255, 255, 255, 0.2)",
+                            color: "#fff",
+                            borderRadius: 6,
+                            padding: "4px 9px",
+                            cursor: "pointer",
+                            display: "inline-flex",
+                            alignItems: "center",
+                            gap: 5,
+                            fontSize: 11,
+                            fontWeight: 600,
+                          }}
+                        >
+                          {isFullscreen ? (
+                            <Minimize2 size={13} />
+                          ) : (
+                            <Maximize2 size={13} />
+                          )}
+                          <span>
+                            {isFullscreen ? "Exit Fullscreen" : "Fullscreen"}
+                          </span>
+                        </button>
                       </div>
                     </div>
                     <LiveKitRoom
@@ -543,102 +628,112 @@ export default function ClassroomPage() {
                   </div>
                 )}
               </section>
-              <aside className="pc-side">
-                <section className="pc-lesson-card">
-                  <div className="pc-card-kicker">Your lesson</div>
-                  <span className="pc-lesson-symbol" aria-hidden="true">
-                    PW
-                  </span>
-                  <h2>{data.lesson.title || "Music lesson"}</h2>
-                  <p className="pc-student">
-                    For <strong>{data.lesson.studentName}</strong>
-                  </p>
-                  <div className="pc-detail">
-                    <Clock3 size={15} />
-                    <span>
-                      <strong>
-                        {timeLabel(
-                          data.lesson.startsAt,
-                          data.lesson.studentTimezone
-                        )}
-                      </strong>
-                      <small>
-                        Student local time · {data.lesson.studentTimezone}
-                      </small>
+              {!ticket && (
+                <aside className="pc-side">
+                  <section className="pc-lesson-card">
+                    <div className="pc-card-kicker">Your lesson</div>
+                    <span className="pc-lesson-symbol" aria-hidden="true">
+                      PW
                     </span>
-                  </div>
-                  <div className="pc-detail">
-                    <span className="pc-duration-icon">
-                      {data.lesson.durationMinutes}
-                    </span>
-                    <span>
-                      <strong>{data.lesson.durationMinutes} minutes</strong>
-                      <small>{label(data.lesson.kind)} lesson</small>
-                    </span>
-                  </div>
-                  <div
-                    className={`pc-window ${effectiveJoinOpen ? "open" : ""}`}
-                  >
-                    <span className="pc-window-dot" />
-                    <span>
-                      <strong>
-                        {effectiveJoinOpen ? "Ready to join" : "Access window"}
-                      </strong>
-                      <small>
-                        {timeLabel(data.opensAt, data.lesson.studentTimezone)} –{" "}
-                        {timeLabel(data.closesAt, data.lesson.studentTimezone)}
-                      </small>
-                    </span>
-                  </div>
-                </section>
-                <section className="pc-checklist">
-                  <div className="pc-card-kicker">Before you join</div>
-                  <div>
-                    <span className="pc-check-icon">
-                      <Wifi size={14} />
-                    </span>
-                    <p>
-                      <strong>Find a steady connection</strong>
-                      <small>
-                        A quiet, stable network helps your teacher hear every
-                        note. Use headphones: music mode preserves instrument
-                        sound without speech noise suppression.
-                      </small>
+                    <h2>{data.lesson.title || "Music lesson"}</h2>
+                    <p className="pc-student">
+                      For <strong>{data.lesson.studentName}</strong>
                     </p>
-                  </div>
-                  <div>
-                    <span className="pc-check-icon">
-                      <Camera size={14} />
-                    </span>
-                    <p>
-                      <strong>Check your camera and mic</strong>
-                      <small>
-                        Preview devices before connecting. Permission is
-                        requested only when you choose setup.
-                      </small>
-                    </p>
-                  </div>
-                  <div>
-                    <span className="pc-check-icon">
-                      <ShieldCheck size={14} />
-                    </span>
-                    <p>
-                      <strong>Keep lessons private</strong>
-                      <small>
-                        Join from a trusted device. Recording does not start
-                        automatically.
-                      </small>
-                    </p>
-                  </div>
-                </section>
-              </aside>
+                    <div className="pc-detail">
+                      <Clock3 size={15} />
+                      <span>
+                        <strong>
+                          {timeLabel(
+                            data.lesson.startsAt,
+                            data.lesson.studentTimezone
+                          )}
+                        </strong>
+                        <small>
+                          Student local time · {data.lesson.studentTimezone}
+                        </small>
+                      </span>
+                    </div>
+                    <div className="pc-detail">
+                      <span className="pc-duration-icon">
+                        {data.lesson.durationMinutes}
+                      </span>
+                      <span>
+                        <strong>{data.lesson.durationMinutes} minutes</strong>
+                        <small>{label(data.lesson.kind)} lesson</small>
+                      </span>
+                    </div>
+                    <div
+                      className={`pc-window ${effectiveJoinOpen ? "open" : ""}`}
+                    >
+                      <span className="pc-window-dot" />
+                      <span>
+                        <strong>
+                          {effectiveJoinOpen
+                            ? "Ready to join"
+                            : "Access window"}
+                        </strong>
+                        <small>
+                          {timeLabel(data.opensAt, data.lesson.studentTimezone)}{" "}
+                          –{" "}
+                          {timeLabel(
+                            data.closesAt,
+                            data.lesson.studentTimezone
+                          )}
+                        </small>
+                      </span>
+                    </div>
+                  </section>
+                  <section className="pc-checklist">
+                    <div className="pc-card-kicker">Before you join</div>
+                    <div>
+                      <span className="pc-check-icon">
+                        <Wifi size={14} />
+                      </span>
+                      <p>
+                        <strong>Find a steady connection</strong>
+                        <small>
+                          A quiet, stable network helps your teacher hear every
+                          note. Use headphones: music mode preserves instrument
+                          sound without speech noise suppression.
+                        </small>
+                      </p>
+                    </div>
+                    <div>
+                      <span className="pc-check-icon">
+                        <Camera size={14} />
+                      </span>
+                      <p>
+                        <strong>Check your camera and mic</strong>
+                        <small>
+                          Preview devices before connecting. Permission is
+                          requested only when you choose setup.
+                        </small>
+                      </p>
+                    </div>
+                    <div>
+                      <span className="pc-check-icon">
+                        <ShieldCheck size={14} />
+                      </span>
+                      <p>
+                        <strong>Keep lessons private</strong>
+                        <small>
+                          Join from a trusted device. Recording does not start
+                          automatically.
+                        </small>
+                      </p>
+                    </div>
+                  </section>
+                </aside>
+              )}
             </div>
           )
         )}
-        <footer className="pc-footer">
-          <span>ProsperWork · Music Concepts</span>
-          <span>Private learning, one lesson at a time</span>
-        </footer>
+        {!ticket && (
+          <footer className="pc-footer">
+            <span>ProsperWork · Music Concepts</span>
+            <span>Private learning, one lesson at a time</span>
+          </footer>
+        )}
       </div>
     </main>
   );
