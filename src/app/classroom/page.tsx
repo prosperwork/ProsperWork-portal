@@ -404,7 +404,7 @@ export default function ClassroomPage() {
                     </LiveKitRoom>
                   </div>
                 ) : previewOpen && permissionReady && effectiveJoinOpen ? (
-                  <div className="pc-preview">
+                  <div className="pc-preview" data-lk-theme="default">
                     <div className="pc-preview-title">
                       <Camera size={16} />
                       <span>
@@ -417,6 +417,10 @@ export default function ClassroomPage() {
                     </div>
                     <PreJoin
                       persistUserChoices={false}
+                      defaults={{
+                        audioEnabled: true,
+                        videoEnabled: true,
+                      }}
                       joinLabel={
                         requesting ? "Preparing secure room…" : "Join lesson"
                       }

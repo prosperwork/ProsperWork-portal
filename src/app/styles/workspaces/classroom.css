@@ -594,8 +594,69 @@
   min-height: 365px;
   border: 1px solid #dae7dc;
   border-radius: 13px;
-  overflow: hidden;
+  overflow: visible;
+  position: relative;
   box-shadow: 0 5px 20px #193d310a;
+}
+.pc-stage:has(.pc-preview) {
+  overflow: visible;
+}
+.pc-preview .lk-video-container {
+  border-radius: 12px 12px 0 0;
+  overflow: hidden;
+}
+.pc-preview .lk-device-menu {
+  position: absolute !important;
+  z-index: 9999 !important;
+  background-color: #1e2621 !important;
+  color: #f5f9f6 !important;
+  border: 1px solid rgba(255, 255, 255, 0.18) !important;
+  border-radius: 10px !important;
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.45) !important;
+  padding: 8px !important;
+  min-width: 220px !important;
+}
+.pc-preview .lk-device-menu .lk-device-menu-heading {
+  color: #8fcaab !important;
+  font-size: 10px !important;
+  font-weight: 800 !important;
+  text-transform: uppercase !important;
+  letter-spacing: 0.8px !important;
+  padding: 6px 10px !important;
+}
+.pc-preview .lk-device-menu ul,
+.pc-preview .lk-device-menu .lk-list {
+  list-style: none !important;
+  margin: 0 !important;
+  padding: 0 !important;
+}
+.pc-preview .lk-device-menu li,
+.pc-preview .lk-device-menu button,
+.pc-preview .lk-device-menu .lk-button {
+  display: block !important;
+  width: 100% !important;
+  text-align: left !important;
+  background: transparent !important;
+  color: #e5eee8 !important;
+  border: 0 !important;
+  font-size: 12px !important;
+  font-weight: 500 !important;
+  padding: 8px 12px !important;
+  border-radius: 6px !important;
+  cursor: pointer !important;
+  transition: background 0.15s, color 0.15s !important;
+}
+.pc-preview .lk-device-menu li:hover,
+.pc-preview .lk-device-menu button:hover,
+.pc-preview .lk-device-menu .lk-button:hover {
+  background: rgba(255, 255, 255, 0.12) !important;
+  color: #ffffff !important;
+}
+.pc-preview .lk-device-menu [aria-selected="true"],
+.pc-preview .lk-device-menu .selected {
+  background: rgba(28, 122, 93, 0.4) !important;
+  color: #8fcaab !important;
+  font-weight: 700 !important;
 }
 .pc-preview-help {
   font-size: 9px;
