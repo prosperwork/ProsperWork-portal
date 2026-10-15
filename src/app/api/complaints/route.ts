@@ -5,6 +5,10 @@ import { provisioningClient, sameOrigin } from "@/lib/supabase/server";
 import { publicAppUrl } from "@/lib/supabase/app-url.mjs";
 import { deliverEmail } from "@/lib/email/transport.mjs";
 import {
+  sendOrQueueEmail,
+  processQueuedComplaintEmails,
+} from "@/lib/email/queue";
+import {
   complaintActionSchema,
   categoryLabel,
   type ComplaintRecord,
@@ -33,8 +37,12 @@ export async function GET(request: Request) {
 
     if (shouldSync) {
       try {
+        const appUrl = publicAppUrl("/").origin;
         const { syncComplaintEmailReplies } = await import("@/lib/email/inbox-sync");
-        await syncComplaintEmailReplies();
+        await Promise.allSettled([
+          syncComplaintEmailReplies(),
+          processQueuedComplaintEmails(appUrl),
+        ]);
       } catch (syncErr) {
         console.error("Complaint email sync error on request:", syncErr);
       }
@@ -190,60 +198,44 @@ export async function POST(request: Request) {
 
       const complaint = insertResult.data as ComplaintRecord;
 
-      // Send operational email alert to academy complaints inbox
-      try {
-        await deliverEmail(
-          {
-            id: randomUUID(),
-            lease_id: randomUUID(),
-            category: "complaints",
-            email: "complaints@prosperworkmusic.com",
-            subject: `[Complaint ${complaint.ticket_number}] ${complaint.urgency.toUpperCase()}: ${complaint.subject}`,
-            template: "parent_complaint_alert",
-            payload: {
-              ticketNumber: complaint.ticket_number,
-              parentName: complaint.parent_name,
-              parentEmail: complaint.parent_email,
-              studentName: complaint.student_name,
-              category: complaint.category,
-              categoryLabel: categoryLabel(complaint.category),
-              urgency: complaint.urgency,
-              subject: complaint.subject,
-              message: complaint.message,
-            },
-          },
-          appUrl
-        );
-      } catch (emailErr) {
-        console.error("Complaint alert email failed:", emailErr);
-      }
+      // Send operational email alert to academy complaints inbox (guaranteed retry)
+      void sendOrQueueEmail({
+        recipientId: profile.id,
+        email: "complaints@prosperworkmusic.com",
+        subject: `[Complaint ${complaint.ticket_number}] ${complaint.urgency.toUpperCase()}: ${complaint.subject}`,
+        template: "parent_complaint_alert",
+        payload: {
+          ticketNumber: complaint.ticket_number,
+          parentName: complaint.parent_name,
+          parentEmail: complaint.parent_email,
+          studentName: complaint.student_name,
+          category: complaint.category,
+          categoryLabel: categoryLabel(complaint.category),
+          urgency: complaint.urgency,
+          subject: complaint.subject,
+          message: complaint.message,
+        },
+        appUrl,
+      });
 
-      // Send confirmation receipt to parent
-      try {
-        await deliverEmail(
-          {
-            id: randomUUID(),
-            lease_id: randomUUID(),
-            category: "complaints",
-            email: complaint.parent_email,
-            subject: `[Receipt #${complaint.ticket_number}] Inquiry Logged: ${complaint.subject}`,
-            template: "parent_complaint_acknowledgement",
-            payload: {
-              ticketNumber: complaint.ticket_number,
-              parentName: complaint.parent_name,
-              studentName: complaint.student_name,
-              category: complaint.category,
-              categoryLabel: categoryLabel(complaint.category),
-              urgency: complaint.urgency,
-              subject: complaint.subject,
-              message: complaint.message,
-            },
-          },
-          appUrl
-        );
-      } catch (parentEmailErr) {
-        console.error("Complaint acknowledgement email failed:", parentEmailErr);
-      }
+      // Send confirmation receipt to parent (guaranteed retry)
+      void sendOrQueueEmail({
+        recipientId: complaint.parent_id,
+        email: complaint.parent_email,
+        subject: `[Receipt #${complaint.ticket_number}] Inquiry Logged: ${complaint.subject}`,
+        template: "parent_complaint_acknowledgement",
+        payload: {
+          ticketNumber: complaint.ticket_number,
+          parentName: complaint.parent_name,
+          studentName: complaint.student_name,
+          category: complaint.category,
+          categoryLabel: categoryLabel(complaint.category),
+          urgency: complaint.urgency,
+          subject: complaint.subject,
+          message: complaint.message,
+        },
+        appUrl,
+      });
 
       return reply({
         ok: true,
@@ -303,31 +295,23 @@ export async function POST(request: Request) {
 
       const updated = updateResult.data as ComplaintRecord;
 
-      // Notify parent via email if requested
+      // Notify parent via email if requested (guaranteed retry)
       if (input.notifyParent !== false && updated.parent_email) {
-        try {
-          await deliverEmail(
-            {
-              id: randomUUID(),
-              lease_id: randomUUID(),
-              category: "complaints",
-              email: updated.parent_email,
-              subject: `[${updated.ticket_number}] Update on your inquiry: ${updated.subject}`,
-              template: "parent_complaint_resolved",
-              payload: {
-                ticketNumber: updated.ticket_number,
-                parentName: updated.parent_name,
-                subject: updated.subject,
-                status: updated.status,
-                resolutionNotes: updated.resolution_notes,
-                resolvedByName: updated.resolved_by_name,
-              },
-            },
-            appUrl
-          );
-        } catch (notifyErr) {
-          console.error("Parent resolution notification email failed:", notifyErr);
-        }
+        void sendOrQueueEmail({
+          recipientId: updated.parent_id,
+          email: updated.parent_email,
+          subject: `[${updated.ticket_number}] Update on your inquiry: ${updated.subject}`,
+          template: "parent_complaint_resolved",
+          payload: {
+            ticketNumber: updated.ticket_number,
+            parentName: updated.parent_name,
+            subject: updated.subject,
+            status: updated.status,
+            resolutionNotes: updated.resolution_notes,
+            resolvedByName: updated.resolved_by_name,
+          },
+          appUrl,
+        });
       }
 
       return reply({
@@ -427,31 +411,23 @@ export async function POST(request: Request) {
         : "Academy Administration";
 
       if (recipientEmail) {
-        try {
-          await deliverEmail(
-            {
-              id: randomUUID(),
-              lease_id: randomUUID(),
-              category: "complaints",
-              email: recipientEmail,
-              subject: isStaff
-                ? `[Ticket #${complaint.ticket_number}] Response from Academy: ${complaint.subject}`
-                : `[Ticket #${complaint.ticket_number}] New reply from ${senderName}: ${complaint.subject}`,
-              template: "complaint_reply_alert",
-              payload: {
-                ticketNumber: complaint.ticket_number,
-                subject: complaint.subject,
-                recipientName,
-                senderName,
-                senderRole,
-                message: newMessage.message,
-              },
-            },
-            appUrl
-          );
-        } catch (emailErr) {
-          console.error("Reply alert email failed:", emailErr);
-        }
+        void sendOrQueueEmail({
+          recipientId: isStaff ? complaint.parent_id : profile.id,
+          email: recipientEmail,
+          subject: isStaff
+            ? `[Ticket #${complaint.ticket_number}] Response from Academy: ${complaint.subject}`
+            : `[Ticket #${complaint.ticket_number}] New reply from ${senderName}: ${complaint.subject}`,
+          template: "complaint_reply_alert",
+          payload: {
+            ticketNumber: complaint.ticket_number,
+            subject: complaint.subject,
+            recipientName,
+            senderName,
+            senderRole,
+            message: newMessage.message,
+          },
+          appUrl,
+        });
       }
 
       return reply({

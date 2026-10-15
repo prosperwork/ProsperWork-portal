@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server";
 import { identity } from "@/lib/supabase/identity";
+import { publicAppUrl } from "@/lib/supabase/app-url.mjs";
 import { syncComplaintEmailReplies } from "@/lib/email/inbox-sync";
+import { processQueuedComplaintEmails } from "@/lib/email/queue";
 
 export const dynamic = "force-dynamic";
 
@@ -26,12 +28,17 @@ export async function POST(request: Request) {
       }
     }
 
-    const result = await syncComplaintEmailReplies();
+    const appUrl = publicAppUrl("/").origin;
+    const [syncResult, queueResult] = await Promise.all([
+      syncComplaintEmailReplies(),
+      processQueuedComplaintEmails(appUrl),
+    ]);
 
     return reply({
       ok: true,
-      message: `Scanned ${result.scanned} emails, imported ${result.imported} new replies.`,
-      result,
+      message: `Scanned ${syncResult.scanned} emails, imported ${syncResult.imported} replies. Flushed queue: ${queueResult.sent} sent, ${queueResult.failed} failed.`,
+      syncResult,
+      queueResult,
     });
   } catch (err) {
     console.error("Complaint email sync error:", err);
