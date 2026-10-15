@@ -31,6 +31,7 @@ import ClassroomPiano from "./ClassroomPiano";
 import ClassroomTuner from "./ClassroomTuner";
 import ClassroomDrone from "./ClassroomDrone";
 import ClassroomWhiteboard from "./ClassroomWhiteboard";
+import ClassroomStaffChat, { type StaffChatMessage } from "./ClassroomStaffChat";
 
 interface FloatingReaction {
   id: string;
@@ -66,11 +67,10 @@ export default function ClassroomMusicTools({
   initialStudentPermissions,
 }: ClassroomMusicToolsProps) {
   const room = useRoomContext();
-  const { chatMessages } = useChat();
+  const { chatMessages, send: sendPublicMessage } = useChat();
 
   const [musicMode, setMusicMode] = useState(true);
 
-  // Per-feature student permission state
   // Per-feature student permission state (strictly defaults to locked/false for students)
   const defaultStudentPermissions: StudentPermissions = {
     piano: false,
@@ -84,17 +84,8 @@ export default function ClassroomMusicTools({
 
   const [studentPermissions, setStudentPermissions] =
     useState<StudentPermissions>(() => {
-      if (initialStudentPermissions) return initialStudentPermissions;
-      if (initialStudentFeaturesEnabled) {
       if (initialStudentPermissions) {
         return {
-          piano: true,
-          whiteboard: true,
-          metronome: true,
-          tuner: true,
-          drone: true,
-          chat: true,
-          reactions: true,
           piano: Boolean(initialStudentPermissions.piano),
           whiteboard: Boolean(initialStudentPermissions.whiteboard),
           metronome: Boolean(initialStudentPermissions.metronome),
@@ -116,6 +107,17 @@ export default function ClassroomMusicTools({
   const [tunerOpen, setTunerOpen] = useState(false);
   const [droneOpen, setDroneOpen] = useState(false);
   const [whiteboardOpen, setWhiteboardOpen] = useState(false);
+
+  // Staff Private Chat State (Admin & Teacher backchannel)
+  const [staffChatOpen, setStaffChatOpen] = useState(false);
+  const [staffMessages, setStaffMessages] = useState<StaffChatMessage[]>([]);
+  const [unreadStaffCount, setUnreadStaffCount] = useState(0);
+  const [staffToast, setStaffToast] = useState<{
+    id: string;
+    sender: string;
+    role: string;
+    message: string;
+  } | null>(null);
 
   // Metronome State
   const [bpm, setBpm] = useState(120);
@@ -142,9 +144,6 @@ export default function ClassroomMusicTools({
 
   // Check if a specific feature is locked for this user
   const isFeatureLocked = (feature: keyof StudentPermissions): boolean => {
-    // Teachers, Admins, SuperAdmins are never restricted from using any tool
-    if (!isRestrictedRole) return false;
-    return !studentPermissions[feature];
     // If user is marked as restricted or student/parent role, strictly verify permission
     if (isRestrictedRole || userRole === "student" || userRole === "parent") {
       return !studentPermissions[feature];
@@ -258,6 +257,105 @@ export default function ClassroomMusicTools({
     }
   );
 
+  // Staff Private Backchannel Data Channel (Teacher & Admin Only)
+  const { send: sendStaffBroadcast } = useDataChannel(
+    "classroom_staff_chat",
+    (msg) => {
+      // Security guard: If user is restricted (student/parent), drop immediately!
+      if (isRestrictedRole || userRole === "student" || userRole === "parent")
+        return;
+      try {
+        const decoded = new TextDecoder().decode(msg.payload);
+        const data = JSON.parse(decoded) as StaffChatMessage;
+        if (!data || !data.id || !data.message) return;
+
+        setStaffMessages((prev) => {
+          if (prev.some((m) => m.id === data.id)) return prev;
+          return [...prev, data];
+        });
+
+        // If message is from someone else and staff chat panel is closed, show private toast
+        if (data.senderId !== room?.localParticipant?.identity) {
+          if (!staffChatOpen) {
+            setUnreadStaffCount((prev) => prev + 1);
+            setStaffToast({
+              id: data.id,
+              sender: data.senderName,
+              role: data.senderRole,
+              message: data.message,
+            });
+            setTimeout(() => {
+              setStaffToast((prev) => (prev?.id === data.id ? null : prev));
+            }, 6500);
+          }
+        }
+      } catch {
+        // ignore malformed message
+      }
+    }
+  );
+
+  // Send Staff Message handler (targeted SFU delivery to staff participants only)
+  const handleSendStaffMessage = async (text: string) => {
+    if (
+      !room ||
+      !text.trim() ||
+      isRestrictedRole ||
+      userRole === "student" ||
+      userRole === "parent"
+    )
+      return;
+
+    const chatItem: StaffChatMessage = {
+      id: Math.random().toString(36).slice(2) + Date.now().toString(36),
+      senderId: room.localParticipant.identity,
+      senderName: room.localParticipant.name || "Staff",
+      senderRole: userRole || "Staff",
+      message: text.trim(),
+      timestamp: Date.now(),
+    };
+
+    setStaffMessages((prev) => [...prev, chatItem]);
+
+    const staffRoles = [
+      "super_admin",
+      "admin",
+      "head_admin",
+      "general_manager",
+      "teacher",
+      "qc",
+    ];
+    const remoteStaffIds: string[] = [];
+    for (const p of room.remoteParticipants.values()) {
+      let role = p.attributes?.role || "";
+      let isStaff = p.attributes?.isStaff === "true";
+      if (!isStaff && p.metadata) {
+        try {
+          const parsed = JSON.parse(p.metadata);
+          if (parsed.isStaff) isStaff = true;
+          if (parsed.role) role = parsed.role;
+        } catch {
+          // ignore parsing error
+        }
+      }
+      if (isStaff || staffRoles.includes(role.toLowerCase())) {
+        remoteStaffIds.push(p.identity);
+      }
+    }
+
+    const payload = new TextEncoder().encode(JSON.stringify(chatItem));
+    if (sendStaffBroadcast) {
+      if (remoteStaffIds.length > 0) {
+        sendStaffBroadcast(payload, {
+          reliable: true,
+          destinationIdentities: remoteStaffIds,
+        });
+      } else {
+        sendStaffBroadcast(payload, { reliable: true });
+      }
+    }
+  };
+
   // Broadcast current permissions whenever room connects or a new participant arrives
   useEffect(() => {
     if (!canGrantAccess || !room) return;
@@ -364,6 +462,13 @@ export default function ClassroomMusicTools({
     const latest = chatMessages[chatMessages.length - 1];
     if (latest.timestamp > lastMessageTimeRef.current) {
       lastMessageTimeRef.current = latest.timestamp;
+      // If message is marked private staff, suppress toast for restricted students
+      if (
+        latest.message?.startsWith("[STAFF_PRIVATE]") &&
+        (isRestrictedRole || userRole === "student" || userRole === "parent")
+      ) {
+        return;
+      }
       // Only show toast if sent by someone else
       if (latest.from?.identity !== room?.localParticipant?.identity) {
         const sender =
@@ -380,7 +485,7 @@ export default function ClassroomMusicTools({
         }, 5500);
       }
     }
-  }, [chatMessages, room?.localParticipant?.identity]);
+  }, [chatMessages, room?.localParticipant?.identity, isRestrictedRole, userRole]);
 
   const addFloatingReaction = (
     sender: string,
@@ -603,6 +708,106 @@ export default function ClassroomMusicTools({
 
   return (
     <>
+      {/* Staff Private In-Call Chat Notification Toast (Staff Only) */}
+      {staffToast &&
+        !isRestrictedRole &&
+        userRole !== "student" &&
+        userRole !== "parent" && (
+          <div
+            className="pc-staff-chat-toast"
+            onClick={() => {
+              setStaffChatOpen(true);
+              setUnreadStaffCount(0);
+              setStaffToast(null);
+            }}
+            style={{
+              position: "fixed",
+              bottom: chatToast ? "165px" : "85px",
+              right: "24px",
+              background: "#1f180d",
+              border: "1px solid rgba(255, 177, 66, 0.6)",
+              borderRadius: 10,
+              padding: "10px 14px",
+              boxShadow:
+                "0 12px 35px rgba(0,0,0,0.7), 0 0 15px rgba(255, 177, 66, 0.2)",
+              zIndex: 9999,
+              maxWidth: 340,
+              display: "flex",
+              alignItems: "flex-start",
+              gap: 10,
+              cursor: "pointer",
+              animation: "fadeIn 0.25s ease",
+              color: "#fff",
+            }}
+          >
+            <ShieldAlert
+              size={16}
+              color="#ffb142"
+              style={{ flexShrink: 0, marginTop: 2 }}
+            />
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 5 }}>
+                <span
+                  style={{ fontSize: 11, fontWeight: 700, color: "#ffb142" }}
+                >
+                  🔒 Staff Backchannel · {staffToast.sender}
+                </span>
+                <span
+                  style={{
+                    fontSize: 9,
+                    fontWeight: 600,
+                    background: "rgba(255, 177, 66, 0.2)",
+                    color: "#ffb142",
+                    padding: "0 4px",
+                    borderRadius: 4,
+                    textTransform: "capitalize",
+                  }}
+                >
+                  {staffToast.role}
+                </span>
+              </div>
+              <div
+                style={{
+                  fontSize: 12,
+                  color: "#e1e8e4",
+                  overflow: "hidden",
+                  textOverflow: "ellipsis",
+                  wordBreak: "break-word",
+                  marginTop: 2,
+                }}
+              >
+                {staffToast.message}
+              </div>
+              <div
+                style={{
+                  fontSize: 10,
+                  color: "#ffb142",
+                  marginTop: 3,
+                  fontWeight: 600,
+                }}
+              >
+                Click to reply privately →
+              </div>
+            </div>
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                setStaffToast(null);
+              }}
+              style={{
+                background: "transparent",
+                border: "none",
+                color: "#888",
+                cursor: "pointer",
+                padding: 0,
+              }}
+            >
+              <X size={13} />
+            </button>
+          </div>
+        )}
+
       {/* Floating In-Call Chat Notification Toast */}
       {chatToast && (
         <div
@@ -1421,6 +1626,68 @@ export default function ClassroomMusicTools({
           )}
           <span>{handRaised ? "Lower Hand" : "Raise Hand"}</span>
         </button>
+
+        {/* Staff Private Backchannel Chat Button (Admin & Teacher Only) */}
+        {!isRestrictedRole &&
+          userRole !== "student" &&
+          userRole !== "parent" && (
+            <button
+              type="button"
+              onClick={() => {
+                setStaffChatOpen((prev) => !prev);
+                setUnreadStaffCount(0);
+              }}
+              title="Private Staff Backchannel: Secret chat between Teacher and Admin (Invisible to student & parent)"
+              style={{
+                position: "relative",
+                background: staffChatOpen
+                  ? "rgba(255, 177, 66, 0.28)"
+                  : unreadStaffCount > 0
+                  ? "rgba(255, 177, 66, 0.2)"
+                  : "rgba(255, 255, 255, 0.1)",
+                border: `1px solid ${
+                  staffChatOpen
+                    ? "#ffb142"
+                    : unreadStaffCount > 0
+                    ? "#ffb142"
+                    : "rgba(255, 177, 66, 0.45)"
+                }`,
+                color:
+                  staffChatOpen || unreadStaffCount > 0
+                    ? "#ffb142"
+                    : "#ffc078",
+                borderRadius: 6,
+                padding: "4px 9px",
+                fontSize: 11,
+                fontWeight: 700,
+                cursor: "pointer",
+                display: "inline-flex",
+                alignItems: "center",
+                gap: 5,
+                boxShadow:
+                  unreadStaffCount > 0
+                    ? "0 0 10px rgba(255, 177, 66, 0.45)"
+                    : "none",
+              }}
+            >
+              <ShieldAlert size={13} color="#ffb142" />
+              <span>Staff Chat</span>
+              {unreadStaffCount > 0 && (
+                <span
+                  style={{
+                    background: "#ff4757",
+                    color: "#fff",
+                    fontSize: 9,
+                    fontWeight: 800,
+                    padding: "0 5px",
+                    borderRadius: 10,
+                  }}
+                >
+                  {unreadStaffCount}
+                </span>
+              )}
+            </button>
+          )}
       </div>
 
       {/* Floating Metronome Drawer / Modal */}
@@ -1690,6 +1957,31 @@ export default function ClassroomMusicTools({
           isLocked={isFeatureLocked("whiteboard")}
         />
       )}
+
+      {/* Staff Private Backchannel Chat Component (Admin & Teacher Only) */}
+      {staffChatOpen &&
+        !isRestrictedRole &&
+        userRole !== "student" &&
+        userRole !== "parent" && (
+          <ClassroomStaffChat
+            onClose={() => setStaffChatOpen(false)}
+            userRole={userRole}
+            isRestrictedRole={isRestrictedRole}
+            staffMessages={staffMessages}
+            onSendStaffMessage={handleSendStaffMessage}
+            publicMessages={chatMessages.map((m, idx) => ({
+              id: m.id || `${m.timestamp}-${idx}`,
+              sender: m.from?.name || m.from?.identity || "Participant",
+              message: m.message,
+              timestamp: m.timestamp,
+            }))}
+            onSendPublicMessage={async (msg) => {
+              if (sendPublicMessage) {
+                await sendPublicMessage(msg);
+              }
+            }}
+          />
+        )}
     </>
   );
 }

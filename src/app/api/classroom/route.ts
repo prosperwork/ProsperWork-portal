@@ -92,21 +92,13 @@ export async function POST(request: Request) {
     if (error) return NextResponse.json({ error: error.code === "PW006" ? "This class is outside its permitted join window." : error.code === "PW429" ? "Too many join attempts. Wait one minute and try again." : "You do not have access to this classroom." }, { status: error.code === "PW006" ? 409 : error.code === "PW429" ? 429 : error.code === "42501" ? 403 : 503 });
     const ttl = Math.min(300, Math.floor((Date.parse(data.closesAt) - Date.now()) / 1000));
     if (ttl < 1) return NextResponse.json({ error: "This classroom has closed." }, { status: 409 });
-    const access = new AccessToken(key, secret, { identity: profile.id, name: profile.name, ttl });
-    const canRecord = ["super_admin", "admin", "head_admin", "qc", "teacher"].includes(profile.role);
-    access.addGrant({
-      roomJoin: true, room: data.roomName, roomAdmin: Boolean(data.host),
-      canPublish: true, canSubscribe: true, canPublishData: true,
-      canUpdateOwnMetadata: true, roomRecord: canRecord,
-    });
-
-    const { data: lessonRow } = await client.from("pw_lessons").select("admin_id, student_id, payload").eq("id", input.data.lessonId).single();
-    const payload = (lessonRow?.payload || {}) as Record<string, unknown>;
-
     const requestUrl = new URL(request.url);
     const asStudent = requestUrl.searchParams.get("as") === "student" || requestUrl.searchParams.get("role") === "student" || input.data.asRole === "student";
     const staffRoles = ["super_admin", "admin", "head_admin", "general_manager", "teacher", "qc"];
-    const isStaff = staffRoles.includes(String(profile.role || "").toLowerCase());
+    const isStaff = !asStudent && staffRoles.includes(String(profile.role || "").toLowerCase());
+
+    const { data: lessonRow } = await client.from("pw_lessons").select("admin_id, student_id, payload").eq("id", input.data.lessonId).single();
+    const payload = (lessonRow?.payload || {}) as Record<string, unknown>;
 
     const canGrantAccess = !asStudent && (
       profile.role === "super_admin" ||
@@ -117,6 +109,26 @@ export async function POST(request: Request) {
     const isRestrictedRole = asStudent || !isStaff || ["student", "parent"].includes(String(profile.role || "").toLowerCase()) || profile.id === lessonRow?.student_id;
     const studentPermissions = resolveStudentPermissions(payload);
     const studentFeaturesEnabled = Object.values(studentPermissions).some(Boolean);
+
+    const access = new AccessToken(key, secret, {
+      identity: profile.id,
+      name: profile.name,
+      metadata: JSON.stringify({
+        role: asStudent ? "student" : profile.role,
+        isStaff: isStaff && !isRestrictedRole,
+      }),
+      attributes: {
+        role: asStudent ? "student" : profile.role,
+        isStaff: isStaff && !isRestrictedRole ? "true" : "false",
+      },
+      ttl,
+    });
+    const canRecord = ["super_admin", "admin", "head_admin", "qc", "teacher"].includes(profile.role);
+    access.addGrant({
+      roomJoin: true, room: data.roomName, roomAdmin: Boolean(data.host),
+      canPublish: true, canSubscribe: true, canPublishData: true,
+      canUpdateOwnMetadata: true, roomRecord: canRecord,
+    });
 
     return NextResponse.json({
       token: await access.toJwt(),
