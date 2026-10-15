@@ -1075,7 +1075,7 @@ export default function PortalAiChatBubble({
               type="button"
               onClick={() => {
                 setActiveTab("complaints");
-                if (complaints.length === 0) void loadComplaints();
+                void loadComplaints();
               }}
               style={{
                 flex: 1,
@@ -2105,6 +2105,7 @@ export default function PortalAiChatBubble({
                   {/* Reply Input Form or Resolved Notice */}
                   {selectedComplaint.status === "resolved" ? (
                     <div
+                      className="complaint-resolved-banner"
                       style={{
                         padding: "12px 16px",
                         background: "#f0fdf4",
@@ -2337,6 +2338,7 @@ export default function PortalAiChatBubble({
                       return (
                         <div
                           key={c.id}
+                          className="complaint-card-item"
                           onClick={() => setSelectedComplaintId(c.id)}
                           style={{
                             padding: "10px 12px",
