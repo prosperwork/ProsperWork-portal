@@ -28,6 +28,7 @@ import {
 import BrandEmblem from "../_components/BrandEmblem";
 import ClassroomRecorder from "./ClassroomRecorder";
 import ClassroomMusicTools from "./ClassroomMusicTools";
+import type { StudentPermissions } from "@/app/api/classroom/route";
 
 type Lesson = {
   id: string;
@@ -50,6 +51,7 @@ type ClassroomData = {
   canGrantAccess?: boolean;
   isRestrictedRole?: boolean;
   studentFeaturesEnabled?: boolean;
+  studentPermissions?: StudentPermissions;
 };
 
 type DeviceSettings = Parameters<NonNullable<PreJoinProps["onSubmit"]>>[0];
@@ -64,6 +66,7 @@ type RoomTicket = {
   canGrantAccess?: boolean;
   isRestrictedRole?: boolean;
   studentFeaturesEnabled?: boolean;
+  studentPermissions?: StudentPermissions;
 };
 
 async function json(response: Response) {
@@ -259,6 +262,8 @@ export default function ClassroomPage() {
         studentFeaturesEnabled: Boolean(
           result.studentFeaturesEnabled ?? data?.studentFeaturesEnabled
         ),
+        studentPermissions:
+          result.studentPermissions || data?.studentPermissions,
       });
       setDevices(values);
       setPreviewOpen(false);
@@ -463,6 +468,9 @@ export default function ClassroomPage() {
                             isRestrictedRole={ticket.isRestrictedRole}
                             initialStudentFeaturesEnabled={
                               ticket.studentFeaturesEnabled
+                            }
+                            initialStudentPermissions={
+                              ticket.studentPermissions
                             }
                           />
                           {ticket.canRecord && (

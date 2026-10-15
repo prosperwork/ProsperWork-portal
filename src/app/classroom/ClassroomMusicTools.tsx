@@ -46,12 +46,15 @@ interface ChatToast {
   message: string;
 }
 
+import type { StudentPermissions } from "@/app/api/classroom/route";
+
 interface ClassroomMusicToolsProps {
   lessonId: string;
   userRole?: string;
   canGrantAccess?: boolean;
   isRestrictedRole?: boolean;
   initialStudentFeaturesEnabled?: boolean;
+  initialStudentPermissions?: StudentPermissions;
 }
 
 export default function ClassroomMusicTools({
@@ -60,17 +63,43 @@ export default function ClassroomMusicTools({
   canGrantAccess = false,
   isRestrictedRole = false,
   initialStudentFeaturesEnabled = false,
+  initialStudentPermissions,
 }: ClassroomMusicToolsProps) {
   const room = useRoomContext();
   const { chatMessages } = useChat();
 
   const [musicMode, setMusicMode] = useState(true);
 
-  // Student Access Permission State (controlled by SuperAdmin & Assigned Admin Usher)
-  const [studentFeaturesEnabled, setStudentFeaturesEnabled] = useState(
-    initialStudentFeaturesEnabled
-  );
-  const [togglingAccess, setTogglingAccess] = useState(false);
+  // Per-feature student permission state
+  const defaultStudentPermissions: StudentPermissions = {
+    piano: false,
+    whiteboard: false,
+    metronome: false,
+    tuner: false,
+    drone: false,
+    chat: false,
+    reactions: false,
+  };
+
+  const [studentPermissions, setStudentPermissions] =
+    useState<StudentPermissions>(() => {
+      if (initialStudentPermissions) return initialStudentPermissions;
+      if (initialStudentFeaturesEnabled) {
+        return {
+          piano: true,
+          whiteboard: true,
+          metronome: true,
+          tuner: true,
+          drone: true,
+          chat: true,
+          reactions: true,
+        };
+      }
+      return defaultStudentPermissions;
+    });
+
+  const [permissionsMenuOpen, setPermissionsMenuOpen] = useState(false);
+  const [updatingFeature, setUpdatingFeature] = useState<string | null>(null);
 
   // Tool Modals / Panels
   const [metronomeOpen, setMetronomeOpen] = useState(false);
@@ -102,10 +131,28 @@ export default function ClassroomMusicTools({
   const lastTapRef = useRef<number>(0);
   const tapIntervalsRef = useRef<number[]>([]);
 
-  // Is this user currently blocked from using student tools?
-  // Only students and parents are restricted when studentFeaturesEnabled is false.
-  // Teachers, Admins, SuperAdmins are never restricted from using tools.
-  const isFeatureLockedForUser = isRestrictedRole && !studentFeaturesEnabled;
+  // Check if a specific feature is locked for this user
+  const isFeatureLocked = (feature: keyof StudentPermissions): boolean => {
+    // Teachers, Admins, SuperAdmins are never restricted from using any tool
+    if (!isRestrictedRole) return false;
+    return !studentPermissions[feature];
+  };
+
+  // Check and prompt if action is allowed
+  const requireAccess = (
+    feature: keyof StudentPermissions,
+    label: string
+  ): boolean => {
+    if (isFeatureLocked(feature)) {
+      addFloatingReaction(
+        "Supervisor",
+        "🔒",
+        `${label} is locked by your lesson supervisor.`
+      );
+      return false;
+    }
+    return true;
+  };
 
   // Master Classroom Broadcast Channel
   const { send: sendBroadcast } = useDataChannel(
@@ -115,28 +162,79 @@ export default function ClassroomMusicTools({
         const decoded = new TextDecoder().decode(msg.payload);
         const data = JSON.parse(decoded);
 
-        if (data.type === "student_access_changed") {
-          const next = Boolean(data.enabled);
-          setStudentFeaturesEnabled(next);
+        if (data.type === "student_permissions_changed" && data.permissions) {
+          const next = data.permissions as StudentPermissions;
+          setStudentPermissions(next);
           if (isRestrictedRole) {
-            if (next) {
-              addFloatingReaction(
-                "Supervisor",
-                "🎉",
-                "Music tools & chat unlocked for you!"
-              );
+            if (data.changedKey) {
+              const toolNames: Record<keyof StudentPermissions, string> = {
+                piano: "Piano & MIDI",
+                whiteboard: "Whiteboard & Typing",
+                metronome: "Academy Metronome",
+                tuner: "Chromatic Tuner",
+                drone: "Pitch Drone",
+                chat: "Live Chat",
+                reactions: "Reactions & Hand Raise",
+              };
+              const name =
+                toolNames[data.changedKey as keyof StudentPermissions] ||
+                "Feature";
+              if (data.enabled) {
+                addFloatingReaction(
+                  "Supervisor",
+                  "🎉",
+                  `${name} unlocked for you!`
+                );
+              } else {
+                addFloatingReaction(
+                  "Supervisor",
+                  "🔒",
+                  `${name} locked by supervisor`
+                );
+              }
             } else {
-              addFloatingReaction(
-                "Supervisor",
-                "🔒",
-                "Tools restricted by lesson supervisor"
-              );
-              setPianoOpen(false);
-              setWhiteboardOpen(false);
-              setTunerOpen(false);
-              setDroneOpen(false);
-              setMetronomeOpen(false);
+              const anyEnabled = Object.values(next).some(Boolean);
+              if (anyEnabled) {
+                addFloatingReaction(
+                  "Supervisor",
+                  "🎉",
+                  "Permissions updated by supervisor!"
+                );
+              } else {
+                addFloatingReaction(
+                  "Supervisor",
+                  "🔒",
+                  "Student tools restricted by supervisor"
+                );
+              }
             }
+
+            // Close modal if that feature got disabled
+            if (!next.piano) setPianoOpen(false);
+            if (!next.whiteboard) setWhiteboardOpen(false);
+            if (!next.tuner) setTunerOpen(false);
+            if (!next.drone) setDroneOpen(false);
+            if (!next.metronome) setMetronomeOpen(false);
+          }
+        } else if (data.type === "student_access_changed") {
+          // Backward compatibility for legacy all-or-nothing broadcast
+          const enabled = Boolean(data.enabled);
+          const next: StudentPermissions = {
+            piano: enabled,
+            whiteboard: enabled,
+            metronome: enabled,
+            tuner: enabled,
+            drone: enabled,
+            chat: enabled,
+            reactions: enabled,
+          };
+          setStudentPermissions(next);
+          if (isRestrictedRole && !enabled) {
+            setPianoOpen(false);
+            setWhiteboardOpen(false);
+            setTunerOpen(false);
+            setDroneOpen(false);
+            setMetronomeOpen(false);
           }
         } else if (data.type === "whiteboard_toggle") {
           setWhiteboardOpen(Boolean(data.open));
@@ -157,51 +255,85 @@ export default function ClassroomMusicTools({
     }
   );
 
-  // Toggle student feature access (SuperAdmin or Assigned Admin Usher only)
-  const toggleStudentAccess = async () => {
-    if (!canGrantAccess || togglingAccess) return;
-    const next = !studentFeaturesEnabled;
-    setTogglingAccess(true);
-    setStudentFeaturesEnabled(next);
+  // Toggle single permission for student
+  const toggleSinglePermission = async (feature: keyof StudentPermissions) => {
+    if (!canGrantAccess || updatingFeature) return;
+    const nextVal = !studentPermissions[feature];
+    const nextPermissions: StudentPermissions = {
+      ...studentPermissions,
+      [feature]: nextVal,
+    };
+    setUpdatingFeature(feature);
+    setStudentPermissions(nextPermissions);
 
     try {
-      // 1. Update database
       await fetch("/api/classroom", {
         method: "PATCH",
         credentials: "include",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           lessonId,
-          studentFeaturesEnabled: next,
+          feature,
+          enabled: nextVal,
         }),
       });
 
-      // 2. Broadcast via LiveKit Data Channel
       if (sendBroadcast) {
         const payload = JSON.stringify({
-          type: "student_access_changed",
-          enabled: next,
+          type: "student_permissions_changed",
+          permissions: nextPermissions,
+          changedKey: feature,
+          enabled: nextVal,
         });
         sendBroadcast(new TextEncoder().encode(payload), { reliable: true });
       }
     } catch (err) {
-      console.warn("Could not persist student access setting:", err);
+      console.warn("Could not save permission toggle:", err);
     } finally {
-      setTogglingAccess(false);
+      setUpdatingFeature(null);
     }
   };
 
-  // Check if a tool can be opened
-  const requireAccess = (actionName: string): boolean => {
-    if (isFeatureLockedForUser) {
-      addFloatingReaction(
-        "Supervisor",
-        "🔒",
-        `${actionName} is controlled by your lesson supervisor.`
-      );
-      return false;
+  // Toggle all permissions at once
+  const toggleAllPermissions = async (enableAll: boolean) => {
+    if (!canGrantAccess || updatingFeature) return;
+    const nextPermissions: StudentPermissions = {
+      piano: enableAll,
+      whiteboard: enableAll,
+      metronome: enableAll,
+      tuner: enableAll,
+      drone: enableAll,
+      chat: enableAll,
+      reactions: enableAll,
+    };
+    setUpdatingFeature("all");
+    setStudentPermissions(nextPermissions);
+
+    try {
+      await fetch("/api/classroom", {
+        method: "PATCH",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          lessonId,
+          studentPermissions: nextPermissions,
+          studentFeaturesEnabled: enableAll,
+        }),
+      });
+
+      if (sendBroadcast) {
+        const payload = JSON.stringify({
+          type: "student_permissions_changed",
+          permissions: nextPermissions,
+          enabled: enableAll,
+        });
+        sendBroadcast(new TextEncoder().encode(payload), { reliable: true });
+      }
+    } catch (err) {
+      console.warn("Could not save all permissions:", err);
+    } finally {
+      setUpdatingFeature(null);
     }
-    return true;
   };
 
   // Monitor chat messages and show in-call toast so no one misses messages
@@ -245,7 +377,7 @@ export default function ClassroomMusicTools({
   };
 
   const triggerReaction = (emoji: string, label: string) => {
-    if (!requireAccess("Reactions")) return;
+    if (!requireAccess("reactions", "Reactions")) return;
     const sender = room?.localParticipant?.name || "Participant";
     addFloatingReaction("You", emoji, label);
     if (sendBroadcast) {
@@ -260,6 +392,7 @@ export default function ClassroomMusicTools({
   };
 
   const toggleHandRaise = () => {
+    if (!requireAccess("reactions", "Hand Raise")) return;
     const next = !handRaised;
     setHandRaised(next);
     const sender = room?.localParticipant?.name || "Participant";
@@ -274,7 +407,7 @@ export default function ClassroomMusicTools({
 
   // Toggle Whiteboard with synchronized open/close for everyone
   const toggleWhiteboard = () => {
-    if (!requireAccess("Whiteboard")) return;
+    if (!requireAccess("whiteboard", "Whiteboard")) return;
     const next = !whiteboardOpen;
     setWhiteboardOpen(next);
     if (sendBroadcast) {
@@ -285,7 +418,7 @@ export default function ClassroomMusicTools({
 
   // Toggle Piano with synchronized open for everyone
   const togglePiano = () => {
-    if (!requireAccess("Piano")) return;
+    if (!requireAccess("piano", "Piano")) return;
     const next = !pianoOpen;
     setPianoOpen(next);
     if (sendBroadcast) {
@@ -381,7 +514,7 @@ export default function ClassroomMusicTools({
 
   // Tap Tempo Handler
   const handleTapTempo = () => {
-    if (!requireAccess("Metronome")) return;
+    if (!requireAccess("metronome", "Metronome")) return;
     const now = Date.now();
     if (lastTapRef.current) {
       const diff = now - lastTapRef.current;
@@ -403,7 +536,7 @@ export default function ClassroomMusicTools({
   };
 
   const toggleMetronomePlay = () => {
-    if (!requireAccess("Metronome")) return;
+    if (!requireAccess("metronome", "Metronome")) return;
     const next = !isPlayingMetronome;
     setIsPlayingMetronome(next);
     if (metronomeShared && sendBroadcast) {
@@ -417,7 +550,7 @@ export default function ClassroomMusicTools({
   };
 
   const handleBpmChange = (newBpm: number) => {
-    if (!requireAccess("Metronome")) return;
+    if (!requireAccess("metronome", "Metronome")) return;
     setBpm(newBpm);
     if (metronomeShared && isPlayingMetronome && sendBroadcast) {
       const payload = JSON.stringify({
@@ -554,58 +687,249 @@ export default function ClassroomMusicTools({
           flexWrap: "wrap",
         }}
       >
-        {/* ASSIGNED ADMIN / SUPER ADMIN STUDENT ACCESS CONTROL SWITCH */}
+        {/* ASSIGNED ADMIN / SUPER ADMIN PER-FEATURE STUDENT ACCESS MANAGER */}
         {canGrantAccess && (
-          <button
-            type="button"
-            onClick={() => void toggleStudentAccess()}
-            disabled={togglingAccess}
-            title={
-              studentFeaturesEnabled
-                ? "Student access is UNLOCKED. Click to lock student tools and chat."
-                : "Student access is LOCKED. Click to give student access to music tools and chat."
-            }
-            style={{
-              background: studentFeaturesEnabled
-                ? "rgba(46, 213, 115, 0.22)"
-                : "rgba(255, 71, 87, 0.22)",
-              border: `1px solid ${
-                studentFeaturesEnabled ? "#2ed573" : "#ff4757"
-              }`,
-              color: studentFeaturesEnabled ? "#2ed573" : "#ff6b81",
-              borderRadius: 6,
-              padding: "4px 9px",
-              fontSize: 11,
-              fontWeight: 700,
-              cursor: "pointer",
-              display: "inline-flex",
-              alignItems: "center",
-              gap: 5,
-            }}
-          >
-            {studentFeaturesEnabled ? <Unlock size={13} /> : <Lock size={13} />}
-            <span>
-              Student Tools:{" "}
-              {studentFeaturesEnabled
-                ? "Unlocked (Active)"
-                : "Locked (Admin Only)"}
-            </span>
-          </button>
+          <div style={{ position: "relative" }}>
+            <button
+              type="button"
+              onClick={() => setPermissionsMenuOpen((prev) => !prev)}
+              title="Configure individual feature permissions for student"
+              style={{
+                background: Object.values(studentPermissions).some(Boolean)
+                  ? "rgba(46, 213, 115, 0.18)"
+                  : "rgba(255, 71, 87, 0.18)",
+                border: `1px solid ${
+                  Object.values(studentPermissions).some(Boolean)
+                    ? "#2ed573"
+                    : "#ff4757"
+                }`,
+                color: Object.values(studentPermissions).some(Boolean)
+                  ? "#2ed573"
+                  : "#ff6b81",
+                borderRadius: 6,
+                padding: "4px 9px",
+                fontSize: 11,
+                fontWeight: 700,
+                cursor: "pointer",
+                display: "inline-flex",
+                alignItems: "center",
+                gap: 5,
+              }}
+            >
+              <ShieldCheck size={13} />
+              <span>
+                Student Access (
+                {Object.values(studentPermissions).filter(Boolean).length}/7)
+              </span>
+              <Sliders size={11} style={{ opacity: 0.8 }} />
+            </button>
+
+            {/* Per-Feature Permissions Dropdown Menu */}
+            {permissionsMenuOpen && (
+              <div
+                style={{
+                  position: "absolute",
+                  top: "calc(100% + 8px)",
+                  left: 0,
+                  width: 300,
+                  background: "#152019",
+                  border: "1px solid rgba(255, 255, 255, 0.2)",
+                  borderRadius: 12,
+                  boxShadow: "0 18px 45px rgba(0,0,0,0.85)",
+                  padding: "12px 14px",
+                  zIndex: 9999,
+                  color: "#fff",
+                  userSelect: "none",
+                }}
+              >
+                {/* Header */}
+                <div
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "space-between",
+                    marginBottom: 10,
+                    borderBottom: "1px solid rgba(255, 255, 255, 0.1)",
+                    paddingBottom: 8,
+                  }}
+                >
+                  <div>
+                    <strong style={{ fontSize: 12, color: "#2ed573" }}>
+                      Student Feature Access
+                    </strong>
+                    <div style={{ fontSize: 10, color: "#8fcaab" }}>
+                      Toggle permissions per feature
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setPermissionsMenuOpen(false)}
+                    style={{
+                      background: "transparent",
+                      border: "none",
+                      color: "#aaa",
+                      cursor: "pointer",
+                      padding: 2,
+                    }}
+                  >
+                    <X size={14} />
+                  </button>
+                </div>
+
+                {/* Quick All / None actions */}
+                <div style={{ display: "flex", gap: 6, marginBottom: 10 }}>
+                  <button
+                    type="button"
+                    onClick={() => void toggleAllPermissions(true)}
+                    disabled={updatingFeature !== null}
+                    style={{
+                      flex: 1,
+                      background: "rgba(46, 213, 115, 0.2)",
+                      border: "1px solid #2ed573",
+                      color: "#2ed573",
+                      borderRadius: 4,
+                      padding: "4px 6px",
+                      fontSize: 10,
+                      fontWeight: 700,
+                      cursor: updatingFeature ? "wait" : "pointer",
+                    }}
+                  >
+                    Enable All (7)
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => void toggleAllPermissions(false)}
+                    disabled={updatingFeature !== null}
+                    style={{
+                      flex: 1,
+                      background: "rgba(255, 71, 87, 0.2)",
+                      border: "1px solid #ff4757",
+                      color: "#ff4757",
+                      borderRadius: 4,
+                      padding: "4px 6px",
+                      fontSize: 10,
+                      fontWeight: 700,
+                      cursor: updatingFeature ? "wait" : "pointer",
+                    }}
+                  >
+                    Lock All (0)
+                  </button>
+                </div>
+
+                {/* Individual Feature Toggles */}
+                <div
+                  style={{ display: "flex", flexDirection: "column", gap: 5 }}
+                >
+                  {[
+                    {
+                      key: "piano" as const,
+                      label: "Piano & MIDI Keyboard",
+                      icon: <Music2 size={13} color="#2ed573" />,
+                    },
+                    {
+                      key: "whiteboard" as const,
+                      label: "Whiteboard & Typing",
+                      icon: <Edit3 size={13} color="#2ed573" />,
+                    },
+                    {
+                      key: "metronome" as const,
+                      label: "Academy Metronome",
+                      icon: <Sliders size={13} color="#ffb142" />,
+                    },
+                    {
+                      key: "tuner" as const,
+                      label: "Chromatic Tuner",
+                      icon: <Radio size={13} color="#2ed573" />,
+                    },
+                    {
+                      key: "drone" as const,
+                      label: "Pitch Drone (Reference)",
+                      icon: <Disc3 size={13} color="#a55eea" />,
+                    },
+                    {
+                      key: "chat" as const,
+                      label: "In-Call Text Chat",
+                      icon: <MessageSquare size={13} color="#70a1ff" />,
+                    },
+                    {
+                      key: "reactions" as const,
+                      label: "Reactions & Hand Raise",
+                      icon: <Hand size={13} color="#ffa502" />,
+                    },
+                  ].map((feat) => {
+                    const isAllowed = studentPermissions[feat.key];
+                    const isUpdating = updatingFeature === feat.key;
+                    return (
+                      <div
+                        key={feat.key}
+                        onClick={() => void toggleSinglePermission(feat.key)}
+                        style={{
+                          display: "flex",
+                          alignItems: "center",
+                          justifyContent: "space-between",
+                          padding: "6px 8px",
+                          borderRadius: 6,
+                          background: isAllowed
+                            ? "rgba(46, 213, 115, 0.12)"
+                            : "rgba(0, 0, 0, 0.25)",
+                          border: `1px solid ${
+                            isAllowed
+                              ? "rgba(46, 213, 115, 0.35)"
+                              : "rgba(255, 255, 255, 0.08)"
+                          }`,
+                          cursor: isUpdating ? "wait" : "pointer",
+                          transition: "all 0.15s ease",
+                        }}
+                      >
+                        <div
+                          style={{
+                            display: "flex",
+                            alignItems: "center",
+                            gap: 7,
+                          }}
+                        >
+                          {feat.icon}
+                          <span style={{ fontSize: 11, fontWeight: 600 }}>
+                            {feat.label}
+                          </span>
+                        </div>
+                        <span
+                          style={{
+                            fontSize: 10,
+                            fontWeight: 700,
+                            padding: "2px 8px",
+                            borderRadius: 10,
+                            background: isAllowed ? "#2ed573" : "#333",
+                            color: isAllowed ? "#000" : "#888",
+                            letterSpacing: 0.3,
+                          }}
+                        >
+                          {isUpdating ? "…" : isAllowed ? "ALLOWED" : "LOCKED"}
+                        </span>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+          </div>
         )}
 
         {/* RESTRICTED STUDENT / PARENT STATUS BADGE */}
         {isRestrictedRole && (
           <span
             style={{
-              background: studentFeaturesEnabled
+              background: Object.values(studentPermissions).some(Boolean)
                 ? "rgba(46, 213, 115, 0.15)"
                 : "rgba(255, 177, 66, 0.15)",
               border: `1px solid ${
-                studentFeaturesEnabled
+                Object.values(studentPermissions).some(Boolean)
                   ? "rgba(46, 213, 115, 0.3)"
                   : "rgba(255, 177, 66, 0.3)"
               }`,
-              color: studentFeaturesEnabled ? "#2ed573" : "#ffb142",
+              color: Object.values(studentPermissions).some(Boolean)
+                ? "#2ed573"
+                : "#ffb142",
               borderRadius: 6,
               padding: "3px 8px",
               fontSize: 10,
@@ -615,14 +939,20 @@ export default function ClassroomMusicTools({
               gap: 4,
             }}
           >
-            {studentFeaturesEnabled ? (
+            {Object.values(studentPermissions).some(Boolean) ? (
               <ShieldCheck size={12} />
             ) : (
               <Lock size={12} />
             )}
             <span>
-              {studentFeaturesEnabled
-                ? "Tools Unlocked by Admin"
+              {Object.values(studentPermissions).filter(Boolean).length > 0
+                ? `${
+                    Object.values(studentPermissions).filter(Boolean).length
+                  } Tool${
+                    Object.values(studentPermissions).filter(Boolean).length > 1
+                      ? "s"
+                      : ""
+                  } Unlocked by Supervisor`
                 : "Tools Managed by Supervisor"}
             </span>
           </span>
@@ -664,24 +994,24 @@ export default function ClassroomMusicTools({
           type="button"
           onClick={togglePiano}
           title={
-            isFeatureLockedForUser
-              ? "Piano is controlled by your lesson supervisor."
+            isFeatureLocked("piano")
+              ? "Piano is locked by your lesson supervisor."
               : "Interactive Visual Piano: Synchronizes notes & sound with everyone in room"
           }
           style={{
-            background: isFeatureLockedForUser
+            background: isFeatureLocked("piano")
               ? "rgba(255, 255, 255, 0.05)"
               : pianoOpen
               ? "rgba(46, 213, 115, 0.25)"
               : "rgba(255, 255, 255, 0.1)",
             border: `1px solid ${
-              isFeatureLockedForUser
+              isFeatureLocked("piano")
                 ? "rgba(255, 255, 255, 0.12)"
                 : pianoOpen
                 ? "#2ed573"
                 : "rgba(255, 255, 255, 0.2)"
             }`,
-            color: isFeatureLockedForUser
+            color: isFeatureLocked("piano")
               ? "#777"
               : pianoOpen
               ? "#2ed573"
@@ -690,13 +1020,13 @@ export default function ClassroomMusicTools({
             padding: "4px 8px",
             fontSize: 11,
             fontWeight: 600,
-            cursor: isFeatureLockedForUser ? "not-allowed" : "pointer",
+            cursor: isFeatureLocked("piano") ? "not-allowed" : "pointer",
             display: "inline-flex",
             alignItems: "center",
             gap: 5,
           }}
         >
-          {isFeatureLockedForUser ? <Lock size={12} /> : <Music2 size={13} />}
+          {isFeatureLocked("piano") ? <Lock size={12} /> : <Music2 size={13} />}
           <span>Piano {pianoOpen ? "● Live" : ""}</span>
         </button>
 
@@ -704,28 +1034,28 @@ export default function ClassroomMusicTools({
         <button
           type="button"
           onClick={() => {
-            if (!requireAccess("Metronome")) return;
+            if (!requireAccess("metronome", "Metronome")) return;
             setMetronomeOpen((prev) => !prev);
           }}
           title={
-            isFeatureLockedForUser
-              ? "Metronome is controlled by your lesson supervisor."
+            isFeatureLocked("metronome")
+              ? "Metronome is locked by your lesson supervisor."
               : "Academy Metronome: Syncs tempo with everyone in room"
           }
           style={{
-            background: isFeatureLockedForUser
+            background: isFeatureLocked("metronome")
               ? "rgba(255, 255, 255, 0.05)"
               : metronomeOpen || isPlayingMetronome
               ? "rgba(255, 177, 66, 0.22)"
               : "rgba(255, 255, 255, 0.1)",
             border: `1px solid ${
-              isFeatureLockedForUser
+              isFeatureLocked("metronome")
                 ? "rgba(255, 255, 255, 0.12)"
                 : metronomeOpen || isPlayingMetronome
                 ? "#ffb142"
                 : "rgba(255, 255, 255, 0.2)"
             }`,
-            color: isFeatureLockedForUser
+            color: isFeatureLocked("metronome")
               ? "#777"
               : metronomeOpen || isPlayingMetronome
               ? "#ffb142"
@@ -734,13 +1064,17 @@ export default function ClassroomMusicTools({
             padding: "4px 8px",
             fontSize: 11,
             fontWeight: 600,
-            cursor: isFeatureLockedForUser ? "not-allowed" : "pointer",
+            cursor: isFeatureLocked("metronome") ? "not-allowed" : "pointer",
             display: "inline-flex",
             alignItems: "center",
             gap: 5,
           }}
         >
-          {isFeatureLockedForUser ? <Lock size={12} /> : <Sliders size={13} />}
+          {isFeatureLocked("metronome") ? (
+            <Lock size={12} />
+          ) : (
+            <Sliders size={13} />
+          )}
           <span>Metronome {isPlayingMetronome ? `(${bpm})` : ""}</span>
         </button>
 
@@ -748,28 +1082,28 @@ export default function ClassroomMusicTools({
         <button
           type="button"
           onClick={() => {
-            if (!requireAccess("Tuner")) return;
+            if (!requireAccess("tuner", "Tuner")) return;
             setTunerOpen((prev) => !prev);
           }}
           title={
-            isFeatureLockedForUser
-              ? "Tuner is controlled by your lesson supervisor."
+            isFeatureLocked("tuner")
+              ? "Tuner is locked by your lesson supervisor."
               : "Real-Time Chromatic Pitch Tuner"
           }
           style={{
-            background: isFeatureLockedForUser
+            background: isFeatureLocked("tuner")
               ? "rgba(255, 255, 255, 0.05)"
               : tunerOpen
               ? "rgba(46, 213, 115, 0.25)"
               : "rgba(255, 255, 255, 0.1)",
             border: `1px solid ${
-              isFeatureLockedForUser
+              isFeatureLocked("tuner")
                 ? "rgba(255, 255, 255, 0.12)"
                 : tunerOpen
                 ? "#2ed573"
                 : "rgba(255, 255, 255, 0.2)"
             }`,
-            color: isFeatureLockedForUser
+            color: isFeatureLocked("tuner")
               ? "#777"
               : tunerOpen
               ? "#2ed573"
@@ -778,13 +1112,13 @@ export default function ClassroomMusicTools({
             padding: "4px 8px",
             fontSize: 11,
             fontWeight: 600,
-            cursor: isFeatureLockedForUser ? "not-allowed" : "pointer",
+            cursor: isFeatureLocked("tuner") ? "not-allowed" : "pointer",
             display: "inline-flex",
             alignItems: "center",
             gap: 5,
           }}
         >
-          {isFeatureLockedForUser ? <Lock size={12} /> : <Radio size={13} />}
+          {isFeatureLocked("tuner") ? <Lock size={12} /> : <Radio size={13} />}
           <span>Tuner</span>
         </button>
 
@@ -792,28 +1126,28 @@ export default function ClassroomMusicTools({
         <button
           type="button"
           onClick={() => {
-            if (!requireAccess("Pitch Drone")) return;
+            if (!requireAccess("drone", "Pitch Drone")) return;
             setDroneOpen((prev) => !prev);
           }}
           title={
-            isFeatureLockedForUser
-              ? "Pitch Drone is controlled by your lesson supervisor."
+            isFeatureLocked("drone")
+              ? "Pitch Drone is locked by your lesson supervisor."
               : "Pitch Drone & Reference Tuning Tone"
           }
           style={{
-            background: isFeatureLockedForUser
+            background: isFeatureLocked("drone")
               ? "rgba(255, 255, 255, 0.05)"
               : droneOpen
               ? "rgba(165, 94, 234, 0.25)"
               : "rgba(255, 255, 255, 0.1)",
             border: `1px solid ${
-              isFeatureLockedForUser
+              isFeatureLocked("drone")
                 ? "rgba(255, 255, 255, 0.12)"
                 : droneOpen
                 ? "#a55eea"
                 : "rgba(255, 255, 255, 0.2)"
             }`,
-            color: isFeatureLockedForUser
+            color: isFeatureLocked("drone")
               ? "#777"
               : droneOpen
               ? "#a55eea"
@@ -822,13 +1156,13 @@ export default function ClassroomMusicTools({
             padding: "4px 8px",
             fontSize: 11,
             fontWeight: 600,
-            cursor: isFeatureLockedForUser ? "not-allowed" : "pointer",
+            cursor: isFeatureLocked("drone") ? "not-allowed" : "pointer",
             display: "inline-flex",
             alignItems: "center",
             gap: 5,
           }}
         >
-          {isFeatureLockedForUser ? <Lock size={12} /> : <Disc3 size={13} />}
+          {isFeatureLocked("drone") ? <Lock size={12} /> : <Disc3 size={13} />}
           <span>Drone</span>
         </button>
 
@@ -837,24 +1171,24 @@ export default function ClassroomMusicTools({
           type="button"
           onClick={toggleWhiteboard}
           title={
-            isFeatureLockedForUser
-              ? "Whiteboard is controlled by your lesson supervisor."
+            isFeatureLocked("whiteboard")
+              ? "Whiteboard is locked by your lesson supervisor."
               : "Collaborative Music Staff Whiteboard: Opens on everyone's screen in real time"
           }
           style={{
-            background: isFeatureLockedForUser
+            background: isFeatureLocked("whiteboard")
               ? "rgba(255, 255, 255, 0.05)"
               : whiteboardOpen
               ? "rgba(46, 213, 115, 0.25)"
               : "rgba(255, 255, 255, 0.1)",
             border: `1px solid ${
-              isFeatureLockedForUser
+              isFeatureLocked("whiteboard")
                 ? "rgba(255, 255, 255, 0.12)"
                 : whiteboardOpen
                 ? "#2ed573"
                 : "rgba(255, 255, 255, 0.2)"
             }`,
-            color: isFeatureLockedForUser
+            color: isFeatureLocked("whiteboard")
               ? "#777"
               : whiteboardOpen
               ? "#2ed573"
@@ -863,13 +1197,17 @@ export default function ClassroomMusicTools({
             padding: "4px 8px",
             fontSize: 11,
             fontWeight: 600,
-            cursor: isFeatureLockedForUser ? "not-allowed" : "pointer",
+            cursor: isFeatureLocked("whiteboard") ? "not-allowed" : "pointer",
             display: "inline-flex",
             alignItems: "center",
             gap: 5,
           }}
         >
-          {isFeatureLockedForUser ? <Lock size={12} /> : <Edit3 size={13} />}
+          {isFeatureLocked("whiteboard") ? (
+            <Lock size={12} />
+          ) : (
+            <Edit3 size={13} />
+          )}
           <span>Whiteboard {whiteboardOpen ? "● Shared" : ""}</span>
         </button>
 
@@ -883,17 +1221,22 @@ export default function ClassroomMusicTools({
             padding: "2px 5px",
             borderRadius: 6,
             border: "1px solid rgba(255, 255, 255, 0.12)",
+            opacity: isFeatureLocked("reactions") ? 0.5 : 1,
           }}
         >
           <button
             type="button"
             onClick={() => triggerReaction("🎵", "Bravo!")}
-            title="Send Bravo!"
+            title={
+              isFeatureLocked("reactions")
+                ? "Reactions locked by supervisor"
+                : "Send Bravo!"
+            }
             style={{
               background: "transparent",
               border: "none",
               fontSize: 13,
-              cursor: "pointer",
+              cursor: isFeatureLocked("reactions") ? "not-allowed" : "pointer",
               padding: "1px",
             }}
           >
@@ -902,12 +1245,16 @@ export default function ClassroomMusicTools({
           <button
             type="button"
             onClick={() => triggerReaction("👏", "Applause!")}
-            title="Send Applause"
+            title={
+              isFeatureLocked("reactions")
+                ? "Reactions locked by supervisor"
+                : "Send Applause"
+            }
             style={{
               background: "transparent",
               border: "none",
               fontSize: 13,
-              cursor: "pointer",
+              cursor: isFeatureLocked("reactions") ? "not-allowed" : "pointer",
               padding: "1px",
             }}
           >
@@ -916,12 +1263,16 @@ export default function ClassroomMusicTools({
           <button
             type="button"
             onClick={() => triggerReaction("🎹", "Piano!")}
-            title="Send Piano"
+            title={
+              isFeatureLocked("reactions")
+                ? "Reactions locked by supervisor"
+                : "Send Piano"
+            }
             style={{
               background: "transparent",
               border: "none",
               fontSize: 13,
-              cursor: "pointer",
+              cursor: isFeatureLocked("reactions") ? "not-allowed" : "pointer",
               padding: "1px",
             }}
           >
@@ -930,12 +1281,16 @@ export default function ClassroomMusicTools({
           <button
             type="button"
             onClick={() => triggerReaction("🌟", "Superb!")}
-            title="Send Star"
+            title={
+              isFeatureLocked("reactions")
+                ? "Reactions locked by supervisor"
+                : "Send Star"
+            }
             style={{
               background: "transparent",
               border: "none",
               fontSize: 13,
-              cursor: "pointer",
+              cursor: isFeatureLocked("reactions") ? "not-allowed" : "pointer",
               padding: "1px",
             }}
           >
@@ -947,24 +1302,34 @@ export default function ClassroomMusicTools({
         <button
           type="button"
           onClick={toggleHandRaise}
-          title={handRaised ? "Lower Hand" : "Raise Hand to speak"}
+          title={
+            isFeatureLocked("reactions")
+              ? "Hand raise locked by supervisor"
+              : handRaised
+              ? "Lower Hand"
+              : "Raise Hand to speak"
+          }
           style={{
             background: handRaised ? "#ff4757" : "rgba(255, 255, 255, 0.1)",
             border: `1px solid ${
               handRaised ? "#ff4757" : "rgba(255, 255, 255, 0.2)"
             }`,
-            color: "#fff",
+            color: isFeatureLocked("reactions") ? "#777" : "#fff",
             borderRadius: 6,
             padding: "4px 8px",
             fontSize: 11,
             fontWeight: 600,
-            cursor: "pointer",
+            cursor: isFeatureLocked("reactions") ? "not-allowed" : "pointer",
             display: "inline-flex",
             alignItems: "center",
             gap: 4,
           }}
         >
-          <Hand size={13} />
+          {isFeatureLocked("reactions") ? (
+            <Lock size={12} />
+          ) : (
+            <Hand size={13} />
+          )}
           <span>{handRaised ? "Lower Hand" : "Raise Hand"}</span>
         </button>
       </div>
@@ -1095,12 +1460,14 @@ export default function ClassroomMusicTools({
               min={40}
               max={220}
               value={bpm}
-              disabled={isFeatureLockedForUser}
+              disabled={isFeatureLocked("metronome")}
               onChange={(e) => handleBpmChange(Number(e.target.value))}
               style={{
                 width: "100%",
                 accentColor: "#ffb142",
-                cursor: isFeatureLockedForUser ? "not-allowed" : "pointer",
+                cursor: isFeatureLocked("metronome")
+                  ? "not-allowed"
+                  : "pointer",
               }}
             />
           </div>
@@ -1109,7 +1476,7 @@ export default function ClassroomMusicTools({
             <button
               type="button"
               onClick={toggleMetronomePlay}
-              disabled={isFeatureLockedForUser}
+              disabled={isFeatureLocked("metronome")}
               style={{
                 flex: 1,
                 background: isPlayingMetronome ? "#ff4757" : "#2ed573",
@@ -1119,7 +1486,9 @@ export default function ClassroomMusicTools({
                 padding: "8px 12px",
                 fontSize: 12,
                 fontWeight: 700,
-                cursor: isFeatureLockedForUser ? "not-allowed" : "pointer",
+                cursor: isFeatureLocked("metronome")
+                  ? "not-allowed"
+                  : "pointer",
                 display: "inline-flex",
                 alignItems: "center",
                 justifyContent: "center",
@@ -1136,7 +1505,7 @@ export default function ClassroomMusicTools({
             <button
               type="button"
               onClick={handleTapTempo}
-              disabled={isFeatureLockedForUser}
+              disabled={isFeatureLocked("metronome")}
               title="Click repeatedly to set tempo"
               style={{
                 background: "rgba(255,255,255,0.12)",
@@ -1146,7 +1515,9 @@ export default function ClassroomMusicTools({
                 padding: "8px 12px",
                 fontSize: 12,
                 fontWeight: 600,
-                cursor: isFeatureLockedForUser ? "not-allowed" : "pointer",
+                cursor: isFeatureLocked("metronome")
+                  ? "not-allowed"
+                  : "pointer",
               }}
             >
               Tap

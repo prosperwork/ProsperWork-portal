@@ -8,6 +8,30 @@ const idSchema = z.string().regex(/^[a-zA-Z0-9_-]{1,100}$/);
 export const runtime = "nodejs";
 const headers = { "Cache-Control": "private, no-store", "Referrer-Policy": "no-referrer" };
 
+export interface StudentPermissions {
+  piano: boolean;
+  whiteboard: boolean;
+  metronome: boolean;
+  tuner: boolean;
+  drone: boolean;
+  chat: boolean;
+  reactions: boolean;
+}
+
+function resolveStudentPermissions(payload: Record<string, unknown>): StudentPermissions {
+  const rawPerms = (payload.studentPermissions as Partial<StudentPermissions>) || {};
+  const legacyAll = Boolean(payload.studentFeaturesEnabled);
+  return {
+    piano: typeof rawPerms.piano === "boolean" ? rawPerms.piano : legacyAll,
+    whiteboard: typeof rawPerms.whiteboard === "boolean" ? rawPerms.whiteboard : legacyAll,
+    metronome: typeof rawPerms.metronome === "boolean" ? rawPerms.metronome : legacyAll,
+    tuner: typeof rawPerms.tuner === "boolean" ? rawPerms.tuner : legacyAll,
+    drone: typeof rawPerms.drone === "boolean" ? rawPerms.drone : legacyAll,
+    chat: typeof rawPerms.chat === "boolean" ? rawPerms.chat : legacyAll,
+    reactions: typeof rawPerms.reactions === "boolean" ? rawPerms.reactions : legacyAll,
+  };
+}
+
 export async function GET(request: Request) {
   const parsed = idSchema.safeParse(new URL(request.url).searchParams.get("lessonId"));
   if (!parsed.success) return NextResponse.json({ error: "Choose a class from your schedule." }, { status: 400 });
@@ -28,7 +52,8 @@ export async function GET(request: Request) {
       profile.role === "head_admin";
 
     const isRestrictedRole = profile.role === "student" || profile.role === "parent";
-    const studentFeaturesEnabled = Boolean(payload.studentFeaturesEnabled);
+    const studentPermissions = resolveStudentPermissions(payload);
+    const studentFeaturesEnabled = Object.values(studentPermissions).some(Boolean);
 
     const enrichedData = {
       ...data,
@@ -38,6 +63,7 @@ export async function GET(request: Request) {
       canGrantAccess,
       isRestrictedRole,
       studentFeaturesEnabled,
+      studentPermissions,
     };
 
     return NextResponse.json(enrichedData, { headers });
@@ -78,7 +104,8 @@ export async function POST(request: Request) {
       profile.role === "head_admin";
 
     const isRestrictedRole = profile.role === "student" || profile.role === "parent";
-    const studentFeaturesEnabled = Boolean(payload.studentFeaturesEnabled);
+    const studentPermissions = resolveStudentPermissions(payload);
+    const studentFeaturesEnabled = Object.values(studentPermissions).some(Boolean);
 
     return NextResponse.json({
       token: await access.toJwt(),
@@ -91,6 +118,7 @@ export async function POST(request: Request) {
       canGrantAccess,
       isRestrictedRole,
       studentFeaturesEnabled,
+      studentPermissions,
     }, { headers });
   } catch { return NextResponse.json({ error: "The classroom could not be opened." }, { status: 503 }); }
 }
@@ -102,8 +130,8 @@ export async function PATCH(request: Request) {
     if (!profile || profile.status !== "active") return NextResponse.json({ error: "Active academy access required." }, { status: 403 });
 
     const body = await request.json().catch(() => ({}));
-    const { lessonId, studentFeaturesEnabled } = body;
-    if (!lessonId || typeof studentFeaturesEnabled !== "boolean") {
+    const { lessonId, studentPermissions, feature, enabled, studentFeaturesEnabled } = body;
+    if (!lessonId) {
       return NextResponse.json({ error: "Invalid parameters." }, { status: 400 });
     }
 
@@ -131,9 +159,27 @@ export async function PATCH(request: Request) {
     }
 
     const currentPayload = (lessonRow.payload || {}) as Record<string, unknown>;
+    const currentPerms = resolveStudentPermissions(currentPayload);
+
+    let nextPerms: StudentPermissions = { ...currentPerms };
+
+    if (studentPermissions && typeof studentPermissions === "object") {
+      nextPerms = { ...nextPerms, ...studentPermissions };
+    } else if (typeof feature === "string" && typeof enabled === "boolean" && feature in nextPerms) {
+      nextPerms[feature as keyof StudentPermissions] = enabled;
+    } else if (typeof studentFeaturesEnabled === "boolean") {
+      // Toggle all at once
+      for (const k of Object.keys(nextPerms) as (keyof StudentPermissions)[]) {
+        nextPerms[k] = studentFeaturesEnabled;
+      }
+    }
+
+    const hasAnyEnabled = Object.values(nextPerms).some(Boolean);
+
     const updatedPayload = {
       ...currentPayload,
-      studentFeaturesEnabled,
+      studentPermissions: nextPerms,
+      studentFeaturesEnabled: hasAnyEnabled,
       studentFeaturesUpdatedBy: profile.name,
       studentFeaturesUpdatedAt: new Date().toISOString(),
     };
@@ -147,7 +193,11 @@ export async function PATCH(request: Request) {
       return NextResponse.json({ error: "Failed to update student access." }, { status: 500 });
     }
 
-    return NextResponse.json({ ok: true, studentFeaturesEnabled });
+    return NextResponse.json({
+      ok: true,
+      studentPermissions: nextPerms,
+      studentFeaturesEnabled: hasAnyEnabled,
+    });
   } catch (cause: any) {
     return NextResponse.json({ error: cause?.message || "Could not update access." }, { status: 500 });
   }
