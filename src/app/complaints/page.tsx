@@ -11,6 +11,7 @@ import {
   MessageSquare,
   RefreshCw,
   Search,
+  Send,
   ShieldCheck,
   User,
 } from "lucide-react";
@@ -52,6 +53,11 @@ export default function ComplaintsPage() {
   const [notifyParent, setNotifyParent] = useState(true);
   const [actionBusy, setActionBusy] = useState(false);
   const [actionError, setActionError] = useState("");
+
+  // Conversation Thread & Reply state
+  const [replyText, setReplyText] = useState("");
+  const [replyBusy, setReplyBusy] = useState(false);
+  const [replyError, setReplyError] = useState("");
 
   const loadComplaints = useCallback(async (isRefresh = false) => {
     if (isRefresh) setRefreshing(true);
@@ -157,12 +163,68 @@ export default function ComplaintsPage() {
       );
       setActionNotes(selectedComplaint.resolution_notes || "");
       setActionError("");
+      setReplyText("");
+      setReplyError("");
     }
   }, [selectedComplaint?.id]);
 
   const showToast = (message: string) => {
     setToast(message);
     setTimeout(() => setToast(""), 4500);
+  };
+
+  const handleSendReply = async (e: FormEvent) => {
+    e.preventDefault();
+    if (!selectedComplaint || !replyText.trim()) return;
+
+    setReplyBusy(true);
+    setReplyError("");
+
+    try {
+      const response = await fetch("/api/complaints", {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "reply",
+          complaintId: selectedComplaint.id,
+          message: replyText.trim(),
+        }),
+      });
+
+      const result = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        throw new Error(result.error || "Failed to post reply.");
+      }
+
+      const newMessage = result.messageRecord;
+      const nextStatus = result.status;
+
+      setComplaints((current) =>
+        current.map((c) => {
+          if (c.id === selectedComplaint.id) {
+            const updatedMessages = [...(c.messages || []), newMessage];
+            return {
+              ...c,
+              status: nextStatus || c.status,
+              messages: updatedMessages,
+            };
+          }
+          return c;
+        })
+      );
+
+      setReplyText("");
+      showToast(
+        `Reply sent to ${selectedComplaint.parent_name}. Email alert delivered.`
+      );
+    } catch (err) {
+      setReplyError(
+        err instanceof Error ? err.message : "Failed to post reply."
+      );
+    } finally {
+      setReplyBusy(false);
+    }
   };
 
   const handleSaveResolution = async (e: FormEvent) => {
@@ -581,6 +643,169 @@ export default function ComplaintsPage() {
                   </div>
                 </div>
               </div>
+            </section>
+
+            {/* Live Discussion & Reply Thread Card */}
+            <section className="card section-card">
+              <SectionTitle
+                title={`Discussion & Messages (${
+                  (selectedComplaint.messages?.length || 0) + 1
+                })`}
+                detail="Real-time two-way communication between academy staff and the parent."
+              />
+
+              <div
+                style={{
+                  display: "flex",
+                  flexDirection: "column",
+                  gap: "12px",
+                  maxHeight: "520px",
+                  overflowY: "auto",
+                  padding: "4px 0 16px 0",
+                }}
+              >
+                {/* Initial Parent Grievance Statement */}
+                <div
+                  style={{
+                    border: "1px solid #dce8df",
+                    borderRadius: "10px",
+                    background: "#ffffff",
+                    padding: "14px 16px",
+                    borderLeft: "4px solid #135b45",
+                  }}
+                >
+                  <div
+                    style={{
+                      display: "flex",
+                      justifyContent: "space-between",
+                      alignItems: "center",
+                      marginBottom: "6px",
+                      gap: "8px",
+                      flexWrap: "wrap",
+                    }}
+                  >
+                    <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                      <strong style={{ fontSize: "13px", color: "var(--pine-950)" }}>
+                        {selectedComplaint.parent_name}
+                      </strong>
+                      <Pill tone="amber">Parent (Initial Ticket)</Pill>
+                    </div>
+                    <span style={{ fontSize: "11px", color: "var(--muted)" }}>
+                      {niceDate(selectedComplaint.created_at)}
+                    </span>
+                  </div>
+                  <div
+                    style={{
+                      fontSize: "13px",
+                      lineHeight: "1.6",
+                      color: "var(--ink)",
+                      whiteSpace: "pre-wrap",
+                    }}
+                  >
+                    {selectedComplaint.message}
+                  </div>
+                </div>
+
+                {/* All Subsequent Replies */}
+                {selectedComplaint.messages && selectedComplaint.messages.length > 0 ? (
+                  selectedComplaint.messages.map((msg) => {
+                    const isStaff = msg.sender_role !== "parent";
+                    return (
+                      <div
+                        key={msg.id}
+                        style={{
+                          border: isStaff ? "1px solid #bbf7d0" : "1px solid #dce8df",
+                          borderRadius: "10px",
+                          background: isStaff ? "#f0fdf4" : "#ffffff",
+                          padding: "14px 16px",
+                          borderLeft: isStaff ? "4px solid #16a34a" : "4px solid #d97706",
+                          marginLeft: isStaff ? "20px" : "0",
+                          marginRight: isStaff ? "0" : "20px",
+                        }}
+                      >
+                        <div
+                          style={{
+                            display: "flex",
+                            justifyContent: "space-between",
+                            alignItems: "center",
+                            marginBottom: "6px",
+                            gap: "8px",
+                            flexWrap: "wrap",
+                          }}
+                        >
+                          <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                            <strong
+                              style={{
+                                fontSize: "13px",
+                                color: isStaff ? "#14532d" : "var(--pine-950)",
+                              }}
+                            >
+                              {msg.sender_name}
+                            </strong>
+                            <Pill tone={isStaff ? "green" : "amber"}>
+                              {isStaff ? "Academy Staff" : "Parent"}
+                            </Pill>
+                          </div>
+                          <span style={{ fontSize: "11px", color: "var(--muted)" }}>
+                            {niceDate(msg.created_at)}
+                          </span>
+                        </div>
+                        <div
+                          style={{
+                            fontSize: "13px",
+                            lineHeight: "1.6",
+                            color: isStaff ? "#14532d" : "var(--ink)",
+                            whiteSpace: "pre-wrap",
+                          }}
+                        >
+                          {msg.message}
+                        </div>
+                      </div>
+                    );
+                  })
+                ) : null}
+              </div>
+
+              {/* Reply Input Box */}
+              <form
+                onSubmit={handleSendReply}
+                style={{
+                  borderTop: "1px solid var(--line)",
+                  paddingTop: "16px",
+                  marginTop: "6px",
+                }}
+              >
+                <div className="field">
+                  <label htmlFor="complaint-reply-input">
+                    Post Reply to Parent (Sends immediate email alert)
+                  </label>
+                  <textarea
+                    id="complaint-reply-input"
+                    rows={3}
+                    placeholder={`Write a reply to ${selectedComplaint.parent_name}…`}
+                    value={replyText}
+                    onChange={(e) => setReplyText(e.target.value)}
+                    required
+                  />
+                </div>
+
+                {replyError && (
+                  <p role="alert" className="form-error" style={{ marginTop: "8px" }}>
+                    {replyError}
+                  </p>
+                )}
+
+                <div className="modal-actions" style={{ marginTop: "12px" }}>
+                  <button
+                    type="submit"
+                    className="btn primary"
+                    disabled={replyBusy || !replyText.trim()}
+                  >
+                    <Send size={14} />
+                    {replyBusy ? "Sending…" : "Send Reply to Parent"}
+                  </button>
+                </div>
+              </form>
             </section>
 
             {/* Resolution Form Card */}

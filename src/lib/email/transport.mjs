@@ -177,6 +177,13 @@ export function emailText(job, appUrl) {
         `\nAcademy Response & Resolution Notes:\n${p.resolutionNotes}\n\n` +
         `You can review your complete inquiry and resolution history in your Family Portal:\n` +
         `${appUrl}/family${signature}`;
+    case "complaint_reply_alert":
+      return `Hello ${p.recipientName},\n\n` +
+        `A new reply has been posted on inquiry #${p.ticketNumber} ("${p.subject}").\n\n` +
+        `From: ${p.senderName} (${p.senderRole === "parent" ? "Parent" : "Academy Leadership"})\n\n` +
+        `Message:\n${p.message}\n\n` +
+        `View the full conversation thread and reply:\n` +
+        `${appUrl}${p.senderRole === "parent" ? "/complaints" : "/family"}${signature}`;
     default: throw Object.assign(new Error("Unknown email template."), { code: "EMESSAGE" });
   }
 }
@@ -418,6 +425,30 @@ export function emailHtml(job, appUrl) {
       buttonLabel: "Open Family Portal &rarr;",
       buttonUrl: targetUrl,
       noteHtml: "If you have any further questions or follow-up regarding this matter, please feel free to reach out to complaints@prosperworkmusic.com."
+    });
+  }
+
+  if (job.template === "complaint_reply_alert") {
+    const isFromStaff = p.senderRole !== "parent";
+    const targetUrl = isFromStaff ? `${appUrl}/family` : `${appUrl}/complaints`;
+    const bodyHtml = `Hello <strong>${p.recipientName}</strong>,<br><br>
+      A new message has been posted regarding ticket <strong>#${p.ticketNumber}</strong> (<em>${p.subject}</em>):<br><br>
+      <div style="background-color: #f7faf8; padding: 16px; border-radius: 8px; border: 1px solid #dce6df; margin: 16px 0;">
+        <strong style="color: #0a2e22; font-size: 14px;">${p.senderName}</strong>
+        <span style="display: inline-block; margin-left: 8px; font-size: 11px; padding: 2px 8px; border-radius: 12px; background-color: ${isFromStaff ? "#edf6f1" : "#fef3c7"}; color: ${isFromStaff ? "#1c7a5d" : "#92400e"}; font-weight: 700; text-transform: uppercase;">${isFromStaff ? "Academy Administration" : "Family / Guardian"}</span><br><br>
+        <div style="white-space: pre-line; color: #1e2924; font-size: 13.5px; line-height: 1.6;">
+          ${p.message}
+        </div>
+      </div>
+      You can review the full discussion thread and send a reply directly through your portal.`;
+    return emailWrapper({
+      title: `New Message on Ticket #${p.ticketNumber}`,
+      badge: "Inquiry Message",
+      heading: `New message on #${p.ticketNumber}`,
+      bodyHtml,
+      buttonLabel: isFromStaff ? "Reply in Family Portal &rarr;" : "Open Complaints Desk &rarr;",
+      buttonUrl: targetUrl,
+      noteHtml: "This is a direct notification from ProsperWork Music Academy Support."
     });
   }
   return null;

@@ -155,6 +155,13 @@ export default function FamilyPage() {
   const [complaintBusy, setComplaintBusy] = useState(false);
   const [complaintError, setComplaintError] = useState("");
 
+  // Discussion & Chat Thread State
+  const [activeThreadComplaint, setActiveThreadComplaint] =
+    useState<ComplaintRecord | null>(null);
+  const [threadReplyMessage, setThreadReplyMessage] = useState("");
+  const [threadReplyBusy, setThreadReplyBusy] = useState(false);
+  const [threadReplyError, setThreadReplyError] = useState("");
+
   const role = normalizedRole(family?.profile.role ?? "");
   const active = family?.profile.status.trim().toLowerCase() === "active";
   const isParent = role === "parent";
@@ -307,6 +314,64 @@ export default function FamilyPage() {
       );
     } finally {
       setComplaintBusy(false);
+    }
+  };
+
+  const handleSendParentReply = async (e: FormEvent) => {
+    e.preventDefault();
+    if (!activeThreadComplaint || !threadReplyMessage.trim()) return;
+
+    setThreadReplyBusy(true);
+    setThreadReplyError("");
+    try {
+      const res = await fetch("/api/complaints", {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "reply",
+          complaintId: activeThreadComplaint.id,
+          message: threadReplyMessage.trim(),
+        }),
+      });
+      const result = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        throw new Error(result.error || "Failed to send message.");
+      }
+
+      const newMessage = result.messageRecord;
+      const nextStatus = result.status;
+
+      setActiveThreadComplaint((prev) => {
+        if (!prev) return null;
+        return {
+          ...prev,
+          status: nextStatus || prev.status,
+          messages: [...(prev.messages || []), newMessage],
+        };
+      });
+
+      setComplaints((current) =>
+        current.map((c) => {
+          if (c.id === activeThreadComplaint.id) {
+            return {
+              ...c,
+              status: nextStatus || c.status,
+              messages: [...(c.messages || []), newMessage],
+            };
+          }
+          return c;
+        })
+      );
+
+      setThreadReplyMessage("");
+      setFeedback("Your message has been sent to academy administration.");
+    } catch (err) {
+      setThreadReplyError(
+        err instanceof Error ? err.message : "Failed to send message."
+      );
+    } finally {
+      setThreadReplyBusy(false);
     }
   };
 
@@ -1397,6 +1462,48 @@ export default function FamilyPage() {
                                     )}
                                   </div>
                                 )}
+                                <div
+                                  style={{
+                                    marginTop: 8,
+                                    paddingTop: 8,
+                                    borderTop: "1px solid #eef3f0",
+                                    display: "flex",
+                                    justifyContent: "space-between",
+                                    alignItems: "center",
+                                    gap: 8,
+                                    flexWrap: "wrap",
+                                  }}
+                                >
+                                  <span
+                                    style={{
+                                      fontSize: 11,
+                                      color: "#5a6e64",
+                                      fontWeight: 600,
+                                      display: "inline-flex",
+                                      alignItems: "center",
+                                      gap: 4,
+                                    }}
+                                  >
+                                    💬 {c.messages?.length || 0}{" "}
+                                    {c.messages?.length === 1 ? "reply" : "replies"}
+                                  </span>
+                                  <button
+                                    type="button"
+                                    className="family-button subtle"
+                                    style={{
+                                      fontSize: 11.5,
+                                      padding: "4px 10px",
+                                      height: "auto",
+                                    }}
+                                    onClick={() => {
+                                      setActiveThreadComplaint(c);
+                                      setThreadReplyMessage("");
+                                      setThreadReplyError("");
+                                    }}
+                                  >
+                                    <MessageSquare size={12} /> Discussion &amp; Reply
+                                  </button>
+                                </div>
                               </div>
                             );
                           })}
@@ -1984,6 +2091,312 @@ export default function FamilyPage() {
           </div>
         </div>
       )}
+    
+      {activeThreadComplaint && (
+        <div
+          className="family-modal-scrim"
+          onClick={(e) => {
+            if (e.target === e.currentTarget) setActiveThreadComplaint(null);
+          }}
+        >
+          <div
+            className="family-modal-dialog"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="thread-modal-title"
+            style={{ maxWidth: 640 }}
+          >
+            <div className="family-modal-header">
+              <div>
+                <span
+                  style={{
+                    fontSize: 11,
+                    fontFamily: "monospace",
+                    fontWeight: 700,
+                    color: "#135b45",
+                  }}
+                >
+                  #{activeThreadComplaint.ticket_number}
+                </span>
+                <h2
+                  id="thread-modal-title"
+                  className="family-modal-title"
+                  style={{ marginTop: 2, fontSize: 16 }}
+                >
+                  {activeThreadComplaint.subject}
+                </h2>
+              </div>
+              <button
+                type="button"
+                className="family-modal-close"
+                onClick={() => setActiveThreadComplaint(null)}
+                aria-label="Close dialog"
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            <div
+              style={{
+                display: "flex",
+                flexDirection: "column",
+                gap: 12,
+                maxHeight: 380,
+                overflowY: "auto",
+                padding: "16px 20px",
+                borderBottom: "1px solid var(--fam-line, #e2ece5)",
+              }}
+            >
+              {/* Initial Parent Message */}
+              <div
+                style={{
+                  background: "#f4f8f5",
+                  border: "1px solid #d8e5dc",
+                  borderRadius: 10,
+                  padding: 12,
+                  borderLeft: "4px solid #135b45",
+                }}
+              >
+                <div
+                  style={{
+                    display: "flex",
+                    justifyContent: "space-between",
+                    alignItems: "center",
+                    marginBottom: 4,
+                  }}
+                >
+                  <strong style={{ fontSize: 12, color: "#0a2e22" }}>
+                    {activeThreadComplaint.parent_name} (You)
+                  </strong>
+                  <span style={{ fontSize: 10.5, color: "#5a6e64" }}>
+                    {new Date(activeThreadComplaint.created_at).toLocaleString("en-GB", {
+                      day: "numeric",
+                      month: "short",
+                      hour: "2-digit",
+                      minute: "2-digit",
+                    })}
+                  </span>
+                </div>
+                <p
+                  style={{
+                    margin: 0,
+                    fontSize: 12,
+                    color: "#1e2924",
+                    whiteSpace: "pre-wrap",
+                    lineHeight: 1.5,
+                  }}
+                >
+                  {activeThreadComplaint.message}
+                </p>
+              </div>
+
+              {/* Thread Messages */}
+              {activeThreadComplaint.messages && activeThreadComplaint.messages.length > 0 ? (
+                activeThreadComplaint.messages.map((m) => {
+                  const isStaff = m.sender_role !== "parent";
+                  return (
+                    <div
+                      key={m.id}
+                      style={{
+                        background: isStaff ? "#effaf3" : "#fdfefe",
+                        border: isStaff ? "1px solid #bbf7d0" : "1px solid #dce8df",
+                        borderRadius: 10,
+                        padding: 12,
+                        borderLeft: isStaff ? "4px solid #16a34a" : "4px solid #d97706",
+                        marginLeft: isStaff ? 16 : 0,
+                        marginRight: isStaff ? 0 : 16,
+                      }}
+                    >
+                      <div
+                        style={{
+                          display: "flex",
+                          justifyContent: "space-between",
+                          alignItems: "center",
+                          marginBottom: 4,
+                        }}
+                      >
+                        <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                          <strong
+                            style={{
+                              fontSize: 12,
+                              color: isStaff ? "#14532d" : "#0a2e22",
+                            }}
+                          >
+                            {m.sender_name}
+                          </strong>
+                          <span
+                            style={{
+                              fontSize: 10,
+                              padding: "2px 6px",
+                              borderRadius: 8,
+                              background: isStaff ? "#dcfce7" : "#fef3c7",
+                              color: isStaff ? "#166534" : "#92400e",
+                              fontWeight: 700,
+                              textTransform: "uppercase",
+                            }}
+                          >
+                            {isStaff ? "Academy Staff" : "You"}
+                          </span>
+                        </div>
+                        <span style={{ fontSize: 10.5, color: "#5a6e64" }}>
+                          {new Date(m.created_at).toLocaleString("en-GB", {
+                            day: "numeric",
+                            month: "short",
+                            hour: "2-digit",
+                            minute: "2-digit",
+                          })}
+                        </span>
+                      </div>
+                      <p
+                        style={{
+                          margin: 0,
+                          fontSize: 12,
+                          color: isStaff ? "#14532d" : "#1e2924",
+                          whiteSpace: "pre-wrap",
+                          lineHeight: 1.5,
+                        }}
+                      >
+                        {m.message}
+                      </p>
+                    </div>
+                  );
+                })
+              ) : (
+                <div
+                  style={{
+                    padding: "14px",
+                    textAlign: "center",
+                    color: "#5a6e64",
+                    fontSize: 12,
+                    fontStyle: "italic",
+                  }}
+                >
+                  No replies yet. Our administrative leadership has received your inquiry and will reply here.
+                </div>
+              )}
+
+              {/* If official resolution notes exist */}
+              {activeThreadComplaint.resolution_notes && (
+                <div
+                  style={{
+                    background:
+                      activeThreadComplaint.status === "resolved"
+                        ? "#f0fdf4"
+                        : "#eff6ff",
+                    border: `1px solid ${
+                      activeThreadComplaint.status === "resolved"
+                        ? "#bbf7d0"
+                        : "#bfdbfe"
+                    }`,
+                    borderRadius: 10,
+                    padding: 12,
+                  }}
+                >
+                  <strong
+                    style={{
+                      fontSize: 11.5,
+                      color:
+                        activeThreadComplaint.status === "resolved"
+                          ? "#166534"
+                          : "#1e40af",
+                      display: "block",
+                      marginBottom: 4,
+                    }}
+                  >
+                    {activeThreadComplaint.status === "resolved"
+                      ? "✓ Official Resolution"
+                      : "⚙ Academy Update"}
+                  </strong>
+                  <p
+                    style={{
+                      margin: 0,
+                      fontSize: 12,
+                      color: "#1e2924",
+                      whiteSpace: "pre-wrap",
+                      lineHeight: 1.5,
+                    }}
+                  >
+                    {activeThreadComplaint.resolution_notes}
+                  </p>
+                  {activeThreadComplaint.resolved_by_name && (
+                    <small
+                      style={{
+                        display: "block",
+                        marginTop: 4,
+                        color: "#5a6e64",
+                        fontSize: 10.5,
+                      }}
+                    >
+                      Updated by {activeThreadComplaint.resolved_by_name}
+                    </small>
+                  )}
+                </div>
+              )}
+            </div>
+
+            {/* Reply Form */}
+            <form onSubmit={handleSendParentReply} style={{ padding: "16px 20px" }}>
+              {threadReplyError && (
+                <div
+                  className="family-alert"
+                  role="alert"
+                  style={{ margin: "0 0 12px 0" }}
+                >
+                  <AlertCircle size={16} />
+                  <p>{threadReplyError}</p>
+                </div>
+              )}
+
+              <div className="family-field">
+                <label htmlFor="thread-reply-input">Send Reply or Question</label>
+                <textarea
+                  id="thread-reply-input"
+                  required
+                  rows={3}
+                  placeholder="Type your message to academy staff or school management…"
+                  value={threadReplyMessage}
+                  onChange={(e) => setThreadReplyMessage(e.target.value)}
+                />
+              </div>
+
+              <div
+                className="family-form-actions"
+                style={{
+                  marginTop: 12,
+                  display: "flex",
+                  justifyContent: "flex-end",
+                  gap: 10,
+                }}
+              >
+                <button
+                  type="button"
+                  className="family-button secondary"
+                  onClick={() => setActiveThreadComplaint(null)}
+                  disabled={threadReplyBusy}
+                >
+                  Close
+                </button>
+                <button
+                  type="submit"
+                  className="family-button primary"
+                  disabled={threadReplyBusy || !threadReplyMessage.trim()}
+                >
+                  {threadReplyBusy ? (
+                    <>
+                      <LoaderCircle size={14} className="spinning" /> Sending…
+                    </>
+                  ) : (
+                    <>
+                      <Send size={14} /> Send Reply
+                    </>
+                  )}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
     </main>
   );
 }

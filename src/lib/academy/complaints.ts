@@ -22,6 +22,16 @@ export type ComplaintCategory =
 export type ComplaintUrgency = "normal" | "high" | "urgent";
 export type ComplaintStatus = "open" | "in_progress" | "resolved";
 
+export interface ComplaintMessageRecord {
+  id: string;
+  complaint_id: string;
+  sender_id: string;
+  sender_name: string;
+  sender_role: string;
+  message: string;
+  created_at: string;
+}
+
 export interface ComplaintRecord {
   id: string;
   ticket_number: string;
@@ -41,6 +51,7 @@ export interface ComplaintRecord {
   resolved_at: string | null;
   created_at: string;
   updated_at: string;
+  messages?: ComplaintMessageRecord[];
 }
 
 export const createComplaintSchema = z
@@ -73,13 +84,23 @@ export const updateComplaintSchema = z
   })
   .strict();
 
+export const replyComplaintSchema = z
+  .object({
+    action: z.literal("reply"),
+    complaintId: z.string().uuid(),
+    message: z.string().trim().min(1).max(5000),
+  })
+  .strict();
+
 export const complaintActionSchema = z.discriminatedUnion("action", [
   createComplaintSchema,
   updateComplaintSchema,
+  replyComplaintSchema,
 ]);
 
 export type CreateComplaintInput = z.infer<typeof createComplaintSchema>;
 export type UpdateComplaintInput = z.infer<typeof updateComplaintSchema>;
+export type ReplyComplaintInput = z.infer<typeof replyComplaintSchema>;
 export type ComplaintActionInput = z.infer<typeof complaintActionSchema>;
 
 export function categoryLabel(cat: ComplaintCategory | string): string {

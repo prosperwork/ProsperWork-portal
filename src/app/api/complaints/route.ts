@@ -8,6 +8,7 @@ import {
   complaintActionSchema,
   categoryLabel,
   type ComplaintRecord,
+  type ComplaintMessageRecord,
 } from "@/lib/academy/complaints";
 
 export const dynamic = "force-dynamic";
@@ -76,6 +77,27 @@ export async function GET(request: Request) {
           (c.student_name && c.student_name.toLowerCase().includes(query)) ||
           c.category.toLowerCase().includes(query)
       );
+    }
+
+    if (list.length > 0) {
+      const complaintIds = list.map((c) => c.id);
+      const messagesRes = await adminClient
+        .from("pw_complaint_messages")
+        .select("*")
+        .in("complaint_id", complaintIds)
+        .order("created_at", { ascending: true });
+
+      if (messagesRes.data) {
+        const messagesByComplaint = new Map<string, ComplaintMessageRecord[]>();
+        for (const msg of messagesRes.data as ComplaintMessageRecord[]) {
+          const arr = messagesByComplaint.get(msg.complaint_id) || [];
+          arr.push(msg);
+          messagesByComplaint.set(msg.complaint_id, arr);
+        }
+        for (const c of list) {
+          c.messages = messagesByComplaint.get(c.id) || [];
+        }
+      }
     }
 
     return reply({ complaints: list });
@@ -303,6 +325,127 @@ export async function POST(request: Request) {
           ? "Complaint marked as resolved."
           : "Complaint status updated.",
         complaint: updated,
+      });
+    }
+
+    if (input.action === "reply") {
+      const allowedRoles = [
+        "parent",
+        "super_admin",
+        "general_manager",
+        "head_admin",
+        "admin",
+        "qc",
+      ];
+      if (!allowedRoles.includes(profile.role)) {
+        return reply(
+          { error: "You are not authorized to post replies on complaints." },
+          403
+        );
+      }
+
+      const existingResult = await adminClient
+        .from("pw_complaints")
+        .select("*")
+        .eq("id", input.complaintId)
+        .single();
+
+      if (existingResult.error || !existingResult.data) {
+        return reply({ error: "Complaint ticket not found." }, 404);
+      }
+
+      const complaint = existingResult.data as ComplaintRecord;
+
+      if (profile.role === "parent" && complaint.parent_id !== profile.id) {
+        return reply(
+          { error: "You can only reply to your own inquiries." },
+          403
+        );
+      }
+
+      const senderName =
+        profile.name ||
+        (profile.role === "parent" ? "Parent" : "Academy Administration");
+      const senderRole = profile.role;
+
+      const insertMsgResult = await adminClient
+        .from("pw_complaint_messages")
+        .insert({
+          complaint_id: complaint.id,
+          sender_id: profile.id,
+          sender_name: senderName,
+          sender_role: senderRole,
+          message: input.message.trim(),
+        })
+        .select()
+        .single();
+
+      if (insertMsgResult.error || !insertMsgResult.data) {
+        console.error("Failed to insert complaint message:", insertMsgResult.error);
+        return reply(
+          { error: "Could not send reply. Please try again." },
+          500
+        );
+      }
+
+      const newMessage = insertMsgResult.data as ComplaintMessageRecord;
+
+      // Update complaint status and updated_at
+      let nextStatus = complaint.status;
+      if (profile.role !== "parent" && complaint.status === "open") {
+        nextStatus = "in_progress";
+      } else if (profile.role === "parent" && complaint.status === "resolved") {
+        nextStatus = "in_progress";
+      }
+
+      await adminClient
+        .from("pw_complaints")
+        .update({
+          status: nextStatus,
+          updated_at: new Date().toISOString(),
+        })
+        .eq("id", complaint.id);
+
+      // Deliver reply email alert to the opposite party
+      const isStaff = profile.role !== "parent";
+      const recipientEmail = isStaff
+        ? complaint.parent_email
+        : "complaints@prosperworkmusic.com";
+      const recipientName = isStaff
+        ? complaint.parent_name
+        : "Academy Administration";
+
+      if (recipientEmail) {
+        try {
+          await deliverEmail(
+            {
+              id: randomUUID(),
+              lease_id: randomUUID(),
+              category: "complaints",
+              email: recipientEmail,
+              subject: `[${complaint.ticket_number}] New reply from ${senderName}: ${complaint.subject}`,
+              template: "complaint_reply_alert",
+              payload: {
+                ticketNumber: complaint.ticket_number,
+                subject: complaint.subject,
+                recipientName,
+                senderName,
+                senderRole,
+                message: newMessage.message,
+              },
+            },
+            appUrl
+          );
+        } catch (emailErr) {
+          console.error("Reply alert email failed:", emailErr);
+        }
+      }
+
+      return reply({
+        ok: true,
+        message: "Reply sent successfully.",
+        messageRecord: newMessage,
+        status: nextStatus,
       });
     }
 
