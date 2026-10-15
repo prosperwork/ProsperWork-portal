@@ -548,6 +548,25 @@ export default function ClassroomMusicTools({
     }
   };
 
+  const handleMetronomeSharedToggle = (checked: boolean) => {
+    setMetronomeShared(checked);
+    if (!checked && isPlayingMetronome && sendBroadcast) {
+      const payload = JSON.stringify({
+        type: "metronome_sync",
+        isPlaying: false,
+        bpm,
+      });
+      sendBroadcast(new TextEncoder().encode(payload), { reliable: true });
+    } else if (checked && isPlayingMetronome && sendBroadcast) {
+      const payload = JSON.stringify({
+        type: "metronome_sync",
+        isPlaying: true,
+        bpm,
+      });
+      sendBroadcast(new TextEncoder().encode(payload), { reliable: true });
+    }
+  };
+
   return (
     <>
       {/* Floating In-Call Chat Notification Toast */}
@@ -1571,18 +1590,23 @@ export default function ClassroomMusicTools({
             <label
               style={{
                 fontSize: 11,
-                color: "#aaa",
+                color: metronomeShared ? "#ffb142" : "#aaa",
                 display: "inline-flex",
                 alignItems: "center",
                 gap: 6,
-                cursor: "pointer",
+                cursor: isFeatureLocked("metronome") ? "default" : "pointer",
               }}
+              title="When enabled, metronome tempo and clicks synchronize to student. When disabled, it clicks privately on your device."
             >
               <input
                 type="checkbox"
+                disabled={isFeatureLocked("metronome")}
                 checked={metronomeShared}
-                onChange={(e) => setMetronomeShared(e.target.checked)}
-                style={{ accentColor: "#ffb142" }}
+                onChange={(e) => handleMetronomeSharedToggle(e.target.checked)}
+                style={{
+                  accentColor: "#ffb142",
+                  cursor: isFeatureLocked("metronome") ? "default" : "pointer",
+                }}
               />
               Sync click sound to student
             </label>

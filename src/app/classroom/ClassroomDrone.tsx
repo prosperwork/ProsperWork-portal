@@ -23,6 +23,7 @@ export default function ClassroomDrone({
   const [isPlaying, setIsPlaying] = useState(false);
   const [includeFifth, setIncludeFifth] = useState(true); // Root + Fifth drone
   const [volume, setVolume] = useState(0.4);
+  const [syncToRoom, setSyncToRoom] = useState(true);
 
   const audioCtxRef = useRef<AudioContext | null>(null);
   const rootOscRef = useRef<OscillatorNode | null>(null);
@@ -85,7 +86,10 @@ export default function ClassroomDrone({
       // Root Note (Warm Triangle Wave)
       const rootOsc = ctx.createOscillator();
       rootOsc.type = "triangle";
-      rootOsc.frequency.setValueAtTime(getFreq(note, oct, baseA), ctx.currentTime);
+      rootOsc.frequency.setValueAtTime(
+        getFreq(note, oct, baseA),
+        ctx.currentTime
+      );
       rootOsc.connect(masterGain);
       rootOsc.start();
       rootOscRef.current = rootOsc;
@@ -150,7 +154,7 @@ export default function ClassroomDrone({
   const startDrone = () => {
     if (isLocked) return;
     startDroneAudio();
-    if (sendDrone) {
+    if (sendDrone && syncToRoom) {
       const payload = JSON.stringify({
         type: "play",
         note: selectedNote,
@@ -165,7 +169,7 @@ export default function ClassroomDrone({
   const stopDrone = () => {
     if (isLocked) return;
     stopDroneAudio();
-    if (sendDrone) {
+    if (sendDrone && syncToRoom) {
       const payload = JSON.stringify({ type: "stop" });
       sendDrone(new TextEncoder().encode(payload), { reliable: true });
     }
@@ -440,7 +444,11 @@ export default function ClassroomDrone({
           gap: 6,
         }}
       >
-        {isPlaying ? <Volume2 size={15} color="#2ed573" /> : <VolumeX size={15} />}
+        {isPlaying ? (
+          <Volume2 size={15} color="#2ed573" />
+        ) : (
+          <VolumeX size={15} />
+        )}
         {isLocked
           ? isPlaying
             ? `Listening to ${selectedNote}${octave} Drone (Set by Teacher)`
@@ -449,6 +457,68 @@ export default function ClassroomDrone({
           ? `Stop ${selectedNote}${octave} Drone`
           : `Play ${selectedNote}${octave} Drone`}
       </button>
+
+      {/* Sync to Student Checkbox */}
+      {!isLocked && (
+        <div
+          style={{
+            marginTop: 10,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between",
+            paddingTop: 8,
+            borderTop: "1px solid rgba(255, 255, 255, 0.08)",
+          }}
+        >
+          <label
+            style={{
+              fontSize: 11,
+              color: syncToRoom ? "#a55eea" : "#aaa",
+              display: "inline-flex",
+              alignItems: "center",
+              gap: 6,
+              cursor: "pointer",
+            }}
+            title="When enabled, drone tone synchronizes to student speakers. When disabled, you hear the drone privately on your device."
+          >
+            <input
+              type="checkbox"
+              checked={syncToRoom}
+              onChange={(e) => {
+                const next = e.target.checked;
+                setSyncToRoom(next);
+                if (!next && isPlaying && sendDrone) {
+                  const payload = JSON.stringify({ type: "stop" });
+                  sendDrone(new TextEncoder().encode(payload), {
+                    reliable: true,
+                  });
+                } else if (next && isPlaying && sendDrone) {
+                  const payload = JSON.stringify({
+                    type: "play",
+                    note: selectedNote,
+                    octave,
+                    standardFreq,
+                    includeFifth,
+                  });
+                  sendDrone(new TextEncoder().encode(payload), {
+                    reliable: true,
+                  });
+                }
+              }}
+              style={{ accentColor: "#a55eea", cursor: "pointer" }}
+            />
+            Sync drone to student
+          </label>
+          <span
+            style={{
+              fontSize: 10,
+              color: syncToRoom ? "#a55eea" : "#666",
+            }}
+          >
+            {syncToRoom ? "● Synchronized" : "Local only"}
+          </span>
+        </div>
+      )}
     </div>
   );
 }

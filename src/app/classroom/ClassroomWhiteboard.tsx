@@ -62,6 +62,7 @@ export default function ClassroomWhiteboard({
   const [fontSize, setFontSize] = useState(22);
   const [showStaff, setShowStaff] = useState(true);
   const [layoutMode, setLayoutMode] = useState<LayoutMode>("full");
+  const [syncToRoom, setSyncToRoom] = useState(true);
 
   // Direct on-canvas typing position and value
   const [typingState, setTypingState] = useState<TypingState | null>(null);
@@ -195,7 +196,7 @@ export default function ClassroomWhiteboard({
   const handleClearAll = () => {
     if (isLocked) return;
     clearCanvasLocal();
-    if (sendWhiteboard) {
+    if (sendWhiteboard && syncToRoom) {
       const payload = JSON.stringify({ type: "clear" });
       sendWhiteboard(new TextEncoder().encode(payload), { reliable: true });
     }
@@ -204,7 +205,9 @@ export default function ClassroomWhiteboard({
   // Commit text directly onto canvas and broadcast
   const commitDirectText = (textOverride?: string) => {
     if (!typingState || isLocked) return;
-    const textToCommit = (typeof textOverride === "string" ? textOverride : typingState.text).trim();
+    const textToCommit = (
+      typeof textOverride === "string" ? textOverride : typingState.text
+    ).trim();
     if (!textToCommit) {
       setTypingState(null);
       return;
@@ -227,7 +230,7 @@ export default function ClassroomWhiteboard({
       }
     }
 
-    if (sendWhiteboard) {
+    if (sendWhiteboard && syncToRoom) {
       const payload = JSON.stringify({
         type: "text",
         text: textToCommit,
@@ -326,7 +329,7 @@ export default function ClassroomWhiteboard({
     const ctx = canvas.getContext("2d");
     if (ctx) ctx.restore();
 
-    if (currentStrokeRef.current.length > 1 && sendWhiteboard) {
+    if (currentStrokeRef.current.length > 1 && sendWhiteboard && syncToRoom) {
       const stroke: DrawStroke = {
         points: currentStrokeRef.current,
         color: tool === "eraser" ? "#16201a" : color,
@@ -397,7 +400,9 @@ export default function ClassroomWhiteboard({
       });
       return;
     }
-    setTypingState((prev) => (prev ? { ...prev, text: prev.text + sym } : null));
+    setTypingState((prev) =>
+      prev ? { ...prev, text: prev.text + sym } : null
+    );
     directInputRef.current?.focus();
   };
 
@@ -840,6 +845,38 @@ export default function ClassroomWhiteboard({
               <Minimize2 size={11} /> Compact
             </button>
           </div>
+
+          {!isLocked && (
+            <label
+              style={{
+                fontSize: 11,
+                color: syncToRoom ? "#2ed573" : "#aaa",
+                display: "inline-flex",
+                alignItems: "center",
+                gap: 5,
+                cursor: "pointer",
+                background: syncToRoom
+                  ? "rgba(46, 213, 115, 0.12)"
+                  : "rgba(255, 255, 255, 0.05)",
+                padding: "3px 8px",
+                borderRadius: 4,
+                border: `1px solid ${
+                  syncToRoom
+                    ? "rgba(46, 213, 115, 0.35)"
+                    : "rgba(255, 255, 255, 0.12)"
+                }`,
+              }}
+              title="When enabled, your whiteboard drawing and text synchronize live with everyone. When disabled, you sketch privately on your side."
+            >
+              <input
+                type="checkbox"
+                checked={syncToRoom}
+                onChange={(e) => setSyncToRoom(e.target.checked)}
+                style={{ accentColor: "#2ed573", cursor: "pointer" }}
+              />
+              <span>{syncToRoom ? "Sync board to student" : "Local only"}</span>
+            </label>
+          )}
 
           {!isLocked && (
             <button

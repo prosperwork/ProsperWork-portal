@@ -91,6 +91,7 @@ export default function ClassroomPiano({
   const [soundEnabled, setSoundEnabled] = useState(true);
   const [midiConnected, setMidiConnected] = useState(false);
   const [viewMode, setViewMode] = useState<"scroll" | "fit">("scroll");
+  const [syncToRoom, setSyncToRoom] = useState(true);
 
   const scrollContainerRef = useRef<HTMLDivElement | null>(null);
   const audioCtxRef = useRef<AudioContext | null>(null);
@@ -197,7 +198,7 @@ export default function ClassroomPiano({
     if (isLocked) return;
     setActiveNotes((prev) => new Set(prev).add(midi));
     playTone(midi);
-    if (sendPianoData) {
+    if (sendPianoData && syncToRoom) {
       const payload = JSON.stringify({ type: "note_on", midi });
       sendPianoData(new TextEncoder().encode(payload), { reliable: true });
     }
@@ -211,16 +212,16 @@ export default function ClassroomPiano({
       return next;
     });
     stopTone(midi);
-    if (sendPianoData) {
+    if (sendPianoData && syncToRoom) {
       const payload = JSON.stringify({ type: "note_off", midi });
       sendPianoData(new TextEncoder().encode(payload), { reliable: true });
     }
   };
 
-  // Change keyboard size (Admin broadcasts to all students in room)
+  // Change keyboard size (Admin broadcasts to all students in room if syncToRoom is enabled)
   const handleSizeChange = (newSize: PianoSize) => {
     setKeyboardSize(newSize);
-    if (sendPianoData && isAdmin) {
+    if (sendPianoData && isAdmin && syncToRoom) {
       const payload = JSON.stringify({ type: "piano_size_changed", size: newSize });
       sendPianoData(new TextEncoder().encode(payload), { reliable: true });
     }
@@ -464,6 +465,48 @@ export default function ClassroomPiano({
                 ● MIDI Keyboard Connected
               </span>
             ) : null}
+
+            {/* Sync to Student Checkbox */}
+            {!isLocked && (
+              <label
+                style={{
+                  fontSize: 11,
+                  color: syncToRoom ? "#2ed573" : "#aaa",
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: 5,
+                  cursor: "pointer",
+                  background: syncToRoom
+                    ? "rgba(46, 213, 115, 0.12)"
+                    : "rgba(255, 255, 255, 0.05)",
+                  padding: "2px 8px",
+                  borderRadius: 5,
+                  border: `1px solid ${
+                    syncToRoom
+                      ? "rgba(46, 213, 115, 0.35)"
+                      : "rgba(255, 255, 255, 0.12)"
+                  }`,
+                }}
+                title="When enabled, your played keys and sounds synchronize live to student. When unchecked, you play privately on your side."
+              >
+                <input
+                  type="checkbox"
+                  checked={syncToRoom}
+                  onChange={(e) => {
+                    const next = e.target.checked;
+                    setSyncToRoom(next);
+                    if (!next && sendPianoData) {
+                      activeNotes.forEach((midi) => {
+                        const payload = JSON.stringify({ type: "note_off", midi });
+                        sendPianoData(new TextEncoder().encode(payload), { reliable: true });
+                      });
+                    }
+                  }}
+                  style={{ accentColor: "#2ed573", cursor: "pointer" }}
+                />
+                <span>{syncToRoom ? "Sync piano to student" : "Local only"}</span>
+              </label>
+            )}
           </div>
         </div>
 

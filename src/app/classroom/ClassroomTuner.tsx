@@ -37,6 +37,7 @@ export default function ClassroomTuner({
   const [cents, setCents] = useState<number>(0);
   const [inTune, setInTune] = useState(false);
   const [error, setError] = useState("");
+  const [syncToRoom, setSyncToRoom] = useState(true);
 
   const audioCtxRef = useRef<AudioContext | null>(null);
   const analyserRef = useRef<AnalyserNode | null>(null);
@@ -125,7 +126,7 @@ export default function ClassroomTuner({
     setCents(0);
     setInTune(false);
 
-    if (sendTuner) {
+    if (sendTuner && syncToRoom) {
       const payload = JSON.stringify({ type: "stop" });
       sendTuner(new TextEncoder().encode(payload), { reliable: false });
     }
@@ -218,7 +219,7 @@ export default function ClassroomTuner({
 
       // Broadcast detected pitch to other participants every 100ms
       const now = Date.now();
-      if (sendTuner && now - lastBroadcastRef.current > 100) {
+      if (sendTuner && syncToRoom && now - lastBroadcastRef.current > 100) {
         lastBroadcastRef.current = now;
         const payload = JSON.stringify({
           type: "pitch",
@@ -499,6 +500,57 @@ export default function ClassroomTuner({
               )}
             </button>
           </div>
+
+          {/* Sync to Student Checkbox */}
+          {!isLocked && (
+            <div
+              style={{
+                marginTop: 10,
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "space-between",
+                paddingTop: 8,
+                borderTop: "1px solid rgba(255, 255, 255, 0.08)",
+              }}
+            >
+              <label
+                style={{
+                  fontSize: 11,
+                  color: syncToRoom ? "#2ed573" : "#aaa",
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: 6,
+                  cursor: "pointer",
+                }}
+                title="When enabled, pitch detection syncs live to student. When disabled, you tune privately on your side."
+              >
+                <input
+                  type="checkbox"
+                  checked={syncToRoom}
+                  onChange={(e) => {
+                    const next = e.target.checked;
+                    setSyncToRoom(next);
+                    if (!next && sendTuner) {
+                      const payload = JSON.stringify({ type: "stop" });
+                      sendTuner(new TextEncoder().encode(payload), {
+                        reliable: false,
+                      });
+                    }
+                  }}
+                  style={{ accentColor: "#2ed573", cursor: "pointer" }}
+                />
+                Sync pitch to student
+              </label>
+              <span
+                style={{
+                  fontSize: 10,
+                  color: syncToRoom ? "#2ed573" : "#666",
+                }}
+              >
+                {syncToRoom ? "● Synchronized" : "Local only"}
+              </span>
+            </div>
+          )}
         </>
       )}
     </div>
