@@ -46,8 +46,13 @@ export async function sendOrQueueEmail(params: QueueEmailParams): Promise<{
     try {
       const adminClient = provisioningClient();
       const dedupKey = `complaint:${jobId}:${Date.now()}`;
-      // Schedule next retry in 12 minutes (safely past any 60-min window)
-      const retryAt = new Date(Date.now() + 12 * 60 * 1000).toISOString();
+      // Schedule fast retry for network hiccups (1 min), staggered (15 mins) for rate-limits
+      const isRateLimit =
+        errorMsg.toLowerCase().includes("too many") ||
+        errorMsg.toLowerCase().includes("limit") ||
+        errorMsg.toLowerCase().includes("554") ||
+        errorMsg.toLowerCase().includes("451");
+      const retryAt = new Date(Date.now() + (isRateLimit ? 15 : 1) * 60 * 1000).toISOString();
 
       await adminClient.from("pw_emails").insert({
         dedup_key: dedupKey,

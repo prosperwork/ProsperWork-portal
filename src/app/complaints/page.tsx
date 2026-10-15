@@ -49,6 +49,11 @@ export default function ComplaintsPage() {
     null
   );
   const [statusBusy, setStatusBusy] = useState(false);
+  const [currentUser, setCurrentUser] = useState<{
+    role?: string;
+    id?: string;
+    name?: string;
+  } | null>(null);
 
   // Conversation Thread & Reply state
   const [replyText, setReplyText] = useState("");
@@ -72,6 +77,13 @@ export default function ComplaintsPage() {
       }
       const list = (data.complaints || []) as ComplaintRecord[];
       setComplaints(list);
+      if (data.currentRole) {
+        setCurrentUser({
+          role: data.currentRole,
+          id: data.currentUserId,
+          name: data.currentName,
+        });
+      }
       // Auto-select first ticket if none selected
       setSelectedComplaintId((prev) => {
         if (prev && list.some((c) => c.id === prev)) return prev;
@@ -218,7 +230,12 @@ export default function ComplaintsPage() {
   };
 
   const handleUpdateStatus = async (newStatus: ComplaintStatus) => {
-    if (!selectedComplaint || selectedComplaint.status === newStatus || statusBusy) return;
+    if (
+      !selectedComplaint ||
+      selectedComplaint.status === newStatus ||
+      statusBusy
+    )
+      return;
 
     setStatusBusy(true);
     try {
@@ -546,7 +563,9 @@ export default function ComplaintsPage() {
                     <h3 style={{ margin: 0 }}>
                       {selectedComplaint.parent_name}
                     </h3>
-                    <div style={{ display: "inline-flex", alignItems: "center" }}>
+                    <div
+                      style={{ display: "inline-flex", alignItems: "center" }}
+                    >
                       <select
                         aria-label="Ticket Status"
                         value={selectedComplaint.status}
@@ -577,7 +596,9 @@ export default function ComplaintsPage() {
                         }}
                       >
                         <option value="open">Status: Open</option>
-                        <option value="in_progress">Status: Under Investigation</option>
+                        <option value="in_progress">
+                          Status: Under Investigation
+                        </option>
                         <option value="resolved">Status: Resolved</option>
                       </select>
                     </div>
@@ -619,8 +640,8 @@ export default function ComplaintsPage() {
                 </div>
               </div>
 
-              <div style={{ padding: "20px" }}>
-                <div style={{ marginBottom: "14px" }}>
+              <div style={{ padding: "18px 20px 22px" }}>
+                <div>
                   <span className="eyebrow">Subject</span>
                   <h2
                     style={{
@@ -633,128 +654,134 @@ export default function ComplaintsPage() {
                     {selectedComplaint.subject}
                   </h2>
                 </div>
-                <div>
-                  <span className="eyebrow">
-                    Parent Message &amp; Grievance Statement
-                  </span>
-                  <div
-                    style={{
-                      background: "#f9faf8",
-                      border: "1px solid var(--line)",
-                      borderRadius: "10px",
-                      padding: "16px",
-                      marginTop: "6px",
-                      fontSize: "13px",
-                      lineHeight: "1.6",
-                      color: "var(--ink)",
-                      whiteSpace: "pre-wrap",
-                    }}
-                  >
-                    {selectedComplaint.message}
-                  </div>
-                </div>
               </div>
             </section>
 
-            {/* Live Discussion & Reply Thread Card */}
+            {/* Live Chat Discussion & Reply Thread Card */}
             <section className="card section-card">
               <SectionTitle
                 title={`Discussion & Messages (${
                   (selectedComplaint.messages?.length || 0) + 1
                 })`}
-                detail="Real-time two-way communication between academy staff and the parent."
+                detail="Real-time two-way communication between academy staff and the family."
               />
 
               <div
                 style={{
                   display: "flex",
                   flexDirection: "column",
-                  gap: "12px",
+                  gap: "16px",
                   maxHeight: "520px",
                   overflowY: "auto",
-                  padding: "4px 0 16px 0",
+                  padding: "16px",
+                  backgroundColor: "#f9faf8",
+                  borderRadius: "14px",
+                  border: "1px solid var(--line)",
+                  marginTop: "6px",
                 }}
               >
-                {/* Initial Parent Grievance Statement */}
-                <div
-                  style={{
-                    border: "1px solid #dce8df",
-                    borderRadius: "10px",
-                    background: "#ffffff",
-                    padding: "14px 16px",
-                    borderLeft: "4px solid #135b45",
-                  }}
-                >
-                  <div
-                    style={{
-                      display: "flex",
-                      justifyContent: "space-between",
-                      alignItems: "center",
-                      marginBottom: "6px",
-                      gap: "8px",
-                      flexWrap: "wrap",
-                    }}
-                  >
+                {/* Initial Parent Inquiry (First Chat Message) */}
+                {(() => {
+                  const isMe =
+                    currentUser?.role === "parent" &&
+                    selectedComplaint.parent_id === currentUser?.id;
+                  return (
                     <div
                       style={{
                         display: "flex",
-                        alignItems: "center",
-                        gap: "8px",
+                        gap: "12px",
+                        alignItems: "flex-start",
+                        flexDirection: isMe ? "row-reverse" : "row",
                       }}
                     >
-                      <strong
-                        style={{ fontSize: "13px", color: "var(--pine-950)" }}
+                      <ProfileAvatar
+                        name={selectedComplaint.parent_name}
+                        size={36}
+                      />
+                      <div
+                        style={{
+                          maxWidth: "82%",
+                          display: "flex",
+                          flexDirection: "column",
+                          alignItems: isMe ? "flex-end" : "flex-start",
+                        }}
                       >
-                        {selectedComplaint.parent_name}
-                      </strong>
-                      <Pill tone="amber">Parent (Initial Ticket)</Pill>
+                        <div
+                          style={{
+                            display: "flex",
+                            alignItems: "center",
+                            gap: "8px",
+                            marginBottom: "4px",
+                            flexDirection: isMe ? "row-reverse" : "row",
+                          }}
+                        >
+                          <strong
+                            style={{
+                              fontSize: "12.5px",
+                              color: "var(--pine-950)",
+                            }}
+                          >
+                            {isMe ? "You" : selectedComplaint.parent_name}
+                          </strong>
+                          <Pill tone="amber">Parent (Inquiry)</Pill>
+                          <span
+                            style={{
+                              fontSize: "11px",
+                              color: "var(--muted)",
+                            }}
+                          >
+                            {niceDate(selectedComplaint.created_at)}
+                          </span>
+                        </div>
+                        <div
+                          style={{
+                            background: isMe ? "#135b45" : "#ffffff",
+                            color: isMe ? "#ffffff" : "var(--ink)",
+                            border: isMe
+                              ? "1px solid #0f4b39"
+                              : "1px solid #dce8df",
+                            borderRadius: isMe
+                              ? "16px 4px 16px 16px"
+                              : "4px 16px 16px 16px",
+                            padding: "12px 16px",
+                            fontSize: "13.5px",
+                            lineHeight: "1.6",
+                            whiteSpace: "pre-wrap",
+                            wordBreak: "break-word",
+                            boxShadow: "0 1px 3px rgba(0, 0, 0, 0.04)",
+                          }}
+                        >
+                          {selectedComplaint.message}
+                        </div>
+                      </div>
                     </div>
-                    <span style={{ fontSize: "11px", color: "var(--muted)" }}>
-                      {niceDate(selectedComplaint.created_at)}
-                    </span>
-                  </div>
-                  <div
-                    style={{
-                      fontSize: "13px",
-                      lineHeight: "1.6",
-                      color: "var(--ink)",
-                      whiteSpace: "pre-wrap",
-                    }}
-                  >
-                    {selectedComplaint.message}
-                  </div>
-                </div>
+                  );
+                })()}
 
-                {/* All Subsequent Replies */}
+                {/* All Subsequent Chat Replies */}
                 {selectedComplaint.messages &&
                 selectedComplaint.messages.length > 0
                   ? selectedComplaint.messages.map((msg) => {
                       const isStaff = msg.sender_role !== "parent";
+                      const isMe =
+                        currentUser?.id && msg.sender_id === currentUser.id;
                       return (
                         <div
                           key={msg.id}
                           style={{
-                            border: isStaff
-                              ? "1px solid #bbf7d0"
-                              : "1px solid #dce8df",
-                            borderRadius: "10px",
-                            background: isStaff ? "#f0fdf4" : "#ffffff",
-                            padding: "14px 16px",
-                            borderLeft: isStaff
-                              ? "4px solid #16a34a"
-                              : "4px solid #d97706",
-                            marginLeft: isStaff ? "20px" : "0",
-                            marginRight: isStaff ? "0" : "20px",
+                            display: "flex",
+                            gap: "12px",
+                            alignItems: "flex-start",
+                            flexDirection: isMe ? "row-reverse" : "row",
                           }}
                         >
+                          <ProfileAvatar name={msg.sender_name} size={36} />
                           <div
                             style={{
+                              maxWidth: "82%",
                               display: "flex",
-                              justifyContent: "space-between",
-                              alignItems: "center",
-                              marginBottom: "6px",
-                              gap: "8px",
-                              flexWrap: "wrap",
+                              flexDirection: "column",
+                              alignItems: isMe ? "flex-end" : "flex-start",
                             }}
                           >
                             <div
@@ -762,40 +789,60 @@ export default function ComplaintsPage() {
                                 display: "flex",
                                 alignItems: "center",
                                 gap: "8px",
+                                marginBottom: "4px",
+                                flexDirection: isMe ? "row-reverse" : "row",
                               }}
                             >
                               <strong
                                 style={{
-                                  fontSize: "13px",
-                                  color: isStaff
-                                    ? "#14532d"
-                                    : "var(--pine-950)",
+                                  fontSize: "12.5px",
+                                  color: "var(--pine-950)",
                                 }}
                               >
-                                {msg.sender_name}
+                                {isMe ? "You" : msg.sender_name}
                               </strong>
                               <Pill tone={isStaff ? "green" : "amber"}>
                                 {isStaff ? "Academy Staff" : "Parent"}
                               </Pill>
+                              <span
+                                style={{
+                                  fontSize: "11px",
+                                  color: "var(--muted)",
+                                }}
+                              >
+                                {niceDate(msg.created_at)}
+                              </span>
                             </div>
-                            <span
+                            <div
                               style={{
-                                fontSize: "11px",
-                                color: "var(--muted)",
+                                background: isMe
+                                  ? "#135b45"
+                                  : isStaff
+                                  ? "#f0fdf4"
+                                  : "#ffffff",
+                                color: isMe
+                                  ? "#ffffff"
+                                  : isStaff
+                                  ? "#14532d"
+                                  : "var(--ink)",
+                                border: isMe
+                                  ? "1px solid #0f4b39"
+                                  : isStaff
+                                  ? "1px solid #bbf7d0"
+                                  : "1px solid #dce8df",
+                                borderRadius: isMe
+                                  ? "16px 4px 16px 16px"
+                                  : "4px 16px 16px 16px",
+                                padding: "12px 16px",
+                                fontSize: "13.5px",
+                                lineHeight: "1.6",
+                                whiteSpace: "pre-wrap",
+                                wordBreak: "break-word",
+                                boxShadow: "0 1px 3px rgba(0, 0, 0, 0.04)",
                               }}
                             >
-                              {niceDate(msg.created_at)}
-                            </span>
-                          </div>
-                          <div
-                            style={{
-                              fontSize: "13px",
-                              lineHeight: "1.6",
-                              color: isStaff ? "#14532d" : "var(--ink)",
-                              whiteSpace: "pre-wrap",
-                            }}
-                          >
-                            {msg.message}
+                              {msg.message}
+                            </div>
                           </div>
                         </div>
                       );
@@ -803,27 +850,71 @@ export default function ComplaintsPage() {
                   : null}
               </div>
 
-              {/* Reply Input Box */}
+              {/* Modern Chat Reply Input */}
               <form
                 onSubmit={handleSendReply}
                 style={{
                   borderTop: "1px solid var(--line)",
                   paddingTop: "16px",
-                  marginTop: "6px",
+                  marginTop: "12px",
                 }}
               >
-                <div className="field">
-                  <label htmlFor="complaint-reply-input">
-                    Post Reply to Parent (Sends immediate email alert)
-                  </label>
-                  <textarea
-                    id="complaint-reply-input"
-                    rows={3}
-                    placeholder={`Write a reply to ${selectedComplaint.parent_name}…`}
-                    value={replyText}
-                    onChange={(e) => setReplyText(e.target.value)}
-                    required
-                  />
+                <div
+                  style={{
+                    display: "flex",
+                    gap: "10px",
+                    alignItems: "flex-end",
+                  }}
+                >
+                  <div style={{ flex: 1 }}>
+                    <textarea
+                      id="complaint-reply-input"
+                      rows={2}
+                      placeholder={`Write a reply to ${
+                        currentUser?.role === "parent"
+                          ? "Academy Staff"
+                          : selectedComplaint.parent_name
+                      }… (Sends email alert)`}
+                      value={replyText}
+                      onChange={(e) => setReplyText(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter" && !e.shiftKey) {
+                          e.preventDefault();
+                          if (replyText.trim() && !replyBusy) {
+                            void handleSendReply(e);
+                          }
+                        }
+                      }}
+                      style={{
+                        width: "100%",
+                        borderRadius: "12px",
+                        padding: "10px 14px",
+                        fontSize: "13px",
+                        lineHeight: "1.5",
+                        border: "1px solid var(--line)",
+                        resize: "none",
+                        fontFamily: "inherit",
+                      }}
+                      required
+                    />
+                  </div>
+                  <button
+                    type="submit"
+                    className="btn primary"
+                    disabled={replyBusy || !replyText.trim()}
+                    style={{
+                      height: "44px",
+                      padding: "0 18px",
+                      borderRadius: "12px",
+                      display: "flex",
+                      alignItems: "center",
+                      gap: "6px",
+                      whiteSpace: "nowrap",
+                    }}
+                  >
+                    <Send size={15} />
+                    <span>{replyBusy ? "Sending…" : "Send"}</span>
+                  </button>
                 </div>
 
                 {replyError && (
@@ -835,17 +926,6 @@ export default function ComplaintsPage() {
                     {replyError}
                   </p>
                 )}
-
-                <div className="modal-actions" style={{ marginTop: "12px" }}>
-                  <button
-                    type="submit"
-                    className="btn primary"
-                    disabled={replyBusy || !replyText.trim()}
-                  >
-                    <Send size={14} />
-                    {replyBusy ? "Sending…" : "Send Reply to Parent"}
-                  </button>
-                </div>
               </form>
             </section>
           </div>

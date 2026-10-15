@@ -118,7 +118,12 @@ export async function GET(request: Request) {
       }
     }
 
-    return reply({ complaints: list });
+    return reply({
+      complaints: list,
+      currentRole: profile.role,
+      currentUserId: profile.id,
+      currentName: profile.name,
+    });
   } catch (error) {
     console.error("GET /api/complaints error:", error);
     return reply({ error: "An unexpected error occurred." }, 500);
