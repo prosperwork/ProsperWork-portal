@@ -13,6 +13,7 @@ import {
   CheckCircle2,
   ChevronRight,
   Clock,
+  Lock,
   Mail,
   MessageSquare,
   RefreshCw,
@@ -217,9 +218,7 @@ export default function ComplaintsPage() {
       );
 
       setReplyText("");
-      showToast(
-        `Reply sent to ${selectedComplaint.parent_name}. Email alert delivered.`
-      );
+      showToast("Reply sent.");
     } catch (err) {
       setReplyError(
         err instanceof Error ? err.message : "Failed to post reply."
@@ -269,7 +268,7 @@ export default function ComplaintsPage() {
 
       showToast(
         newStatus === "resolved"
-          ? `Ticket #${updated.ticket_number} marked as resolved. Confirmation email dispatched to ${updated.parent_name}.`
+          ? `Ticket #${updated.ticket_number} marked as resolved.`
           : `Ticket #${updated.ticket_number} status set to ${
               statusLabels[updated.status] || updated.status
             }.`
@@ -853,82 +852,103 @@ export default function ComplaintsPage() {
               </div>
 
               {/* Modern Chat Reply Input */}
-              <form
-                onSubmit={handleSendReply}
-                style={{
-                  borderTop: "1px solid var(--line)",
-                  paddingTop: "16px",
-                  marginTop: "12px",
-                }}
-              >
+              {currentUser?.role === "parent" && selectedComplaint.status === "resolved" ? (
                 <div
                   style={{
+                    padding: "14px 18px",
+                    background: "#f0fdf4",
+                    border: "1px solid #bbf7d0",
+                    borderRadius: "12px",
                     display: "flex",
+                    alignItems: "center",
                     gap: "10px",
-                    alignItems: "flex-end",
+                    color: "#166534",
+                    fontSize: "13px",
+                    fontWeight: 500,
+                    marginTop: "16px",
                   }}
                 >
-                  <div style={{ flex: 1 }}>
-                    <textarea
-                      id="complaint-reply-input"
-                      rows={2}
-                      placeholder={`Write a reply to ${
-                        currentUser?.role === "parent"
-                          ? "Academy Staff"
-                          : selectedComplaint.parent_name
-                      }… (Sends email alert)`}
-                      value={replyText}
-                      onChange={(e) => setReplyText(e.target.value)}
-                      onKeyDown={(e) => {
-                        if (e.key === "Enter" && !e.shiftKey) {
-                          e.preventDefault();
-                          if (replyText.trim() && !replyBusy) {
-                            void handleSendReply(e);
-                          }
-                        }
-                      }}
-                      style={{
-                        width: "100%",
-                        borderRadius: "12px",
-                        padding: "10px 14px",
-                        fontSize: "13px",
-                        lineHeight: "1.5",
-                        border: "1px solid var(--line)",
-                        resize: "none",
-                        fontFamily: "inherit",
-                      }}
-                      required
-                    />
-                  </div>
-                  <button
-                    type="submit"
-                    className="btn primary"
-                    disabled={replyBusy || !replyText.trim()}
+                  <Lock size={16} style={{ flexShrink: 0, color: "#16a34a" }} />
+                  <span>This ticket has been marked as resolved and closed for new replies.</span>
+                </div>
+              ) : (
+                <form
+                  onSubmit={handleSendReply}
+                  style={{
+                    borderTop: "1px solid var(--line)",
+                    paddingTop: "16px",
+                    marginTop: "12px",
+                  }}
+                >
+                  <div
                     style={{
-                      height: "44px",
-                      padding: "0 18px",
-                      borderRadius: "12px",
                       display: "flex",
-                      alignItems: "center",
-                      gap: "6px",
-                      whiteSpace: "nowrap",
+                      gap: "10px",
+                      alignItems: "flex-end",
                     }}
                   >
-                    <Send size={15} />
-                    <span>{replyBusy ? "Sending…" : "Send"}</span>
-                  </button>
-                </div>
+                    <div style={{ flex: 1 }}>
+                      <textarea
+                        id="complaint-reply-input"
+                        rows={2}
+                        placeholder={`Write a reply to ${
+                          currentUser?.role === "parent"
+                            ? "Academy Staff"
+                            : selectedComplaint.parent_name
+                        }…`}
+                        value={replyText}
+                        onChange={(e) => setReplyText(e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter" && !e.shiftKey) {
+                            e.preventDefault();
+                            if (replyText.trim() && !replyBusy) {
+                              void handleSendReply(e);
+                            }
+                          }
+                        }}
+                        style={{
+                          width: "100%",
+                          borderRadius: "12px",
+                          padding: "10px 14px",
+                          fontSize: "13px",
+                          lineHeight: "1.5",
+                          border: "1px solid var(--line)",
+                          resize: "none",
+                          fontFamily: "inherit",
+                        }}
+                        required
+                      />
+                    </div>
+                    <button
+                      type="submit"
+                      className="btn primary"
+                      disabled={replyBusy || !replyText.trim()}
+                      style={{
+                        height: "44px",
+                        padding: "0 18px",
+                        borderRadius: "12px",
+                        display: "flex",
+                        alignItems: "center",
+                        gap: "6px",
+                        whiteSpace: "nowrap",
+                      }}
+                    >
+                      <Send size={15} />
+                      <span>{replyBusy ? "Sending…" : "Send"}</span>
+                    </button>
+                  </div>
 
-                {replyError && (
-                  <p
-                    role="alert"
-                    className="form-error"
-                    style={{ marginTop: "8px" }}
-                  >
-                    {replyError}
-                  </p>
-                )}
-              </form>
+                  {replyError && (
+                    <p
+                      role="alert"
+                      className="form-error"
+                      style={{ marginTop: "8px" }}
+                    >
+                      {replyError}
+                    </p>
+                  )}
+                </form>
+              )}
             </section>
           </div>
         ) : (

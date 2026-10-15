@@ -16,6 +16,7 @@ import {
   Clock,
   GripHorizontal,
   LoaderCircle,
+  Lock,
   MessageSquare,
   Plus,
   RotateCcw,
@@ -2095,61 +2096,81 @@ export default function PortalAiChatBubble({
                     <div ref={threadEndRef} />
                   </div>
 
-                  {/* Reply Input Form */}
-                  <form
-                    onSubmit={handleSendComplaintReply}
-                    style={{
-                      padding: "10px 12px",
-                      background: "#ffffff",
-                      borderTop: "1px solid #e5ede7",
-                      display: "flex",
-                      alignItems: "center",
-                      gap: "8px",
-                    }}
-                  >
-                    <input
-                      type="text"
-                      value={replyText}
-                      onChange={(e) => setReplyText(e.target.value)}
-                      placeholder="Type reply to academy leadership…"
-                      disabled={replyBusy}
+                  {/* Reply Input Form or Resolved Notice */}
+                  {selectedComplaint.status === "resolved" ? (
+                    <div
                       style={{
-                        flex: 1,
-                        padding: "9px 12px",
-                        borderRadius: "20px",
-                        border: "1px solid #cbd5e1",
-                        fontSize: "12.5px",
-                        outline: "none",
-                      }}
-                    />
-                    <button
-                      type="submit"
-                      disabled={replyBusy || !replyText.trim()}
-                      style={{
-                        width: "36px",
-                        height: "36px",
-                        borderRadius: "50%",
-                        background:
-                          replyText.trim() && !replyBusy
-                            ? "#135B45"
-                            : "#e5e7eb",
-                        color:
-                          replyText.trim() && !replyBusy
-                            ? "#ffffff"
-                            : "#9ca3af",
-                        border: "none",
+                        padding: "12px 16px",
+                        background: "#f0fdf4",
+                        borderTop: "1px solid #bbf7d0",
                         display: "flex",
                         alignItems: "center",
+                        gap: "8px",
+                        color: "#166534",
+                        fontSize: "12px",
+                        fontWeight: 500,
                         justifyContent: "center",
-                        cursor:
-                          replyText.trim() && !replyBusy
-                            ? "pointer"
-                            : "default",
                       }}
                     >
-                      <Send size={14} />
-                    </button>
-                  </form>
+                      <Lock size={14} style={{ flexShrink: 0, color: "#16a34a" }} />
+                      <span>This inquiry has been resolved and closed.</span>
+                    </div>
+                  ) : (
+                    <form
+                      onSubmit={handleSendComplaintReply}
+                      style={{
+                        padding: "10px 12px",
+                        background: "#ffffff",
+                        borderTop: "1px solid #e5ede7",
+                        display: "flex",
+                        alignItems: "center",
+                        gap: "8px",
+                      }}
+                    >
+                      <input
+                        type="text"
+                        value={replyText}
+                        onChange={(e) => setReplyText(e.target.value)}
+                        placeholder="Type reply to academy leadership…"
+                        disabled={replyBusy}
+                        style={{
+                          flex: 1,
+                          padding: "9px 12px",
+                          borderRadius: "20px",
+                          border: "1px solid #cbd5e1",
+                          fontSize: "12.5px",
+                          outline: "none",
+                        }}
+                      />
+                      <button
+                        type="submit"
+                        disabled={replyBusy || !replyText.trim()}
+                        style={{
+                          width: "36px",
+                          height: "36px",
+                          borderRadius: "50%",
+                          background:
+                            replyText.trim() && !replyBusy
+                              ? "#135B45"
+                              : "#e5e7eb",
+                          color:
+                            replyText.trim() && !replyBusy
+                              ? "#ffffff"
+                              : "#9ca3af",
+                          border: "none",
+                          display: "flex",
+                          alignItems: "center",
+                          justifyContent: "center",
+                          cursor:
+                            replyText.trim() && !replyBusy
+                              ? "pointer"
+                              : "default",
+                        }}
+                      >
+                        <Send size={14} />
+                      </button>
+                    </form>
+                  )}
                 </div>
               ) : (
                 /* SUBVIEW C: TICKET LIST */

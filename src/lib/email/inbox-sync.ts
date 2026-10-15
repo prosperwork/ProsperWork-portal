@@ -182,6 +182,14 @@ export async function syncComplaintEmailReplies(): Promise<SyncResult> {
             senderEmail === complaint.parent_email.toLowerCase() ||
             !senderEmail.includes("prosperworkmusic.com");
 
+          // Once issue is resolved, parent cannot chat or reopen ticket via email
+          if (isFromParent && complaint.status === "resolved") {
+            try {
+              await client.messageFlagsAdd({ uid: msg.uid }, ["\\Seen"]);
+            } catch {}
+            continue;
+          }
+
           const senderRole = isFromParent ? "parent" : "admin";
           const senderName = isFromParent
             ? parsed.from?.value?.[0]?.name || complaint.parent_name

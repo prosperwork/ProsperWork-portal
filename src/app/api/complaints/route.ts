@@ -375,6 +375,16 @@ export async function POST(request: Request) {
         );
       }
 
+      if (profile.role === "parent" && complaint.status === "resolved") {
+        return reply(
+          {
+            error:
+              "This ticket has been marked as resolved and closed. Please submit a new inquiry if you need further assistance.",
+          },
+          400
+        );
+      }
+
       const senderName =
         profile.name ||
         (profile.role === "parent" ? "Parent" : "Academy Administration");
@@ -405,8 +415,6 @@ export async function POST(request: Request) {
       // Update complaint status and updated_at
       let nextStatus = complaint.status;
       if (profile.role !== "parent" && complaint.status === "open") {
-        nextStatus = "in_progress";
-      } else if (profile.role === "parent" && complaint.status === "resolved") {
         nextStatus = "in_progress";
       }
 
