@@ -46,6 +46,10 @@ type ClassroomData = {
   serverTime: string;
   classroomProvider?: "inbuilt" | "google_meet";
   meetUrl?: string;
+  userRole?: string;
+  canGrantAccess?: boolean;
+  isRestrictedRole?: boolean;
+  studentFeaturesEnabled?: boolean;
 };
 
 type DeviceSettings = Parameters<NonNullable<PreJoinProps["onSubmit"]>>[0];
@@ -56,6 +60,10 @@ type RoomTicket = {
   closesAt: string;
   canRecord?: boolean;
   lessonId?: string;
+  userRole?: string;
+  canGrantAccess?: boolean;
+  isRestrictedRole?: boolean;
+  studentFeaturesEnabled?: boolean;
 };
 
 async function json(response: Response) {
@@ -238,11 +246,19 @@ export default function ClassroomPage() {
       setTicket({
         token: result.token,
         serverUrl: result.serverUrl,
-        roomName: result.roomName || data.lesson.title,
+        roomName: result.roomName || data?.lesson.title || "Lesson Room",
         closesAt: result.closesAt,
         canRecord:
           typeof result.canRecord === "boolean" ? result.canRecord : true,
         lessonId: (result.lessonId as string) || lessonId,
+        userRole: result.userRole || data?.userRole,
+        canGrantAccess: Boolean(result.canGrantAccess ?? data?.canGrantAccess),
+        isRestrictedRole: Boolean(
+          result.isRestrictedRole ?? data?.isRestrictedRole
+        ),
+        studentFeaturesEnabled: Boolean(
+          result.studentFeaturesEnabled ?? data?.studentFeaturesEnabled
+        ),
       });
       setDevices(values);
       setPreviewOpen(false);
@@ -440,7 +456,15 @@ export default function ClassroomPage() {
                             flexWrap: "wrap",
                           }}
                         >
-                          <ClassroomMusicTools />
+                          <ClassroomMusicTools
+                            lessonId={ticket.lessonId || lessonId}
+                            userRole={ticket.userRole}
+                            canGrantAccess={ticket.canGrantAccess}
+                            isRestrictedRole={ticket.isRestrictedRole}
+                            initialStudentFeaturesEnabled={
+                              ticket.studentFeaturesEnabled
+                            }
+                          />
                           {ticket.canRecord && (
                             <ClassroomRecorder
                               lessonId={ticket.lessonId || lessonId}

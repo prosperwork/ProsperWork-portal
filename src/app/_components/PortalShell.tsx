@@ -145,11 +145,9 @@ export default function PortalShell({
     void loadSession();
   }, [loadSession]);
 
-  // Auto-logout after 10 minutes of inactivity
   // Auto-logout after 1 hour of inactivity
   useEffect(() => {
     if (!profile) return;
-    const INACTIVITY_LIMIT_MS = 10 * 60 * 1000; // 10 minutes
     const INACTIVITY_LIMIT_MS = 60 * 60 * 1000; // 1 hour (60 minutes)
     const ACTIVITY_KEY = "pw_portal_last_active";
 
