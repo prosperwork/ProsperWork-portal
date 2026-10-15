@@ -232,7 +232,9 @@ export default function AccountList({
                           onClick={() => void onResendInvite(account)}
                           title={`Resend invitation email to ${account.email}`}
                         >
-                          {resendingId === String(account.id) ? "Sending…" : "Resend invite"}
+                          {resendingId === String(account.id)
+                            ? "Sending…"
+                            : "Resend invite"}
                         </button>
                       )}
                       <label className="pw-status-select">

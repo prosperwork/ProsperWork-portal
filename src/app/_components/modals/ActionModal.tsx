@@ -48,10 +48,10 @@ export function getFields(
     .map((s) => ({ value: s.id, label: s.name }));
   const teacherChoices = data.staff
     .filter((s) => ["teacher", "qc"].includes(s.role) && s.status === "active")
-    .map((s) => ({ value: s.id, label: s.name }));
+    .map((s) => ({ value: s.name, label: s.name }));
   const adminChoices = data.staff
-    .filter((s) => s.role === "admin" && s.status === "active")
-    .map((s) => ({ value: s.id, label: s.name }));
+    .filter((s) => ["admin", "head_admin", "super_admin", "general_manager"].includes(s.role) && s.status === "active")
+    .map((s) => ({ value: s.name, label: `${s.name}${s.role === "super_admin" ? " (Super Admin)" : ""}` }));
   const billingChoices = (data.billingStudents || data.students).map((s) => ({
     value: s.id,
     label: `${s.name} · ${s.parentName}`,
@@ -143,12 +143,17 @@ export function getFields(
         },
         {
           name: "adminName",
-          label: "Admin usher",
+          label: "Class Coordinator / Admin (Optional)",
           type: "select",
-          options: adminChoices,
+          options: adminChoices.length > 0 ? adminChoices : [{ value: "Academy Admin", label: "Academy Administration (Default)" }],
+          required: false,
+        },
+        {
+          name: "title",
+          label: "Lesson Topic / Focus",
+          placeholder: "e.g., Grade 1 Scales, Classical Repertoire, Chords & Ear Training",
           required: true,
         },
-        { name: "title", label: "Lesson focus", required: true },
         {
           name: "startsAt",
           label: "Starts at (your local time)",

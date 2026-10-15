@@ -83,9 +83,14 @@ export default function AccountsPage() {
       if (!response.ok || data.error) {
         throw new Error(data.error || "Failed to resend invitation.");
       }
-      setSuccessMessage(data.message || `Invitation email resent to ${target.name} (${target.email}).`);
+      setSuccessMessage(
+        data.message ||
+          `Invitation email resent to ${target.name} (${target.email}).`
+      );
     } catch (err) {
-      setMutationError(err instanceof Error ? err.message : "Failed to resend invitation.");
+      setMutationError(
+        err instanceof Error ? err.message : "Failed to resend invitation."
+      );
     } finally {
       setResendingId(null);
     }
