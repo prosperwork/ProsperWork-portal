@@ -31,16 +31,6 @@ import type { FamilyResponse } from "@/lib/academy/family";
 import type { LearningResponse } from "@/lib/academy/learning";
 import BrandEmblem from "@/app/_components/BrandEmblem";
 import ProfileAvatar from "@/app/_components/ProfileAvatar";
-import {
-  COMPLAINT_CATEGORIES,
-  categoryLabel,
-  urgencyBadge,
-  statusBadge,
-  type ComplaintRecord,
-  type ComplaintCategory,
-  type ComplaintUrgency,
-} from "@/lib/academy/complaints";
-
 type StudentForm = { password: string };
 type ActionResult = Record<string, unknown>;
 
@@ -143,7 +133,7 @@ export default function FamilyPage() {
   const [addError, setAddError] = useState("");
 
   // Academy Support & Complaints State
-  const [complaints, setComplaints] = useState<ComplaintRecord[]>([]);
+  
   const role = normalizedRole(family?.profile.role ?? "");
   const active = family?.profile.status.trim().toLowerCase() === "active";
   const isParent = role === "parent";
@@ -216,19 +206,7 @@ export default function FamilyPage() {
         setLearningError(await apiError(learningResponse, learningResult));
       }
 
-      // Fetch family complaints/inquiries
-      try {
-        const cRes = await fetch("/api/complaints", {
-          credentials: "include",
-          cache: "no-store",
-        });
-        const cData = await cRes.json().catch(() => ({}));
-        if (cRes.ok && Array.isArray(cData.complaints)) {
-          setComplaints(cData.complaints);
-        }
-      } catch {
-        // Non-blocking
-      }
+      
 
       return result;
     } catch (cause) {
@@ -614,19 +592,6 @@ export default function FamilyPage() {
                   <div
                     style={{ display: "flex", gap: 10, alignItems: "center" }}
                   >
-                    <button
-                      type="button"
-                      className="family-button secondary"
-                      onClick={() => {
-                        window.dispatchEvent(
-                          new CustomEvent("open-academy-chat", {
-                            detail: { mode: "complaints" },
-                          })
-                        );
-                      }}
-                    >
-                      <MessageSquare size={14} aria-hidden="true" /> Raise a complaint
-                    </button>
                     {canManageChildren && (
                       <button
                         type="button"
@@ -1199,220 +1164,7 @@ export default function FamilyPage() {
                       )}
                     </div>
                   </section>
-
-                  <section className="family-card" aria-labelledby="complaints-title">
-                    <div className="family-card-head">
-                      <div>
-                        <h2 id="complaints-title">Academy Support & Grievances</h2>
-                        <p>
-                          Raise any lesson, teacher, attendance, or billing concern directly to school leadership.
-                        </p>
-                      </div>
-                      <MessageSquare size={17} color="#135b45" aria-hidden="true" />
-                    </div>
-                    <div className="family-card-body">
-                      {complaints.length > 0 ? (
-                        <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-                          {complaints.map((c) => {
-                            const u = urgencyBadge(c.urgency);
-                            const s = statusBadge(c.status);
-                            const isResolved = c.status === "resolved";
-                            return (
-                              <div
-                                key={c.id}
-                                style={{
-                                  padding: 12,
-                                  border: "1px solid #dce8df",
-                                  borderRadius: 8,
-                                  background: "#fdfefe",
-                                  display: "flex",
-                                  flexDirection: "column",
-                                  gap: 6,
-                                }}
-                              >
-                                <div
-                                  style={{
-                                    display: "flex",
-                                    flexWrap: "wrap",
-                                    justifyContent: "space-between",
-                                    alignItems: "center",
-                                    gap: 6,
-                                  }}
-                                >
-                                  <span
-                                    style={{
-                                      fontFamily: "monospace",
-                                      fontSize: 11,
-                                      fontWeight: 700,
-                                      color: "#135b45",
-                                    }}
-                                  >
-                                    #{c.ticket_number}
-                                  </span>
-                                  <div style={{ display: "flex", gap: 4 }}>
-                                    <span className={u.className}>{u.label}</span>
-                                    <span className={s.className}>{s.label}</span>
-                                  </div>
-                                </div>
-                                <strong style={{ fontSize: 13, color: "#0a2e22" }}>
-                                  {c.subject}
-                                </strong>
-                                <div
-                                  style={{
-                                    fontSize: 11.5,
-                                    color: "#5a6e64",
-                                    display: "flex",
-                                    gap: 8,
-                                    flexWrap: "wrap",
-                                  }}
-                                >
-                                  <span>Category: {categoryLabel(c.category)}</span>
-                                  {c.student_name && (
-                                    <span>• Student: {c.student_name}</span>
-                                  )}
-                                  <span>
-                                    •{" "}
-                                    {new Date(c.created_at).toLocaleDateString(
-                                      "en-GB",
-                                      { day: "numeric", month: "short" }
-                                    )}
-                                  </span>
-                                </div>
-                                <p
-                                  style={{
-                                    margin: "4px 0 0",
-                                    fontSize: 12,
-                                    color: "#374a40",
-                                    whiteSpace: "pre-wrap",
-                                    lineHeight: 1.45,
-                                  }}
-                                >
-                                  {c.message}
-                                </p>
-                                {c.resolution_notes && (
-                                  <div
-                                    style={{
-                                      marginTop: 6,
-                                      padding: "8px 10px",
-                                      borderRadius: 6,
-                                      background: isResolved
-                                        ? "#f0fdf4"
-                                        : "#eff6ff",
-                                      border: `1px solid ${
-                                        isResolved ? "#bbf7d0" : "#bfdbfe"
-                                      }`,
-                                      fontSize: 11.5,
-                                    }}
-                                  >
-                                    <strong
-                                      style={{
-                                        color: isResolved
-                                          ? "#166534"
-                                          : "#1e40af",
-                                        display: "block",
-                                        marginBottom: 2,
-                                      }}
-                                    >
-                                      {isResolved
-                                        ? "✓ School Resolution:"
-                                        : "⚙ Academy Update:"}
-                                    </strong>
-                                    <span
-                                      style={{
-                                        color: "#1e2924",
-                                        whiteSpace: "pre-wrap",
-                                      }}
-                                    >
-                                      {c.resolution_notes}
-                                    </span>
-                                    {c.resolved_by_name && (
-                                      <small
-                                        style={{
-                                          display: "block",
-                                          marginTop: 4,
-                                          color: "#5a6e64",
-                                        }}
-                                      >
-                                        Updated by {c.resolved_by_name}
-                                      </small>
-                                    )}
-                                  </div>
-                                )}
-                                <div
-                                  style={{
-                                    marginTop: 8,
-                                    paddingTop: 8,
-                                    borderTop: "1px solid #eef3f0",
-                                    display: "flex",
-                                    justifyContent: "space-between",
-                                    alignItems: "center",
-                                    gap: 8,
-                                    flexWrap: "wrap",
-                                  }}
-                                >
-                                  <span
-                                    style={{
-                                      fontSize: 11,
-                                      color: "#5a6e64",
-                                      fontWeight: 600,
-                                      display: "inline-flex",
-                                      alignItems: "center",
-                                      gap: 4,
-                                    }}
-                                  >
-                                    💬 {c.messages?.length || 0}{" "}
-                                    {c.messages?.length === 1 ? "reply" : "replies"}
-                                  </span>
-                                  <button
-                                    type="button"
-                                    className="family-button subtle"
-                                    style={{
-                                      fontSize: 11.5,
-                                      padding: "4px 10px",
-                                      height: "auto",
-                                    }}
-                                    onClick={() => {
-                                      window.dispatchEvent(
-                                        new CustomEvent("open-academy-chat", {
-                                          detail: { mode: "complaints", complaintId: c.id },
-                                        })
-                                      );
-                                    }}
-                                  >
-                                    <MessageSquare size={12} /> Discussion &amp; Reply
-                                  </button>
-                                </div>
-                              </div>
-                            );
-                          })}
-                        </div>
-                      ) : (
-                        <p className="family-upload-note" style={{ margin: 0 }}>
-                          No inquiries or complaints logged. If you ever have a
-                          concern regarding a class, teacher punctuality, or
-                          billing, submit a ticket for prompt attention.
-                        </p>
-                      )}
-
-                      <div style={{ marginTop: 14 }}>
-                        <button
-                          type="button"
-                          className="family-button secondary"
-                          style={{ width: "100%", justifyContent: "center" }}
-                          onClick={() => {
-                            window.dispatchEvent(
-                              new CustomEvent("open-academy-chat", {
-                                detail: { mode: "complaints" },
-                              })
-                            );
-                          }}
-                        >
-                          <MessageSquare size={14} /> Raise a Complaint / Inquiry
-                        </button>
-                      </div>
-                    </div>
-                  </section>
-                </aside>
+</aside>
               )}
             </div>
           )
