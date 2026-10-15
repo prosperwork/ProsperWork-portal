@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useState, useRef, useEffect } from "react";
+import { createPortal } from "react-dom";
 import { useRoomContext } from "@livekit/components-react";
 import {
   Lock,
@@ -8,11 +9,8 @@ import {
   Send,
   Users,
   X,
-  Minimize2,
-  Maximize2,
   ShieldAlert,
   Globe,
-  Sparkles,
   Info,
 } from "lucide-react";
 
@@ -26,18 +24,13 @@ export interface StaffChatMessage {
 }
 
 interface ClassroomStaffChatProps {
-  onClose: () => void;
+  onClose?: () => void;
   userRole?: string;
   isRestrictedRole?: boolean;
   staffMessages: StaffChatMessage[];
   onSendStaffMessage: (message: string) => Promise<void> | void;
-  publicMessages?: Array<{
-    id: string;
-    sender: string;
-    message: string;
-    timestamp: number;
-  }>;
-  onSendPublicMessage?: (message: string) => Promise<void> | void;
+  forceOpenStaffTab?: boolean;
+  onStaffTabOpened?: () => void;
 }
 
 export default function ClassroomStaffChat({
@@ -46,8 +39,8 @@ export default function ClassroomStaffChat({
   isRestrictedRole = false,
   staffMessages,
   onSendStaffMessage,
-  publicMessages = [],
-  onSendPublicMessage,
+  forceOpenStaffTab = false,
+  onStaffTabOpened,
 }: ClassroomStaffChatProps) {
   // Absolute security guard: if user is restricted (student/parent), NEVER render
   if (isRestrictedRole || userRole === "student" || userRole === "parent") {
@@ -55,26 +48,121 @@ export default function ClassroomStaffChat({
   }
 
   const room = useRoomContext();
-  const [activeTab, setActiveTab] = useState<"staff" | "public">("staff");
+  const [activeTab, setActiveTab] = useState<"public" | "staff">("public");
   const [inputText, setInputText] = useState("");
   const [isSending, setIsSending] = useState(false);
-  const [isMinimized, setIsMinimized] = useState(false);
+  const [lkChatEl, setLkChatEl] = useState<HTMLElement | null>(null);
+  const [portalTarget, setPortalTarget] = useState<HTMLElement | null>(null);
+
   const messagesEndRef = useRef<HTMLDivElement | null>(null);
   const inputRef = useRef<HTMLInputElement | null>(null);
 
-  // Auto-scroll to bottom whenever messages update
+  // If forceOpenStaffTab is triggered (e.g. from floating toolbar or toast)
   useEffect(() => {
-    if (!isMinimized) {
+    if (forceOpenStaffTab) {
+      setActiveTab("staff");
+      onStaffTabOpened?.();
+    }
+  }, [forceOpenStaffTab, onStaffTabOpened]);
+
+  // Monitor DOM for LiveKit's .lk-chat sidebar
+  useEffect(() => {
+    const findChat = () => {
+      const chat = document.querySelector(".lk-chat") as HTMLElement | null;
+      if (chat) {
+        // Check if visible
+        const isVisible =
+          chat.style.display !== "none" &&
+          window.getComputedStyle(chat).display !== "none";
+        if (isVisible) {
+          setLkChatEl(chat);
+          return;
+        }
+      }
+      setLkChatEl(null);
+    };
+
+    findChat();
+    const observer = new MutationObserver(findChat);
+    observer.observe(document.body, {
+      childList: true,
+      subtree: true,
+      attributes: true,
+      attributeFilter: ["style", "class"],
+    });
+
+    return () => observer.disconnect();
+  }, []);
+
+  // When .lk-chat is found, inject a portal mount point directly under .lk-chat-header
+  useEffect(() => {
+    if (!lkChatEl) {
+      setPortalTarget(null);
+      return;
+    }
+
+    let mount = lkChatEl.querySelector("#pc-staff-chat-portal") as HTMLElement | null;
+    if (!mount) {
+      mount = document.createElement("div");
+      mount.id = "pc-staff-chat-portal";
+      mount.style.display = "flex";
+      mount.style.flexDirection = "column";
+      mount.style.width = "100%";
+      mount.style.overflow = "hidden";
+
+      const header = lkChatEl.querySelector(".lk-chat-header");
+      if (header && header.nextSibling) {
+        lkChatEl.insertBefore(mount, header.nextSibling);
+      } else if (header) {
+        header.after(mount);
+      } else {
+        lkChatEl.prepend(mount);
+      }
+    }
+    setPortalTarget(mount);
+
+    return () => {
+      // Cleanup on unmount or removal
+      const existing = lkChatEl?.querySelector("#pc-staff-chat-portal");
+      if (existing) {
+        existing.remove();
+      }
+    };
+  }, [lkChatEl]);
+
+  // Control visibility of default LiveKit public elements based on activeTab
+  useEffect(() => {
+    if (!lkChatEl) return;
+    const msgList = lkChatEl.querySelector(".lk-chat-messages") as HTMLElement | null;
+    const msgForm = lkChatEl.querySelector(".lk-chat-form") as HTMLElement | null;
+
+    if (activeTab === "staff") {
+      if (msgList) msgList.style.display = "none";
+      if (msgForm) msgForm.style.display = "none";
+    } else {
+      if (msgList) msgList.style.display = "flex";
+      if (msgForm) msgForm.style.display = "flex";
+    }
+
+    return () => {
+      if (msgList) msgList.style.display = "flex";
+      if (msgForm) msgForm.style.display = "flex";
+    };
+  }, [lkChatEl, activeTab]);
+
+  // Auto-scroll staff messages to bottom
+  useEffect(() => {
+    if (activeTab === "staff") {
       messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
     }
-  }, [staffMessages, publicMessages, activeTab, isMinimized]);
+  }, [staffMessages, activeTab]);
 
-  // Focus input on mount or tab change
+  // Focus input when switching to staff tab
   useEffect(() => {
-    if (!isMinimized) {
+    if (activeTab === "staff") {
       inputRef.current?.focus();
     }
-  }, [activeTab, isMinimized]);
+  }, [activeTab]);
 
   // Find all active staff in the room
   const staffParticipants = React.useMemo(() => {
@@ -86,7 +174,6 @@ export default function ClassroomStaffChat({
       isLocal: boolean;
     }> = [];
 
-    // Local user
     staffList.push({
       identity: room.localParticipant.identity,
       name: room.localParticipant.name || "You",
@@ -103,7 +190,6 @@ export default function ClassroomStaffChat({
       "qc",
     ];
 
-    // Remote users
     for (const p of room.remoteParticipants.values()) {
       let role = p.attributes?.role || "";
       let isStaff = p.attributes?.isStaff === "true";
@@ -113,7 +199,7 @@ export default function ClassroomStaffChat({
           if (parsed.isStaff) isStaff = true;
           if (parsed.role) role = parsed.role;
         } catch {
-          // ignore parsing error
+          // ignore
         }
       }
       if (isStaff || staffRoles.includes(role.toLowerCase())) {
@@ -135,22 +221,13 @@ export default function ClassroomStaffChat({
 
     setIsSending(true);
     try {
-      if (activeTab === "staff") {
-        await onSendStaffMessage(trimmed);
-      } else if (onSendPublicMessage) {
-        await onSendPublicMessage(trimmed);
-      }
+      await onSendStaffMessage(trimmed);
       setInputText("");
     } catch (err) {
-      console.error("Failed to send message:", err);
+      console.error("Failed to send staff message:", err);
     } finally {
       setIsSending(false);
     }
-  };
-
-  const handlePresetClick = (presetText: string) => {
-    setInputText(presetText);
-    inputRef.current?.focus();
   };
 
   const formatRoleBadge = (roleName: string) => {
@@ -179,14 +256,6 @@ export default function ClassroomStaffChat({
         border: "1px solid rgba(112, 161, 255, 0.4)",
       };
     }
-    if (lower.includes("qc") || lower.includes("head")) {
-      return {
-        label: "Supervisor",
-        bg: "rgba(236, 204, 104, 0.2)",
-        color: "#eccc68",
-        border: "1px solid rgba(236, 204, 104, 0.4)",
-      };
-    }
     return {
       label: roleName.replace(/_/g, " "),
       bg: "rgba(255, 255, 255, 0.1)",
@@ -210,314 +279,185 @@ export default function ClassroomStaffChat({
     "👍 Great lesson pace",
     "👂 Guide student through rhythm",
     "📝 Assign practice note",
-    "✅ Wrap up lesson smoothly",
   ];
 
-  return (
-    <div
-      className="pc-staff-chat-window"
-      style={{
-        position: "fixed",
-        bottom: "84px",
-        right: "24px",
-        width: "min(400px, calc(100vw - 32px))",
-        height: isMinimized ? "52px" : "min(540px, calc(100vh - 120px))",
-        background: "rgba(17, 24, 22, 0.95)",
-        backdropFilter: "blur(18px)",
-        WebkitBackdropFilter: "blur(18px)",
-        border: "1px solid rgba(255, 177, 66, 0.4)",
-        boxShadow: "0 18px 45px rgba(0, 0, 0, 0.75), 0 0 25px rgba(255, 177, 66, 0.12)",
-        borderRadius: "14px",
-        zIndex: 9998,
-        display: "flex",
-        flexDirection: "column",
-        overflow: "hidden",
-        transition: "height 0.2s ease, transform 0.2s ease",
-        fontFamily: "system-ui, -apple-system, sans-serif",
-      }}
-    >
-      {/* Header */}
+  // If LiveKit chat sidebar is open, render directly inside it via React Portal
+  if (portalTarget) {
+    return createPortal(
       <div
         style={{
-          padding: "10px 14px",
-          background: "linear-gradient(180deg, rgba(255, 177, 66, 0.15) 0%, rgba(20, 28, 25, 0.95) 100%)",
-          borderBottom: isMinimized ? "none" : "1px solid rgba(255, 255, 255, 0.1)",
           display: "flex",
-          alignItems: "center",
-          justifyContent: "space-between",
-          userSelect: "none",
+          flexDirection: "column",
+          width: "100%",
+          flex: 1,
+          minHeight: 0,
+          background: "transparent",
         }}
       >
-        <div style={{ display: "flex", alignItems: "center", gap: 8, minWidth: 0 }}>
-          <div
+        {/* Channel Selector Tabs mounted inside the LiveKit Chat sidebar */}
+        <div
+          style={{
+            display: "flex",
+            background: "rgba(0, 0, 0, 0.4)",
+            borderBottom: "1px solid rgba(255, 255, 255, 0.1)",
+            padding: "6px 10px",
+            gap: 6,
+          }}
+        >
+          <button
+            type="button"
+            onClick={() => setActiveTab("public")}
             style={{
-              width: 28,
-              height: 28,
-              borderRadius: "50%",
-              background: "rgba(255, 177, 66, 0.2)",
-              border: "1px solid rgba(255, 177, 66, 0.5)",
-              display: "flex",
+              flex: 1,
+              padding: "7px 10px",
+              borderRadius: 6,
+              fontSize: 11,
+              fontWeight: 700,
+              cursor: "pointer",
+              border:
+                activeTab === "public"
+                  ? "1px solid rgba(46, 213, 115, 0.5)"
+                  : "1px solid transparent",
+              background:
+                activeTab === "public"
+                  ? "rgba(46, 213, 115, 0.2)"
+                  : "rgba(255, 255, 255, 0.05)",
+              color: activeTab === "public" ? "#2ed573" : "#aaa",
+              display: "inline-flex",
               alignItems: "center",
               justifyContent: "center",
-              color: "#ffb142",
-              flexShrink: 0,
+              gap: 5,
+              transition: "all 0.15s ease",
             }}
           >
-            <ShieldAlert size={15} />
-          </div>
-          <div style={{ minWidth: 0 }}>
-            <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-              <span style={{ fontSize: 13, fontWeight: 700, color: "#fff", whiteSpace: "nowrap" }}>
-                Staff Private Chat
-              </span>
+            <Globe size={13} />
+            <span>Everyone (Public)</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => setActiveTab("staff")}
+            style={{
+              flex: 1,
+              padding: "7px 10px",
+              borderRadius: 6,
+              fontSize: 11,
+              fontWeight: 700,
+              cursor: "pointer",
+              border:
+                activeTab === "staff"
+                  ? "1px solid rgba(255, 177, 66, 0.5)"
+                  : "1px solid rgba(255, 177, 66, 0.2)",
+              background:
+                activeTab === "staff"
+                  ? "rgba(255, 177, 66, 0.22)"
+                  : "rgba(255, 177, 66, 0.08)",
+              color: activeTab === "staff" ? "#ffb142" : "#ffc078",
+              display: "inline-flex",
+              alignItems: "center",
+              justifyContent: "center",
+              gap: 5,
+              transition: "all 0.15s ease",
+            }}
+          >
+            <Lock size={12} />
+            <span>Staff Only (Private)</span>
+            {staffMessages.length > 0 && (
               <span
                 style={{
-                  fontSize: 10,
-                  fontWeight: 600,
-                  color: "#ffb142",
-                  background: "rgba(255, 177, 66, 0.15)",
-                  border: "1px solid rgba(255, 177, 66, 0.3)",
-                  padding: "1px 6px",
+                  background: activeTab === "staff" ? "#ffb142" : "#ff4757",
+                  color: activeTab === "staff" ? "#111" : "#fff",
+                  fontSize: 9,
+                  fontWeight: 800,
+                  padding: "1px 5px",
                   borderRadius: 10,
-                  display: "inline-flex",
-                  alignItems: "center",
-                  gap: 3,
                 }}
               >
-                <Lock size={9} /> Private
+                {staffMessages.length}
               </span>
-            </div>
-            <div
-              style={{
-                fontSize: 11,
-                color: "#9eb3a7",
-                display: "flex",
-                alignItems: "center",
-                gap: 5,
-                marginTop: 1,
-              }}
-            >
-              <Users size={11} color="#2ed573" />
-              <span>
-                {staffParticipants.length} staff online (Admin & Teacher)
-              </span>
-            </div>
-          </div>
-        </div>
-
-        <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
-          <button
-            type="button"
-            onClick={() => setIsMinimized((prev) => !prev)}
-            title={isMinimized ? "Expand Chat" : "Minimize"}
-            style={{
-              background: "transparent",
-              border: "none",
-              color: "#aaa",
-              cursor: "pointer",
-              padding: 5,
-              borderRadius: 6,
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-            }}
-          >
-            {isMinimized ? <Maximize2 size={13} /> : <Minimize2 size={13} />}
-          </button>
-          <button
-            type="button"
-            onClick={onClose}
-            title="Close Staff Chat"
-            style={{
-              background: "transparent",
-              border: "none",
-              color: "#aaa",
-              cursor: "pointer",
-              padding: 5,
-              borderRadius: 6,
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-            }}
-          >
-            <X size={14} />
+            )}
           </button>
         </div>
-      </div>
 
-      {!isMinimized && (
-        <>
-          {/* Channel Tabs */}
+        {/* When Staff Only is active, render the Private Backchannel view */}
+        {activeTab === "staff" && (
           <div
             style={{
               display: "flex",
-              background: "rgba(0, 0, 0, 0.35)",
-              borderBottom: "1px solid rgba(255, 255, 255, 0.08)",
-              padding: "4px 8px",
-              gap: 6,
+              flexDirection: "column",
+              height: "calc(100vh - 165px)",
+              minHeight: "360px",
+              background: "rgba(18, 24, 21, 0.98)",
             }}
           >
-            <button
-              type="button"
-              onClick={() => setActiveTab("staff")}
-              style={{
-                flex: 1,
-                padding: "6px 10px",
-                borderRadius: 8,
-                fontSize: 11,
-                fontWeight: 600,
-                cursor: "pointer",
-                border:
-                  activeTab === "staff"
-                    ? "1px solid rgba(255, 177, 66, 0.4)"
-                    : "1px solid transparent",
-                background:
-                  activeTab === "staff"
-                    ? "rgba(255, 177, 66, 0.16)"
-                    : "transparent",
-                color: activeTab === "staff" ? "#ffb142" : "#999",
-                display: "inline-flex",
-                alignItems: "center",
-                justifyContent: "center",
-                gap: 5,
-                transition: "all 0.15s ease",
-              }}
-            >
-              <Lock size={12} />
-              Staff Backchannel
-              {staffMessages.length > 0 && (
-                <span
-                  style={{
-                    background: activeTab === "staff" ? "#ffb142" : "#444",
-                    color: activeTab === "staff" ? "#111" : "#ccc",
-                    fontSize: 9,
-                    fontWeight: 700,
-                    padding: "1px 5px",
-                    borderRadius: 10,
-                  }}
-                >
-                  {staffMessages.length}
-                </span>
-              )}
-            </button>
-            <button
-              type="button"
-              onClick={() => setActiveTab("public")}
-              style={{
-                flex: 1,
-                padding: "6px 10px",
-                borderRadius: 8,
-                fontSize: 11,
-                fontWeight: 600,
-                cursor: "pointer",
-                border:
-                  activeTab === "public"
-                    ? "1px solid rgba(46, 213, 115, 0.4)"
-                    : "1px solid transparent",
-                background:
-                  activeTab === "public"
-                    ? "rgba(46, 213, 115, 0.15)"
-                    : "transparent",
-                color: activeTab === "public" ? "#2ed573" : "#999",
-                display: "inline-flex",
-                alignItems: "center",
-                justifyContent: "center",
-                gap: 5,
-                transition: "all 0.15s ease",
-              }}
-            >
-              <Globe size={12} />
-              Everyone (Public)
-              {publicMessages.length > 0 && (
-                <span
-                  style={{
-                    background: activeTab === "public" ? "#2ed573" : "#444",
-                    color: activeTab === "public" ? "#111" : "#ccc",
-                    fontSize: 9,
-                    fontWeight: 700,
-                    padding: "1px 5px",
-                    borderRadius: 10,
-                  }}
-                >
-                  {publicMessages.length}
-                </span>
-              )}
-            </button>
-          </div>
-
-          {/* Privacy Notice Banner */}
-          {activeTab === "staff" ? (
+            {/* Private Banner */}
             <div
               style={{
-                padding: "6px 12px",
-                background: "rgba(255, 177, 66, 0.08)",
-                borderBottom: "1px solid rgba(255, 177, 66, 0.15)",
+                padding: "8px 12px",
+                background: "rgba(255, 177, 66, 0.1)",
+                borderBottom: "1px solid rgba(255, 177, 66, 0.2)",
                 display: "flex",
                 alignItems: "center",
-                gap: 7,
+                justifyContent: "space-between",
                 fontSize: 11,
                 color: "#ffc078",
               }}
             >
-              <Info size={12} style={{ flexShrink: 0 }} />
-              <span>
-                <strong>Confidential backchannel:</strong> Student & parent cannot see this conversation.
-              </span>
+              <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                <ShieldAlert size={14} color="#ffb142" />
+                <span>
+                  <strong>Private Staff Channel:</strong> Invisible to student & parent.
+                </span>
+              </div>
+              <div
+                style={{
+                  fontSize: 10,
+                  color: "#9eb3a7",
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 4,
+                  whiteSpace: "nowrap",
+                }}
+              >
+                <Users size={11} color="#2ed573" />
+                <span>{staffParticipants.length} staff</span>
+              </div>
             </div>
-          ) : (
+
+            {/* Staff Messages List */}
             <div
               style={{
-                padding: "6px 12px",
-                background: "rgba(46, 213, 115, 0.08)",
-                borderBottom: "1px solid rgba(46, 213, 115, 0.15)",
+                flex: 1,
+                overflowY: "auto",
+                padding: "12px",
                 display: "flex",
-                alignItems: "center",
-                gap: 7,
-                fontSize: 11,
-                color: "#a8f0c6",
+                flexDirection: "column",
+                gap: 10,
               }}
             >
-              <Globe size={12} style={{ flexShrink: 0 }} />
-              <span>
-                <strong>Room public chat:</strong> Seen by all participants (teacher, student, parent, admin).
-              </span>
-            </div>
-          )}
-
-          {/* Messages Feed */}
-          <div
-            style={{
-              flex: 1,
-              overflowY: "auto",
-              padding: "12px",
-              display: "flex",
-              flexDirection: "column",
-              gap: 10,
-            }}
-          >
-            {activeTab === "staff" ? (
-              staffMessages.length === 0 ? (
+              {staffMessages.length === 0 ? (
                 <div
                   style={{
                     margin: "auto",
                     textAlign: "center",
                     color: "#889991",
-                    padding: "20px 10px",
+                    padding: "30px 14px",
                   }}
                 >
-                  <Lock size={28} color="#ffb142" style={{ margin: "0 auto 8px" }} />
-                  <div style={{ fontSize: 13, fontWeight: 600, color: "#fff" }}>
-                    Staff Backchannel Ready
+                  <Lock size={32} color="#ffb142" style={{ margin: "0 auto 10px" }} />
+                  <div style={{ fontSize: 13, fontWeight: 700, color: "#fff" }}>
+                    Private Staff Backchannel
                   </div>
-                  <p style={{ fontSize: 11, margin: "6px 0 12px", maxWidth: 260 }}>
-                    Coordinate lesson pacing, verify sound levels, or pass notes privately between Teacher and Admin.
+                  <p style={{ fontSize: 11, margin: "6px 0 12px", color: "#a5b8ae" }}>
+                    Messages here are sent directly between Teacher and Admin only.
+                    The student will not see or hear these messages.
                   </p>
                   <div
                     style={{
                       fontSize: 10,
-                      color: "#6b7d75",
-                      background: "rgba(255,255,255,0.04)",
-                      padding: "6px 10px",
+                      color: "#ffc078",
+                      background: "rgba(255, 177, 66, 0.1)",
+                      border: "1px solid rgba(255, 177, 66, 0.2)",
+                      padding: "4px 8px",
                       borderRadius: 6,
                       display: "inline-block",
                     }}
@@ -549,7 +489,12 @@ export default function ClassroomStaffChat({
                           padding: "0 4px",
                         }}
                       >
-                        <span style={{ fontWeight: 600, color: isMe ? "#ffb142" : "#e1e8e4" }}>
+                        <span
+                          style={{
+                            fontWeight: 700,
+                            color: isMe ? "#ffb142" : "#e1e8e4",
+                          }}
+                        >
                           {isMe ? "You" : msg.senderName}
                         </span>
                         <span
@@ -573,9 +518,11 @@ export default function ClassroomStaffChat({
 
                       <div
                         style={{
-                          maxWidth: "85%",
+                          maxWidth: "88%",
                           padding: "8px 12px",
-                          borderRadius: isMe ? "12px 2px 12px 12px" : "2px 12px 12px 12px",
+                          borderRadius: isMe
+                            ? "12px 2px 12px 12px"
+                            : "2px 12px 12px 12px",
                           background: isMe
                             ? "linear-gradient(135deg, #2b2313 0%, #1a160d 100%)"
                             : "rgba(255, 255, 255, 0.08)",
@@ -586,7 +533,9 @@ export default function ClassroomStaffChat({
                           fontSize: 12,
                           lineHeight: "1.45",
                           wordBreak: "break-word",
-                          boxShadow: isMe ? "0 4px 12px rgba(255, 177, 66, 0.08)" : "none",
+                          boxShadow: isMe
+                            ? "0 4px 12px rgba(255, 177, 66, 0.1)"
+                            : "none",
                         }}
                       >
                         {msg.message}
@@ -594,94 +543,33 @@ export default function ClassroomStaffChat({
                     </div>
                   );
                 })
-              )
-            ) : (
-              publicMessages.length === 0 ? (
-                <div
-                  style={{
-                    margin: "auto",
-                    textAlign: "center",
-                    color: "#889991",
-                    padding: "20px 10px",
-                  }}
-                >
-                  <Globe size={28} color="#2ed573" style={{ margin: "0 auto 8px" }} />
-                  <div style={{ fontSize: 13, fontWeight: 600, color: "#fff" }}>
-                    Public Room Chat
-                  </div>
-                  <p style={{ fontSize: 11, margin: "6px 0 0", maxWidth: 260 }}>
-                    Messages here are visible to the student and anyone in this lesson room.
-                  </p>
-                </div>
-              ) : (
-                publicMessages.map((msg) => (
-                  <div
-                    key={msg.id}
-                    style={{
-                      display: "flex",
-                      flexDirection: "column",
-                      gap: 2,
-                    }}
-                  >
-                    <div
-                      style={{
-                        display: "flex",
-                        alignItems: "center",
-                        gap: 6,
-                        fontSize: 11,
-                        color: "#889991",
-                        padding: "0 4px",
-                      }}
-                    >
-                      <span style={{ fontWeight: 600, color: "#2ed573" }}>
-                        {msg.sender}
-                      </span>
-                      <span style={{ fontSize: 9, color: "#667" }}>
-                        {formatTime(msg.timestamp)}
-                      </span>
-                    </div>
-                    <div
-                      style={{
-                        maxWidth: "90%",
-                        padding: "8px 12px",
-                        borderRadius: "8px",
-                        background: "rgba(255, 255, 255, 0.06)",
-                        border: "1px solid rgba(255, 255, 255, 0.1)",
-                        color: "#fff",
-                        fontSize: 12,
-                        lineHeight: "1.45",
-                        wordBreak: "break-word",
-                      }}
-                    >
-                      {msg.message}
-                    </div>
-                  </div>
-                ))
-              )
-            )}
-            <div ref={messagesEndRef} />
-          </div>
+              )}
+              <div ref={messagesEndRef} />
+            </div>
 
-          {/* Quick Presets for Staff */}
-          {activeTab === "staff" && (
+            {/* Quick Presets for Staff */}
             <div
               style={{
-                padding: "6px 12px 2px",
+                padding: "6px 10px 2px",
                 display: "flex",
                 gap: 5,
                 overflowX: "auto",
                 whiteSpace: "nowrap",
                 scrollbarWidth: "none",
+                background: "rgba(0, 0, 0, 0.2)",
               }}
             >
               {staffPresets.map((preset, idx) => (
                 <button
                   key={idx}
                   type="button"
-                  onClick={() => handlePresetClick(preset)}
+                  onClick={() => {
+                    setInputText(preset);
+                    inputRef.current?.focus();
+                  }}
                   style={{
                     background: "rgba(255, 255, 255, 0.06)",
-                    border: "1px solid rgba(255, 255, 255, 0.12)",
+                    border: "1px solid rgba(255, 255, 255, 0.15)",
                     borderRadius: 12,
                     padding: "3px 8px",
                     color: "#c2d1c9",
@@ -691,13 +579,13 @@ export default function ClassroomStaffChat({
                     transition: "all 0.15s ease",
                   }}
                   onMouseEnter={(e) => {
-                    e.currentTarget.style.background = "rgba(255, 177, 66, 0.2)";
-                    e.currentTarget.style.borderColor = "rgba(255, 177, 66, 0.4)";
+                    e.currentTarget.style.background = "rgba(255, 177, 66, 0.25)";
+                    e.currentTarget.style.borderColor = "#ffb142";
                     e.currentTarget.style.color = "#ffb142";
                   }}
                   onMouseLeave={(e) => {
                     e.currentTarget.style.background = "rgba(255, 255, 255, 0.06)";
-                    e.currentTarget.style.borderColor = "rgba(255, 255, 255, 0.12)";
+                    e.currentTarget.style.borderColor = "rgba(255, 255, 255, 0.15)";
                     e.currentTarget.style.color = "#c2d1c9";
                   }}
                 >
@@ -705,83 +593,74 @@ export default function ClassroomStaffChat({
                 </button>
               ))}
             </div>
-          )}
 
-          {/* Input & Send Form */}
-          <form
-            onSubmit={handleSend}
-            style={{
-              padding: "10px 12px",
-              borderTop: "1px solid rgba(255, 255, 255, 0.1)",
-              background: "rgba(10, 15, 13, 0.85)",
-              display: "flex",
-              alignItems: "center",
-              gap: 8,
-            }}
-          >
-            <input
-              ref={inputRef}
-              type="text"
-              value={inputText}
-              onChange={(e) => setInputText(e.target.value)}
-              placeholder={
-                activeTab === "staff"
-                  ? "Send private note to staff…"
-                  : "Send message to everyone…"
-              }
-              disabled={isSending}
+            {/* Input & Send Form for Staff */}
+            <form
+              onSubmit={handleSend}
               style={{
-                flex: 1,
-                background: "rgba(255, 255, 255, 0.07)",
-                border:
-                  activeTab === "staff"
-                    ? "1px solid rgba(255, 177, 66, 0.3)"
-                    : "1px solid rgba(46, 213, 115, 0.3)",
-                borderRadius: 8,
-                padding: "8px 12px",
-                color: "#fff",
-                fontSize: 12,
-                outline: "none",
-              }}
-              onFocus={(e) => {
-                e.target.style.borderColor =
-                  activeTab === "staff" ? "#ffb142" : "#2ed573";
-              }}
-              onBlur={(e) => {
-                e.target.style.borderColor =
-                  activeTab === "staff"
-                    ? "rgba(255, 177, 66, 0.3)"
-                    : "rgba(46, 213, 115, 0.3)";
-              }}
-            />
-            <button
-              type="submit"
-              disabled={!inputText.trim() || isSending}
-              style={{
-                background:
-                  !inputText.trim() || isSending
-                    ? "rgba(255, 255, 255, 0.1)"
-                    : activeTab === "staff"
-                    ? "#ffb142"
-                    : "#2ed573",
-                color: !inputText.trim() || isSending ? "#666" : "#111",
-                border: "none",
-                borderRadius: 8,
-                padding: "8px 12px",
-                cursor: !inputText.trim() || isSending ? "not-allowed" : "pointer",
-                display: "inline-flex",
+                padding: "10px 12px",
+                borderTop: "1px solid rgba(255, 255, 255, 0.1)",
+                background: "rgba(10, 15, 13, 0.95)",
+                display: "flex",
                 alignItems: "center",
-                justifyContent: "center",
-                fontWeight: 700,
-                fontSize: 12,
-                transition: "all 0.15s ease",
+                gap: 8,
               }}
             >
-              <Send size={13} />
-            </button>
-          </form>
-        </>
-      )}
-    </div>
-  );
+              <input
+                ref={inputRef}
+                type="text"
+                value={inputText}
+                onChange={(e) => setInputText(e.target.value)}
+                placeholder="Type private message to teacher / admin…"
+                disabled={isSending}
+                style={{
+                  flex: 1,
+                  background: "rgba(255, 255, 255, 0.08)",
+                  border: "1px solid rgba(255, 177, 66, 0.4)",
+                  borderRadius: 8,
+                  padding: "8px 12px",
+                  color: "#fff",
+                  fontSize: 12,
+                  outline: "none",
+                }}
+                onFocus={(e) => {
+                  e.target.style.borderColor = "#ffb142";
+                }}
+                onBlur={(e) => {
+                  e.target.style.borderColor = "rgba(255, 177, 66, 0.4)";
+                }}
+              />
+              <button
+                type="submit"
+                disabled={!inputText.trim() || isSending}
+                style={{
+                  background:
+                    !inputText.trim() || isSending
+                      ? "rgba(255, 255, 255, 0.1)"
+                      : "#ffb142",
+                  color: !inputText.trim() || isSending ? "#666" : "#111",
+                  border: "none",
+                  borderRadius: 8,
+                  padding: "8px 14px",
+                  cursor: !inputText.trim() || isSending ? "not-allowed" : "pointer",
+                  display: "inline-flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  fontWeight: 700,
+                  fontSize: 12,
+                  transition: "all 0.15s ease",
+                }}
+              >
+                <Send size={13} />
+              </button>
+            </form>
+          </div>
+        )}
+      </div>,
+      portalTarget
+    );
+  }
+
+  // If sidebar is not yet open in DOM, return null (the toolbar button & toasts handle opening)
+  return null;
 }

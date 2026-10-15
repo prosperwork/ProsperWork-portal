@@ -31,7 +31,9 @@ import ClassroomPiano from "./ClassroomPiano";
 import ClassroomTuner from "./ClassroomTuner";
 import ClassroomDrone from "./ClassroomDrone";
 import ClassroomWhiteboard from "./ClassroomWhiteboard";
-import ClassroomStaffChat, { type StaffChatMessage } from "./ClassroomStaffChat";
+import ClassroomStaffChat, {
+  type StaffChatMessage,
+} from "./ClassroomStaffChat";
 
 interface FloatingReaction {
   id: string;
@@ -110,6 +112,7 @@ export default function ClassroomMusicTools({
 
   // Staff Private Chat State (Admin & Teacher backchannel)
   const [staffChatOpen, setStaffChatOpen] = useState(false);
+  const [forceOpenStaffTab, setForceOpenStaffTab] = useState(false);
   const [staffMessages, setStaffMessages] = useState<StaffChatMessage[]>([]);
   const [unreadStaffCount, setUnreadStaffCount] = useState(0);
   const [staffToast, setStaffToast] = useState<{
@@ -118,6 +121,19 @@ export default function ClassroomMusicTools({
     role: string;
     message: string;
   } | null>(null);
+
+  const openStaffChat = () => {
+    setForceOpenStaffTab(true);
+    setUnreadStaffCount(0);
+    setStaffToast(null);
+    const chatToggle = document.querySelector(
+      ".lk-chat-toggle, button[aria-label*='chat' i]"
+    ) as HTMLButtonElement | null;
+    const isChatOpen = chatToggle?.getAttribute("aria-pressed") === "true";
+    if (chatToggle && !isChatOpen) {
+      chatToggle.click();
+    }
+  };
 
   // Metronome State
   const [bpm, setBpm] = useState(120);
@@ -485,7 +501,12 @@ export default function ClassroomMusicTools({
         }, 5500);
       }
     }
-  }, [chatMessages, room?.localParticipant?.identity, isRestrictedRole, userRole]);
+  }, [
+    chatMessages,
+    room?.localParticipant?.identity,
+    isRestrictedRole,
+    userRole,
+  ]);
 
   const addFloatingReaction = (
     sender: string,
@@ -715,11 +736,7 @@ export default function ClassroomMusicTools({
         userRole !== "parent" && (
           <div
             className="pc-staff-chat-toast"
-            onClick={() => {
-              setStaffChatOpen(true);
-              setUnreadStaffCount(0);
-              setStaffToast(null);
-            }}
+            onClick={openStaffChat}
             style={{
               position: "fixed",
               bottom: chatToast ? "165px" : "85px",
@@ -1633,10 +1650,7 @@ export default function ClassroomMusicTools({
           userRole !== "parent" && (
             <button
               type="button"
-              onClick={() => {
-                setStaffChatOpen((prev) => !prev);
-                setUnreadStaffCount(0);
-              }}
+              onClick={openStaffChat}
               title="Private Staff Backchannel: Secret chat between Teacher and Admin (Invisible to student & parent)"
               style={{
                 position: "relative",
@@ -1653,9 +1667,7 @@ export default function ClassroomMusicTools({
                     : "rgba(255, 177, 66, 0.45)"
                 }`,
                 color:
-                  staffChatOpen || unreadStaffCount > 0
-                    ? "#ffb142"
-                    : "#ffc078",
+                  staffChatOpen || unreadStaffCount > 0 ? "#ffb142" : "#ffc078",
                 borderRadius: 6,
                 padding: "4px 9px",
                 fontSize: 11,
@@ -1958,28 +1970,17 @@ export default function ClassroomMusicTools({
         />
       )}
 
-      {/* Staff Private Backchannel Chat Component (Admin & Teacher Only) */}
-      {staffChatOpen &&
-        !isRestrictedRole &&
+      {/* Staff Private Backchannel Chat Controller (Admin & Teacher Only) */}
+      {!isRestrictedRole &&
         userRole !== "student" &&
         userRole !== "parent" && (
           <ClassroomStaffChat
-            onClose={() => setStaffChatOpen(false)}
             userRole={userRole}
             isRestrictedRole={isRestrictedRole}
             staffMessages={staffMessages}
             onSendStaffMessage={handleSendStaffMessage}
-            publicMessages={chatMessages.map((m, idx) => ({
-              id: m.id || `${m.timestamp}-${idx}`,
-              sender: m.from?.name || m.from?.identity || "Participant",
-              message: m.message,
-              timestamp: m.timestamp,
-            }))}
-            onSendPublicMessage={async (msg) => {
-              if (sendPublicMessage) {
-                await sendPublicMessage(msg);
-              }
-            }}
+            forceOpenStaffTab={forceOpenStaffTab}
+            onStaffTabOpened={() => setForceOpenStaffTab(false)}
           />
         )}
     </>
