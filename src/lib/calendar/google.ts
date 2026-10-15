@@ -59,11 +59,13 @@ export interface CalendarEventPayload {
   endIso: string;
   attendeeEmails?: string[];
   location?: string;
+  createMeetLink?: boolean;
 }
 
 /**
  * Creates or syncs an event into ProsperWork's Google Calendar.
- * Returns the created event ID and link or null if not configured.
+ * Automatically generates a Google Meet video conference link if requested.
+ * Returns the created event ID, event link, and Google Meet URL.
  */
 export async function createGoogleCalendarEvent(payload: CalendarEventPayload) {
   try {
@@ -75,27 +77,43 @@ export async function createGoogleCalendarEvent(payload: CalendarEventPayload) {
 
     const { calendar, calendarId } = client;
 
+    const requestBody: any = {
+      summary: payload.summary,
+      description: payload.description,
+      location: payload.location || 'ProsperWork Online Virtual Studio',
+      start: { dateTime: payload.startIso },
+      end: { dateTime: payload.endIso },
+      attendees: payload.attendeeEmails?.map(email => ({ email })),
+    };
+
+    if (payload.createMeetLink) {
+      requestBody.conferenceData = {
+        createRequest: {
+          requestId: `meet_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
+          conferenceSolutionKey: { type: 'hangoutsMeet' }
+        }
+      };
+    }
+
     const res = await calendar.events.insert({
       calendarId,
-      requestBody: {
-        summary: payload.summary,
-        description: payload.description,
-        location: payload.location || 'ProsperWork Online Virtual Studio',
-        start: { dateTime: payload.startIso },
-        end: { dateTime: payload.endIso },
-        attendees: payload.attendeeEmails?.map(email => ({ email })),
-      }
+      conferenceDataVersion: payload.createMeetLink ? 1 : 0,
+      requestBody
     });
+
+    const meetUrl = res.data.conferenceData?.entryPoints?.find(p => p.entryPointType === 'video')?.uri;
 
     return {
       eventId: res.data.id,
-      htmlLink: res.data.htmlLink
+      htmlLink: res.data.htmlLink,
+      meetUrl: meetUrl || undefined
     };
   } catch (error: any) {
     console.error('[GoogleCalendar] Error creating event:', error?.message || error);
     return null;
   }
 }
+
 
 /**
  * Updates an existing calendar event.
