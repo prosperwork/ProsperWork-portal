@@ -49,15 +49,16 @@ export default function ClassroomWhiteboard({
   const room = useRoomContext();
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const containerRef = useRef<HTMLDivElement | null>(null);
-  const textInputRef = useRef<HTMLInputElement | null>(null);
+  const directInputRef = useRef<HTMLInputElement | null>(null);
 
   const [tool, setTool] = useState<ToolType>("pen");
   const [color, setColor] = useState("#2ed573");
   const [strokeWidth, setStrokeWidth] = useState(3);
-  const [fontSize, setFontSize] = useState(20);
+  const [fontSize, setFontSize] = useState(22);
   const [showStaff, setShowStaff] = useState(true);
   const [layoutMode, setLayoutMode] = useState<LayoutMode>("full");
 
+  // Direct on-canvas typing position and value
   const [typingState, setTypingState] = useState<TypingState | null>(null);
 
   const isDrawingRef = useRef(false);
@@ -107,7 +108,7 @@ export default function ClassroomWhiteboard({
     ctx.font = `bold ${size}px "Segoe UI", Roboto, system-ui, sans-serif`;
     ctx.fillStyle = textColor;
     ctx.textBaseline = "middle";
-    ctx.shadowColor = "rgba(0,0,0,0.8)";
+    ctx.shadowColor = "rgba(0,0,0,0.85)";
     ctx.shadowBlur = 4;
     ctx.fillText(text, x * width, y * height);
     ctx.restore();
@@ -172,7 +173,7 @@ export default function ClassroomWhiteboard({
               data.x,
               data.y,
               data.color || "#2ed573",
-              data.size || 20,
+              data.size || 22,
               canvas.width,
               canvas.height
             );
@@ -194,8 +195,11 @@ export default function ClassroomWhiteboard({
     }
   };
 
-  const commitText = () => {
-    if (!typingState || !typingState.text.trim()) {
+  // Commit text directly onto canvas and broadcast
+  const commitDirectText = (textOverride?: string) => {
+    if (!typingState) return;
+    const textToCommit = (typeof textOverride === "string" ? textOverride : typingState.text).trim();
+    if (!textToCommit) {
       setTypingState(null);
       return;
     }
@@ -206,7 +210,7 @@ export default function ClassroomWhiteboard({
       if (ctx) {
         drawTextOnCanvas(
           ctx,
-          typingState.text,
+          textToCommit,
           typingState.x,
           typingState.y,
           color,
@@ -220,7 +224,7 @@ export default function ClassroomWhiteboard({
     if (sendWhiteboard) {
       const payload = JSON.stringify({
         type: "text",
-        text: typingState.text,
+        text: textToCommit,
         x: typingState.x,
         y: typingState.y,
         color,
@@ -250,15 +254,17 @@ export default function ClassroomWhiteboard({
     };
   };
 
+  // Direct pointer click to type or draw
   const handlePointerDown = (e: React.MouseEvent | React.TouchEvent) => {
     const pt = getCoordinates(e);
     if (!pt) return;
 
     if (tool === "text") {
-      // If already typing, commit previous text first
+      // If user was already typing, commit the existing text first
       if (typingState && typingState.text.trim()) {
-        commitText();
+        commitDirectText();
       }
+      // Place direct typing caret exactly at clicked location on the canvas
       setTypingState({
         x: pt.x,
         y: pt.y,
@@ -268,6 +274,9 @@ export default function ClassroomWhiteboard({
       });
       return;
     }
+
+    // Pen / Highlighter / Eraser
+    if (typingState) commitDirectText();
 
     isDrawingRef.current = true;
     currentStrokeRef.current = [{ x: pt.x, y: pt.y }];
@@ -365,10 +374,30 @@ export default function ClassroomWhiteboard({
 
   // Focus input when typing state activates
   useEffect(() => {
-    if (typingState && textInputRef.current) {
-      textInputRef.current.focus();
+    if (typingState && directInputRef.current) {
+      directInputRef.current.focus();
     }
   }, [typingState]);
+
+  // Insert a musical symbol at current caret position
+  const insertSymbol = (sym: string) => {
+    if (!typingState) {
+      // If not currently typing, start typing at center
+      const canvas = canvasRef.current;
+      const cx = canvas ? canvas.width / 2 : 250;
+      const cy = canvas ? canvas.height / 2 : 150;
+      setTypingState({
+        x: 0.5,
+        y: 0.5,
+        screenX: cx,
+        screenY: cy,
+        text: sym,
+      });
+      return;
+    }
+    setTypingState((prev) => (prev ? { ...prev, text: prev.text + sym } : null));
+    directInputRef.current?.focus();
+  };
 
   // Determine modal styling based on layout mode and pianoOpen
   const getContainerStyle = (): React.CSSProperties => {
@@ -431,7 +460,8 @@ export default function ClassroomWhiteboard({
         flexDirection: "column",
         boxShadow: "0 16px 50px rgba(0,0,0,0.85)",
         overflow: "hidden",
-        transition: "width 0.2s ease, left 0.2s ease, right 0.2s ease, bottom 0.2s ease",
+        transition:
+          "width 0.2s ease, left 0.2s ease, right 0.2s ease, bottom 0.2s ease",
       }}
     >
       {/* Whiteboard Toolbar */}
@@ -449,8 +479,17 @@ export default function ClassroomWhiteboard({
           flexShrink: 0,
         }}
       >
-        <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
-          <strong style={{ fontSize: 13, color: "#2ed573", whiteSpace: "nowrap" }}>
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: 8,
+            flexWrap: "wrap",
+          }}
+        >
+          <strong
+            style={{ fontSize: 13, color: "#2ed573", whiteSpace: "nowrap" }}
+          >
             Music Staff &amp; Whiteboard
           </strong>
 
@@ -467,7 +506,7 @@ export default function ClassroomWhiteboard({
             <button
               type="button"
               onClick={() => {
-                if (typingState) commitText();
+                if (typingState) commitDirectText();
                 setTool("pen");
               }}
               style={{
@@ -489,7 +528,7 @@ export default function ClassroomWhiteboard({
             <button
               type="button"
               onClick={() => {
-                if (typingState) commitText();
+                if (typingState) commitDirectText();
                 setTool("text");
               }}
               style={{
@@ -505,14 +544,14 @@ export default function ClassroomWhiteboard({
                 alignItems: "center",
                 gap: 4,
               }}
-              title="Click anywhere to type chords, lyrics, dynamics or notes"
+              title="Click anywhere on the whiteboard to type directly"
             >
-              <Type size={12} /> Type Text
+              <Type size={12} /> Direct Type
             </button>
             <button
               type="button"
               onClick={() => {
-                if (typingState) commitText();
+                if (typingState) commitDirectText();
                 setTool("highlighter");
               }}
               style={{
@@ -534,7 +573,7 @@ export default function ClassroomWhiteboard({
             <button
               type="button"
               onClick={() => {
-                if (typingState) commitText();
+                if (typingState) commitDirectText();
                 setTool("eraser");
               }}
               style={{
@@ -555,14 +594,24 @@ export default function ClassroomWhiteboard({
             </button>
           </div>
 
-          {/* Text Font Size Options (when Type Text tool is active) */}
+          {/* Direct Type Controls: Font Size & Musical Symbols */}
           {tool === "text" && (
-            <div style={{ display: "flex", alignItems: "center", gap: 3, background: "rgba(0,0,0,0.3)", padding: "2px 5px", borderRadius: 6 }}>
-              <span style={{ fontSize: 10, color: "#8fcaab", marginRight: 2 }}>Font:</span>
+            <div
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: 5,
+                background: "rgba(0,0,0,0.35)",
+                padding: "2px 8px",
+                borderRadius: 6,
+                flexWrap: "wrap",
+              }}
+            >
+              <span style={{ fontSize: 10, color: "#8fcaab" }}>Font:</span>
               {[
-                { label: "Sm", size: 16 },
-                { label: "Md", size: 22 },
-                { label: "Lg", size: 30 },
+                { label: "Sm (16)", size: 16 },
+                { label: "Md (22)", size: 22 },
+                { label: "Lg (30)", size: 30 },
               ].map((f) => (
                 <button
                   key={f.size}
@@ -582,27 +631,64 @@ export default function ClassroomWhiteboard({
                   {f.label}
                 </button>
               ))}
+
+              <span
+                style={{
+                  fontSize: 10,
+                  color: "#8fcaab",
+                  marginLeft: 4,
+                  borderLeft: "1px solid rgba(255,255,255,0.2)",
+                  paddingLeft: 6,
+                }}
+              >
+                Insert:
+              </span>
+              {["♯", "♭", "♮", "♩", "♪", "♫", "Am", "C", "G"].map((sym) => (
+                <button
+                  key={sym}
+                  type="button"
+                  onClick={() => insertSymbol(sym)}
+                  style={{
+                    background: "rgba(255,255,255,0.12)",
+                    border: "none",
+                    borderRadius: 3,
+                    color: "#fff",
+                    fontSize: 10,
+                    fontWeight: 700,
+                    padding: "2px 5px",
+                    cursor: "pointer",
+                  }}
+                  title={`Insert ${sym}`}
+                >
+                  {sym}
+                </button>
+              ))}
             </div>
           )}
 
           {/* Color Palette */}
           {tool !== "eraser" && (
             <div style={{ display: "flex", gap: 5, alignItems: "center" }}>
-              {["#2ed573", "#ff4757", "#ffb142", "#70a1ff", "#ffffff"].map((c) => (
-                <button
-                  key={c}
-                  type="button"
-                  onClick={() => setColor(c)}
-                  style={{
-                    width: 18,
-                    height: 18,
-                    borderRadius: "50%",
-                    background: c,
-                    border: color === c ? "2px solid #fff" : "1px solid rgba(0,0,0,0.4)",
-                    cursor: "pointer",
-                  }}
-                />
-              ))}
+              {["#2ed573", "#ff4757", "#ffb142", "#70a1ff", "#ffffff"].map(
+                (c) => (
+                  <button
+                    key={c}
+                    type="button"
+                    onClick={() => setColor(c)}
+                    style={{
+                      width: 18,
+                      height: 18,
+                      borderRadius: "50%",
+                      background: c,
+                      border:
+                        color === c
+                          ? "2px solid #fff"
+                          : "1px solid rgba(0,0,0,0.4)",
+                      cursor: "pointer",
+                    }}
+                  />
+                )
+              )}
             </div>
           )}
 
@@ -611,8 +697,12 @@ export default function ClassroomWhiteboard({
             type="button"
             onClick={() => setShowStaff((prev) => !prev)}
             style={{
-              background: showStaff ? "rgba(46, 213, 115, 0.2)" : "rgba(255,255,255,0.1)",
-              border: `1px solid ${showStaff ? "#2ed573" : "rgba(255,255,255,0.2)"}`,
+              background: showStaff
+                ? "rgba(46, 213, 115, 0.2)"
+                : "rgba(255,255,255,0.1)",
+              border: `1px solid ${
+                showStaff ? "#2ed573" : "rgba(255,255,255,0.2)"
+              }`,
               color: showStaff ? "#2ed573" : "#fff",
               borderRadius: 4,
               padding: "3px 8px",
@@ -663,7 +753,8 @@ export default function ClassroomWhiteboard({
               onClick={() => setLayoutMode("split-left")}
               title="Split Left 50% (Use side-by-side with video or tuner)"
               style={{
-                background: layoutMode === "split-left" ? "#2ed573" : "transparent",
+                background:
+                  layoutMode === "split-left" ? "#2ed573" : "transparent",
                 color: layoutMode === "split-left" ? "#000" : "#aaa",
                 border: "none",
                 borderRadius: 4,
@@ -683,7 +774,8 @@ export default function ClassroomWhiteboard({
               onClick={() => setLayoutMode("split-right")}
               title="Split Right 50%"
               style={{
-                background: layoutMode === "split-right" ? "#2ed573" : "transparent",
+                background:
+                  layoutMode === "split-right" ? "#2ed573" : "transparent",
                 color: layoutMode === "split-right" ? "#000" : "#aaa",
                 border: "none",
                 borderRadius: 4,
@@ -703,7 +795,8 @@ export default function ClassroomWhiteboard({
               onClick={() => setLayoutMode("compact")}
               title="Compact Floating Window"
               style={{
-                background: layoutMode === "compact" ? "#2ed573" : "transparent",
+                background:
+                  layoutMode === "compact" ? "#2ed573" : "transparent",
                 color: layoutMode === "compact" ? "#000" : "#aaa",
                 border: "none",
                 borderRadius: 4,
@@ -756,7 +849,7 @@ export default function ClassroomWhiteboard({
         </div>
       </div>
 
-      {/* Canvas Area with Click-to-Type support */}
+      {/* Canvas Area with Direct On-Canvas Typing */}
       <div
         style={{
           flex: 1,
@@ -778,116 +871,64 @@ export default function ClassroomWhiteboard({
           style={{ width: "100%", height: "100%", display: "block" }}
         />
 
-        {/* Floating Text Input Box when typing */}
+        {/* DIRECT ON-CANVAS TYPING: Borderless transparent input placed directly where clicked */}
         {typingState && (
-          <div
+          <input
+            ref={directInputRef}
+            type="text"
+            value={typingState.text}
+            placeholder="Type directly here…"
+            onChange={(e) =>
+              setTypingState((prev) =>
+                prev ? { ...prev, text: e.target.value } : null
+              )
+            }
+            onKeyDown={(e) => {
+              if (e.key === "Enter") {
+                e.preventDefault();
+                const committedX = typingState.x;
+                const committedScreenX = typingState.screenX;
+                const committedScreenY = typingState.screenY;
+                commitDirectText();
+                // Move direct typing caret down to the next line for continuous typing
+                const canvas = canvasRef.current;
+                if (canvas) {
+                  const nextScreenY = committedScreenY + fontSize * 1.35;
+                  if (nextScreenY < canvas.height - 20) {
+                    setTypingState({
+                      x: committedX,
+                      y: nextScreenY / canvas.height,
+                      screenX: committedScreenX,
+                      screenY: nextScreenY,
+                      text: "",
+                    });
+                  }
+                }
+              } else if (e.key === "Escape") {
+                setTypingState(null);
+              }
+            }}
+            onBlur={() => commitDirectText()}
             style={{
               position: "absolute",
-              left: Math.min(typingState.screenX, (canvasRef.current?.width || 500) - 240),
-              top: Math.max(10, typingState.screenY - 24),
-              zIndex: 30,
-              background: "rgba(18, 30, 23, 0.95)",
-              border: `2px solid ${color}`,
-              borderRadius: 8,
-              padding: "6px 8px",
-              display: "flex",
-              flexDirection: "column",
-              gap: 6,
-              boxShadow: "0 10px 30px rgba(0,0,0,0.8)",
-              minWidth: 220,
+              left: typingState.screenX,
+              top: typingState.screenY - fontSize * 0.6,
+              background: "transparent",
+              border: "none",
+              borderBottom: `2px dashed ${color}`,
+              color: color,
+              font: `bold ${fontSize}px "Segoe UI", Roboto, system-ui, sans-serif`,
+              lineHeight: 1,
+              padding: "0 2px",
+              margin: 0,
+              outline: "none",
+              zIndex: 50,
+              minWidth: 120,
+              maxWidth: `calc(100% - ${typingState.screenX}px - 16px)`,
+              caretColor: color,
+              textShadow: "0 1px 4px rgba(0,0,0,0.9)",
             }}
-          >
-            {/* Quick Musical Symbol Shortcuts */}
-            <div style={{ display: "flex", gap: 3, alignItems: "center" }}>
-              <span style={{ fontSize: 9, color: "#8fcaab" }}>Symbols:</span>
-              {["♯", "♭", "♮", "♩", "♪", "♫", "Am", "C", "G"].map((sym) => (
-                <button
-                  key={sym}
-                  type="button"
-                  onClick={() => {
-                    setTypingState((prev) =>
-                      prev ? { ...prev, text: prev.text + sym } : null
-                    );
-                    textInputRef.current?.focus();
-                  }}
-                  style={{
-                    background: "rgba(255,255,255,0.12)",
-                    border: "none",
-                    borderRadius: 3,
-                    color: "#fff",
-                    fontSize: 10,
-                    fontWeight: 700,
-                    padding: "2px 4px",
-                    cursor: "pointer",
-                  }}
-                >
-                  {sym}
-                </button>
-              ))}
-            </div>
-
-            <div style={{ display: "flex", gap: 4, alignItems: "center" }}>
-              <input
-                ref={textInputRef}
-                type="text"
-                value={typingState.text}
-                placeholder="Type note, chord, lyrics…"
-                onChange={(e) =>
-                  setTypingState((prev) =>
-                    prev ? { ...prev, text: e.target.value } : null
-                  )
-                }
-                onKeyDown={(e) => {
-                  if (e.key === "Enter") commitText();
-                  if (e.key === "Escape") setTypingState(null);
-                }}
-                style={{
-                  flex: 1,
-                  background: "rgba(0,0,0,0.4)",
-                  color: color,
-                  border: "1px solid rgba(255,255,255,0.2)",
-                  borderRadius: 4,
-                  padding: "4px 8px",
-                  fontSize: `${fontSize}px`,
-                  fontWeight: 700,
-                  outline: "none",
-                }}
-              />
-              <button
-                type="button"
-                onClick={commitText}
-                style={{
-                  background: color,
-                  color: "#000",
-                  border: "none",
-                  borderRadius: 4,
-                  padding: "6px 10px",
-                  fontSize: 11,
-                  fontWeight: 700,
-                  cursor: "pointer",
-                }}
-              >
-                Place
-              </button>
-              <button
-                type="button"
-                onClick={() => setTypingState(null)}
-                style={{
-                  background: "transparent",
-                  color: "#888",
-                  border: "none",
-                  padding: "4px 6px",
-                  fontSize: 11,
-                  cursor: "pointer",
-                }}
-              >
-                ✕
-              </button>
-            </div>
-            <div style={{ fontSize: 9, color: "#8fcaab" }}>
-              Press Enter or click Place to stamp onto whiteboard
-            </div>
-          </div>
+          />
         )}
       </div>
     </div>
