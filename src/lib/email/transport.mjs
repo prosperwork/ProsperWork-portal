@@ -208,10 +208,14 @@ function emailWrapper({ title, badge, heading, bodyHtml, buttonLabel, buttonUrl,
             <td style="background-color: #0d3527; padding: 26px 32px; text-align: left;">
               <table role="presentation" border="0" cellspacing="0" cellpadding="0">
                 <tr>
-                  <td style="vertical-align: middle; padding-right: 12px;">
-                    <div style="width: 38px; height: 38px; background-color: #1a5e46; border-radius: 10px; text-align: center; line-height: 38px; font-size: 18px; color: #ffffff; font-weight: bold;">
-                      PW
-                    </div>
+                  <td style="vertical-align: middle; padding-right: 14px;">
+                    <img
+                      src="https://portal.prosperworkmusic.com/images/logo/brand-emblem.png"
+                      alt="ProsperWork Music Academy"
+                      width="38"
+                      height="38"
+                      style="display: block; width: 38px; height: 38px; border-radius: 50%; background-color: #ffffff; padding: 2px; object-fit: contain; border: 0;"
+                    />
                   </td>
                   <td style="vertical-align: middle;">
                     <span style="display: block; color: #ffffff; font-size: 17px; font-weight: 700; letter-spacing: -0.3px; line-height: 1.2;">ProsperWork</span>
