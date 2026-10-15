@@ -1941,8 +1941,7 @@ export default function PortalAiChatBubble({
                     {selectedComplaint.messages &&
                       selectedComplaint.messages.map((m) => {
                         const isStaff = m.sender_role !== "parent";
-                        const isMe =
-                          profile?.id && m.sender_id === profile.id;
+                        const isMe = profile?.id && m.sender_id === profile.id;
                         return (
                           <div
                             key={m.id}
@@ -1984,9 +1983,7 @@ export default function PortalAiChatBubble({
                                     fontSize: "9px",
                                     padding: "1px 5px",
                                     borderRadius: "6px",
-                                    background: isStaff
-                                      ? "#dcfce7"
-                                      : "#fef3c7",
+                                    background: isStaff ? "#dcfce7" : "#fef3c7",
                                     color: isStaff ? "#166534" : "#92400e",
                                     fontWeight: 700,
                                     textTransform: "uppercase",
