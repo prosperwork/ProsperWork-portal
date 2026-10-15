@@ -11,7 +11,8 @@ export const dynamic = "force-dynamic";
 export async function GET() {
   try {
     const { profile, client } = await identity();
-    if (profile?.role !== "super_admin" || profile.status !== "active") return NextResponse.json({ error: "Owner access required." }, { status: 403 });
+    const isManager = ["super_admin", "general_manager", "head_admin", "hr"].includes(profile?.role || "") && profile?.status === "active";
+    if (!isManager) return NextResponse.json({ error: "Administrative staff or owner access required." }, { status: 403 });
     const { data, error } = await client.from("pw_profiles").select("id,name,email,role,status,timezone,username").order("name");
     if (error) throw error;
     return NextResponse.json({ accounts: data }, { headers: { "Cache-Control": "private, no-store" } });
@@ -21,12 +22,14 @@ export async function POST(request: Request) {
   if (!sameOrigin(request)) return NextResponse.json({ error: "Invalid request origin." }, { status: 403 });
   try {
     const { profile } = await identity({ rawOwner: true });
-    if (profile?.role !== "super_admin" || profile.status !== "active") return NextResponse.json({ error: "Owner access required." }, { status: 403 });
+    const isManager = ["super_admin", "general_manager", "head_admin", "hr"].includes(profile?.role || "") && profile?.status === "active";
+    if (!isManager) return NextResponse.json({ error: "Administrative staff or owner access required." }, { status: 403 });
     const body = await request.json().catch(() => null);
     const admin = provisioningClient();
 
     // Impersonation / View As User Action
     if (body?.action === "view_as") {
+      if (profile.role !== "super_admin") return NextResponse.json({ error: "Owner access required for impersonation." }, { status: 403 });
       const targetId = String(body.targetId || "");
       if (!/^[0-9a-f-]{36}$/i.test(targetId)) return NextResponse.json({ error: "Invalid account identifier." }, { status: 400 });
       const { data: targetUser, error: targetErr } = await admin.from("pw_profiles")
@@ -88,6 +91,7 @@ export async function POST(request: Request) {
     }
 
     if (body?.action === "delete") {
+      if (profile.role !== "super_admin") return NextResponse.json({ error: "Owner access required for account deletion." }, { status: 403 });
       const targetId = String(body.id || "");
       if (!/^[0-9a-f-]{36}$/i.test(targetId)) return NextResponse.json({ error: "Invalid account identifier." }, { status: 400 });
       if (targetId === profile.id) return NextResponse.json({ error: "You cannot delete your own Super Admin account." }, { status: 400 });
@@ -172,18 +176,67 @@ export async function POST(request: Request) {
       const parsed = accountSchema.safeParse(body.account);
       if (!parsed.success || parsed.data.role === "super_admin") return NextResponse.json({ error: "Check the invitation details. Additional owner access requires a separate approval." }, { status: 400 });
       const account = parsed.data;
-      const { data, error } = await admin.auth.admin.inviteUserByEmail(account.email.toLowerCase(), {
-        data: { name: account.name }, redirectTo: publicAppUrl("/auth/confirm?next=/reset-password&reason=invite").href,
+
+      const redirectTo = publicAppUrl("/auth/confirm?next=/reset-password&reason=invite").href;
+      let inviteLink = "";
+      let userId: string | null = null;
+
+      // 1. Generate direct action link
+      const linkResult = await admin.auth.admin.generateLink({
+        type: "invite",
+        email: account.email.toLowerCase(),
+        options: {
+          data: { name: account.name },
+          redirectTo,
+        },
       });
-      if (error || !data.user) return NextResponse.json({ error: "The invitation could not be sent. If this person has registered already, activate their existing account instead." }, { status: 400 });
+
+      if (linkResult.data?.properties?.action_link) {
+        inviteLink = linkResult.data.properties.action_link;
+        userId = linkResult.data.user?.id ?? null;
+      }
+
+      // 2. Fallback to inviteUserByEmail if generateLink did not provide user
+      if (!userId) {
+        const { data, error } = await admin.auth.admin.inviteUserByEmail(account.email.toLowerCase(), {
+          data: { name: account.name },
+          redirectTo,
+        });
+        if (error || !data.user) return NextResponse.json({ error: "The invitation could not be sent. If this person has registered already, activate their existing account instead." }, { status: 400 });
+        userId = data.user.id;
+      }
+
       const { error: profileError } = await admin.rpc("pw_set_account", {
-        actor: profile.id, target: data.user.id, new_status: "active", new_role: account.role, new_timezone: account.timezone,
+        actor: profile.id, target: userId, new_status: "active", new_role: account.role, new_timezone: account.timezone,
       });
       if (profileError) return NextResponse.json({ error: "The invitation was sent, but role assignment failed. This account remains pending; review it before use." }, { status: 503 });
       if (account.role === "parent") {
-        await ensureParentPoliciesAccepted(data.user.id);
+        await ensureParentPoliciesAccepted(userId);
       }
-      return NextResponse.json({ ok: true });
+
+      // 3. Deliver official academy invitation email directly via SMTP
+      if (inviteLink) {
+        try {
+          const roleTitle = account.role.replace(/_/g, " ").replace(/\b\w/g, (l) => l.toUpperCase());
+          await deliverEmail({
+            id: `invite-${Date.now()}`,
+            category: "admissions",
+            email: account.email.toLowerCase(),
+            subject: "Welcome to ProsperWork Music Academy — Complete Your Account Setup",
+            template: "account_invitation",
+            payload: {
+              name: account.name,
+              role: account.role,
+              roleTitle,
+              inviteLink,
+            },
+          }, publicAppUrl().href);
+        } catch (mailErr) {
+          console.error("Direct invitation email dispatch failed:", mailErr);
+        }
+      }
+
+      return NextResponse.json({ ok: true, message: `Invitation sent to ${account.name} (${account.email}).` });
     }
     const parsed = z.object({
       action: z.literal("status"), id: z.string().uuid(),

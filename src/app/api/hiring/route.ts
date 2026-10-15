@@ -4,6 +4,7 @@ import {identity} from "@/lib/supabase/identity";
 import {provisioningClient,sameOrigin} from "@/lib/supabase/server";
 import {hiringAction,hiringRoles} from "@/lib/academy/hiring";
 import {loadAllRecords} from "@/lib/academy/paged-records";
+import {deliverEmail} from "@/lib/email/transport.mjs";
 export const dynamic="force-dynamic";
 const reply=(data:unknown,status=200)=>NextResponse.json(data,{status,headers:{"Cache-Control":"private, no-store"}});
 export async function GET(){
@@ -29,17 +30,56 @@ export async function POST(request:Request){
   const p=hiringAction.safeParse(await request.json().catch(()=>null));if(!p.success)return reply({error:"Check applicant details, evidence and dates."},400);
   const d=p.data;
   if(d.action==="invite"){
-   if(profile.role!=="super_admin"||profile.status!=="active")return reply({error:"Only the owner can provision staff accounts."},403);
+   if(!["super_admin","general_manager","hr"].includes(profile.role)||profile.status!=="active")return reply({error:"Owner or HR access required to invite staff accounts."},403);
    try{new Intl.DateTimeFormat("en",{timeZone:d.timezone}).format();}catch{return reply({error:"Choose a valid timezone."},400);}
    const row=await client.from("pw_hiring_cases").select("id,name,email,desired_role,staff_id,stage").eq("id",d.id).single();
    if(row.error||!row.data||row.data.stage!=="selected"||row.data.staff_id)return reply({error:"Select an unlinked applicant after the joint interview."},409);
    const admin=provisioningClient();
-   const invited=await admin.auth.admin.inviteUserByEmail(row.data.email,{data:{name:row.data.name},redirectTo:publicAppUrl("/auth/confirm?next=/hiring").href});
-   if(invited.error||!invited.data.user)return reply({error:"Invitation could not be sent. If this person already has an account, use the owner account page to set the matching staff role and applicant status, then link it."},409);
-   const prepared=await admin.rpc("pw_set_account",{actor:profile.id,target:invited.data.user.id,new_status:"applicant",new_role:row.data.desired_role,new_timezone:d.timezone});
+   const redirectTo = publicAppUrl("/auth/confirm?next=/hiring").href;
+   let inviteLink = "";
+   let userId: string | null = null;
+
+   const linkResult = await admin.auth.admin.generateLink({
+     type: "invite",
+     email: row.data.email.toLowerCase(),
+     options: { data: { name: row.data.name }, redirectTo },
+   });
+   if (linkResult.data?.properties?.action_link) {
+     inviteLink = linkResult.data.properties.action_link;
+     userId = linkResult.data.user?.id ?? null;
+   }
+   if (!userId) {
+     const invited = await admin.auth.admin.inviteUserByEmail(row.data.email, { data: { name: row.data.name }, redirectTo });
+     if (invited.error || !invited.data.user) return reply({ error: "Invitation could not be sent. If this person already has an account, use the accounts page to link it." }, 409);
+     userId = invited.data.user.id;
+   }
+
+   const prepared=await admin.rpc("pw_set_account",{actor:profile.id,target:userId,new_status:"applicant",new_role:row.data.desired_role,new_timezone:d.timezone});
    if(prepared.error)return reply({error:"Invitation was sent, but staff provisioning failed. The account remains unprivileged; review it in Accounts."},503);
-   const linked=await client.rpc("pw_hiring_action",{p_action:"bind",p_id:d.id,p_data:{staffId:invited.data.user.id,notes:"Owner invited and linked the applicant account"}});
+   const linked=await client.rpc("pw_hiring_action",{p_action:"bind",p_id:d.id,p_data:{staffId:userId,notes:`${profile.name} invited and linked the applicant account`}});
    if(linked.error)return reply({error:"Applicant invitation was sent, but linking failed. Link the applicant account after reloading. It has not been activated."},409);
+
+   if (inviteLink) {
+     try {
+       const roleTitle = row.data.desired_role.replace(/_/g, " ").replace(/\b\w/g, (l: string) => l.toUpperCase());
+       await deliverEmail({
+         id: `hire-invite-${Date.now()}`,
+         category: "admissions",
+         email: row.data.email.toLowerCase(),
+         subject: "Welcome to ProsperWork Music Academy — Complete Your Staff Setup",
+         template: "account_invitation",
+         payload: {
+           name: row.data.name,
+           role: row.data.desired_role,
+           roleTitle,
+           inviteLink,
+         },
+       }, publicAppUrl().href);
+     } catch (err) {
+       console.error("Hiring invitation email delivery failed:", err);
+     }
+   }
+
    return reply({ok:true});
   }
   const {action,...data}=d;

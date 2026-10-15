@@ -152,6 +152,69 @@ export default function HiringCaseDetail({
 
   return (
     <>
+      {!isApplicant && (
+        <section
+          className="hire-section"
+          style={{
+            background: "#f8faf9",
+            border: "1px solid #dce7e1",
+            marginBottom: 16,
+          }}
+        >
+          <div>
+            <span
+              className="hire-pill ready"
+              style={{
+                textTransform: "uppercase",
+                fontSize: "10px",
+                fontWeight: 800,
+              }}
+            >
+              Current Stage: {titleCase(selectedCase.stage)}
+            </span>
+            <h3
+              style={{
+                margin: "6px 0 2px",
+                fontSize: "15px",
+                color: "var(--foreground, #0f172a)",
+              }}
+            >
+              {selectedCase.stage === "applied" &&
+                "Step 1: Schedule Joint Interview"}
+              {selectedCase.stage === "interview" &&
+                "Step 2: Complete Audition & Department Reviews"}
+              {selectedCase.stage === "selected" &&
+                "Step 3: Account Invitation & Official Agreements"}
+              {selectedCase.stage === "ready" &&
+                "Step 4: Finalize Training, Bank & Activate"}
+              {selectedCase.stage === "activated" &&
+                "Active Academy Staff Member"}
+              {selectedCase.stage === "rejected" && "Case Closed (Rejected)"}
+            </h3>
+            <p
+              style={{
+                margin: 0,
+                fontSize: "12px",
+                color: "var(--muted, #64748b)",
+              }}
+            >
+              {selectedCase.stage === "applied" &&
+                "Select an interview date and time below to move this applicant to the interview stage."}
+              {selectedCase.stage === "interview" &&
+                "Record the HR interview and teacher audition. Passing reviews allow selecting the applicant."}
+              {selectedCase.stage === "selected" &&
+                "Invite the applicant by email to create their password, and upload the approved academy agreement PDF."}
+              {selectedCase.stage === "ready" &&
+                "All requirements and payroll checks are met. Click Activate to grant full academy permissions."}
+              {selectedCase.stage === "activated" &&
+                "This teacher account is active and teaching in the academy."}
+              {selectedCase.stage === "rejected" &&
+                "This recruitment case has been concluded."}
+            </p>
+          </div>
+        </section>
+      )}
+
       {!isApplicant && (isOwner || isHR) && canSchedule && (
         <section className="hire-section" aria-labelledby="schedule-heading">
           <div className="hire-section-head">
@@ -385,10 +448,29 @@ export default function HiringCaseDetail({
                     <strong>{titleCase(kindValue)} PDF</strong>
                     <small>No current PDF attached</small>
                   </div>
-                  <span className="hire-pill">Missing</span>
+                  <span className="hire-pill">
+                    {["applied", "interview"].includes(selectedCase.stage)
+                      ? "Pending selection"
+                      : "Awaiting upload"}
+                  </span>
                 </div>
               );
             })}
+            {["applied", "interview"].includes(selectedCase.stage) && (
+              <div
+                style={{
+                  marginTop: 8,
+                  fontSize: "11.5px",
+                  color: "var(--muted, #64748b)",
+                }}
+              >
+                <em>
+                  Note: Guidelines and employment agreement PDFs are uploaded by
+                  the academy once the candidate passes their audition and
+                  interview. The applicant does not upload these documents.
+                </em>
+              </div>
+            )}
             {currentFiles
               .filter((file) => file.category === "hiring_evidence")
               .map((file) => (

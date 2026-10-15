@@ -107,6 +107,8 @@ export function emailText(job, appUrl) {
     case "marketing_update":
       if(typeof p.body!=="string"||!p.body.trim()||typeof p.unsubscribeToken!=="string"||!/^[a-f0-9-]{36}$/i.test(p.unsubscribeToken))throw Object.assign(new Error("Invalid marketing message."),{code:"EMESSAGE"});
       return `${p.body}\n\nYou received this academy update because marketing email consent was recorded.\nStop marketing emails: ${appUrl}/unsubscribe?token=${encodeURIComponent(p.unsubscribeToken)}\nOperational class and billing reminders are separate.${signature}`;
+    case "account_invitation":
+      return `Hello ${p.name || "there"},\n\nYou have been invited to join ProsperWork Music Academy as a ${p.roleTitle || "Staff Member"}.\n\nTo activate your account and choose your password, please click the secure link below:\n${p.inviteLink}\n\nIf you have any questions or need assistance, please reply to this email or contact support@prosperworkmusic.com.${signature}`;
     case "account_activated": {
       const isOnboardingRole = ["parent", "student"].includes(p.role);
       const targetPath = isOnboardingRole ? "/onboarding" : "/";
@@ -282,6 +284,19 @@ function emailWrapper({ title, badge, heading, bodyHtml, buttonLabel, buttonUrl,
 
 export function emailHtml(job, appUrl) {
   const p = job.payload;
+  if (job.template === "account_invitation") {
+    const name = p.name || "there";
+    const roleTitle = p.roleTitle || "Staff Member";
+    return emailWrapper({
+      title: "ProsperWork Music Academy Invitation",
+      badge: "Staff Invitation",
+      heading: "Welcome to ProsperWork Music Academy",
+      bodyHtml: `Hello <strong>${name}</strong>,<br><br>You have been officially invited to join ProsperWork Music Academy as a <strong>${roleTitle}</strong>.<br><br>Click the button below to activate your account, set your secure password, and access your academy workspace:`,
+      buttonLabel: "Activate Your Account &rarr;",
+      buttonUrl: p.inviteLink,
+      noteHtml: `<strong>Next Steps:</strong> Once you set your password, you can sign in and access your lessons, schedule, and music classroom. If you have any questions, reply to this email or reach us at <a href="mailto:support@prosperworkmusic.com" style="color: #135b45;">support@prosperworkmusic.com</a>.`
+    });
+  }
   if (job.template === "account_activated") {
     const name = p.name || "there";
     const roleTitle = typeof p.roleTitle === "string" ? p.roleTitle : "Academy Member";

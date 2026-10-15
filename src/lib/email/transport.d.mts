@@ -1,7 +1,7 @@
 import type { Transporter } from "nodemailer";
 export interface EmailJob {
   id: string;
-  lease_id: string;
+  lease_id?: string;
   email: string;
   category: string;
   subject: string;
