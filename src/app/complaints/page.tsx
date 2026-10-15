@@ -852,7 +852,8 @@ export default function ComplaintsPage() {
               </div>
 
               {/* Modern Chat Reply Input */}
-              {currentUser?.role === "parent" && selectedComplaint.status === "resolved" ? (
+              {currentUser?.role === "parent" &&
+              selectedComplaint.status === "resolved" ? (
                 <div
                   style={{
                     padding: "14px 18px",
@@ -869,7 +870,10 @@ export default function ComplaintsPage() {
                   }}
                 >
                   <Lock size={16} style={{ flexShrink: 0, color: "#16a34a" }} />
-                  <span>This ticket has been marked as resolved and closed for new replies.</span>
+                  <span>
+                    This ticket has been marked as resolved and closed for new
+                    replies.
+                  </span>
                 </div>
               ) : (
                 <form

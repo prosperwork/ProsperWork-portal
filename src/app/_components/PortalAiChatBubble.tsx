@@ -820,6 +820,12 @@ export default function PortalAiChatBubble({
       {!open && (
         <button
           type="button"
+          className="portal-ai-trigger"
+          onClick={() => {
+            if (!dragStartRef.current?.moved) {
+              openChatAtSafeLocation();
+            }
+          }}
           onPointerDown={handleButtonPointerDown}
           onPointerMove={handleButtonPointerMove}
           onPointerUp={handleButtonPointerUp}
@@ -2112,7 +2118,10 @@ export default function PortalAiChatBubble({
                         justifyContent: "center",
                       }}
                     >
-                      <Lock size={14} style={{ flexShrink: 0, color: "#16a34a" }} />
+                      <Lock
+                        size={14}
+                        style={{ flexShrink: 0, color: "#16a34a" }}
+                      />
                       <span>This inquiry has been resolved and closed.</span>
                     </div>
                   ) : (
