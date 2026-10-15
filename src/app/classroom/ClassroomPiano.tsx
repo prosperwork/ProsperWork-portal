@@ -683,6 +683,30 @@ export default function ClassroomPiano({
         </div>
       </div>
 
+      {/* View-Only Presenter Mode Banner */}
+      {isLocked && (
+        <div
+          style={{
+            background: "rgba(255, 177, 66, 0.14)",
+            border: "1px solid rgba(255, 177, 66, 0.3)",
+            color: "#ffb142",
+            fontSize: 11,
+            fontWeight: 600,
+            padding: "4px 10px",
+            borderRadius: 6,
+            marginBottom: 6,
+            display: "flex",
+            alignItems: "center",
+            gap: 6,
+          }}
+        >
+          <Lock size={12} />
+          <span>
+            View Only (Presenter Mode): Keyboard is locked by your supervisor. Notes played by your teacher will light up and sound here live.
+          </span>
+        </div>
+      )}
+
       {/* Red Felt Runner Fallboard Accent */}
       <div
         style={{
@@ -736,17 +760,26 @@ export default function ClassroomPiano({
             return (
               <div
                 key={k.midi}
-                onMouseDown={() => handleNoteOn(k.midi)}
-                onMouseUp={() => handleNoteOff(k.midi)}
+                onMouseDown={() => {
+                  if (isLocked) return;
+                  handleNoteOn(k.midi);
+                }}
+                onMouseUp={() => {
+                  if (isLocked) return;
+                  handleNoteOff(k.midi);
+                }}
                 onMouseLeave={() => {
+                  if (isLocked) return;
                   if (activeNotes.has(k.midi)) handleNoteOff(k.midi);
                 }}
                 onTouchStart={(e) => {
                   e.preventDefault();
+                  if (isLocked) return;
                   handleNoteOn(k.midi);
                 }}
                 onTouchEnd={(e) => {
                   e.preventDefault();
+                  if (isLocked) return;
                   handleNoteOff(k.midi);
                 }}
                 style={{
@@ -777,7 +810,8 @@ export default function ClassroomPiano({
                   justifyContent: "flex-end",
                   alignItems: "center",
                   paddingBottom: 4,
-                  cursor: isLocked ? "default" : "pointer",
+                  cursor: isLocked ? "not-allowed" : "pointer",
+                  pointerEvents: isLocked ? "none" : "auto",
                   boxShadow:
                     isPressed || isRemote
                       ? "inset 0 4px 8px rgba(0,0,0,0.4)"
@@ -868,17 +902,26 @@ export default function ClassroomPiano({
             return (
               <div
                 key={k.midi}
-                onMouseDown={() => handleNoteOn(k.midi)}
-                onMouseUp={() => handleNoteOff(k.midi)}
+                onMouseDown={() => {
+                  if (isLocked) return;
+                  handleNoteOn(k.midi);
+                }}
+                onMouseUp={() => {
+                  if (isLocked) return;
+                  handleNoteOff(k.midi);
+                }}
                 onMouseLeave={() => {
+                  if (isLocked) return;
                   if (activeNotes.has(k.midi)) handleNoteOff(k.midi);
                 }}
                 onTouchStart={(e) => {
                   e.preventDefault();
+                  if (isLocked) return;
                   handleNoteOn(k.midi);
                 }}
                 onTouchEnd={(e) => {
                   e.preventDefault();
+                  if (isLocked) return;
                   handleNoteOff(k.midi);
                 }}
                 style={{
@@ -898,7 +941,8 @@ export default function ClassroomPiano({
                   alignItems: "flex-end",
                   justifyContent: "center",
                   paddingBottom: 3,
-                  cursor: isLocked ? "default" : "pointer",
+                  cursor: isLocked ? "not-allowed" : "pointer",
+                  pointerEvents: isLocked ? "none" : "auto",
                   boxShadow:
                     isPressed || isRemote
                       ? `0 0 10px ${isRemote ? "#ffb142" : "#2ed573"}`

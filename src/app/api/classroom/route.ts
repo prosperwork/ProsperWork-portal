@@ -20,20 +20,20 @@ export interface StudentPermissions {
 
 function resolveStudentPermissions(payload: Record<string, unknown>): StudentPermissions {
   const rawPerms = (payload.studentPermissions as Partial<StudentPermissions>) || {};
-  const legacyAll = Boolean(payload.studentFeaturesEnabled);
   return {
-    piano: typeof rawPerms.piano === "boolean" ? rawPerms.piano : legacyAll,
-    whiteboard: typeof rawPerms.whiteboard === "boolean" ? rawPerms.whiteboard : legacyAll,
-    metronome: typeof rawPerms.metronome === "boolean" ? rawPerms.metronome : legacyAll,
-    tuner: typeof rawPerms.tuner === "boolean" ? rawPerms.tuner : legacyAll,
-    drone: typeof rawPerms.drone === "boolean" ? rawPerms.drone : legacyAll,
-    chat: typeof rawPerms.chat === "boolean" ? rawPerms.chat : legacyAll,
-    reactions: typeof rawPerms.reactions === "boolean" ? rawPerms.reactions : legacyAll,
+    piano: Boolean(rawPerms.piano),
+    whiteboard: Boolean(rawPerms.whiteboard),
+    metronome: Boolean(rawPerms.metronome),
+    tuner: Boolean(rawPerms.tuner),
+    drone: Boolean(rawPerms.drone),
+    chat: Boolean(rawPerms.chat),
+    reactions: Boolean(rawPerms.reactions),
   };
 }
 
 export async function GET(request: Request) {
-  const parsed = idSchema.safeParse(new URL(request.url).searchParams.get("lessonId"));
+  const urlObj = new URL(request.url);
+  const parsed = idSchema.safeParse(urlObj.searchParams.get("lessonId"));
   if (!parsed.success) return NextResponse.json({ error: "Choose a class from your schedule." }, { status: 400 });
   try {
     const { client, profile } = await identity();
@@ -41,17 +41,22 @@ export async function GET(request: Request) {
     const { data, error } = await client.rpc("pw_classroom_access", { p_lesson: parsed.data, p_join: false });
     if (error) return NextResponse.json({ error: "You do not have access to this classroom." }, { status: error.code === "42501" ? 403 : 503 });
 
-    // Fetch lesson payload and admin_id
-    const { data: lessonRow } = await client.from("pw_lessons").select("admin_id, payload").eq("id", parsed.data).single();
+    // Fetch lesson payload, admin_id, and student_id
+    const { data: lessonRow } = await client.from("pw_lessons").select("admin_id, student_id, payload").eq("id", parsed.data).single();
     const payload = (lessonRow?.payload || {}) as Record<string, unknown>;
 
-    // Permission check: Only super_admin and the admin assigned to this student (admin_id) can grant student features
-    const canGrantAccess =
+    const asStudent = urlObj.searchParams.get("as") === "student" || urlObj.searchParams.get("role") === "student";
+    const staffRoles = ["super_admin", "admin", "head_admin", "general_manager", "teacher", "qc"];
+    const isStaff = staffRoles.includes(String(profile.role || "").toLowerCase());
+
+    // Permission check: Only super_admin, head_admin, or the admin assigned to this student can grant features
+    const canGrantAccess = !asStudent && (
       profile.role === "super_admin" ||
       (profile.role === "admin" && profile.id === lessonRow?.admin_id) ||
-      profile.role === "head_admin";
+      profile.role === "head_admin"
+    );
 
-    const isRestrictedRole = profile.role === "student" || profile.role === "parent";
+    const isRestrictedRole = asStudent || !isStaff || ["student", "parent"].includes(String(profile.role || "").toLowerCase()) || profile.id === lessonRow?.student_id;
     const studentPermissions = resolveStudentPermissions(payload);
     const studentFeaturesEnabled = Object.values(studentPermissions).some(Boolean);
 
@@ -59,7 +64,7 @@ export async function GET(request: Request) {
       ...data,
       classroomProvider: payload.classroomProvider || "inbuilt",
       meetUrl: payload.meetUrl || undefined,
-      userRole: profile.role,
+      userRole: asStudent ? "student" : profile.role,
       canGrantAccess,
       isRestrictedRole,
       studentFeaturesEnabled,
@@ -70,13 +75,13 @@ export async function GET(request: Request) {
   } catch { return NextResponse.json({ error: "Classroom details are unavailable." }, { status: 503 }); }
 }
 
-
 export async function POST(request: Request) {
   if (!sameOrigin(request)) return NextResponse.json({ error: "Invalid request origin." }, { status: 403 });
   try {
     const { client, profile } = await identity();
     if (!profile || profile.status !== "active") return NextResponse.json({ error: "Active academy access is required." }, { status: 403 });
-    const input = z.object({ lessonId: idSchema }).strict().safeParse(await request.json());
+    const bodyJson = await request.json().catch(() => ({}));
+    const input = z.object({ lessonId: idSchema, asRole: z.string().optional() }).safeParse(bodyJson);
     if (!input.success) return NextResponse.json({ error: "Choose a valid class." }, { status: 400 });
     const serverUrl = process.env.LIVEKIT_URL;
     const key = process.env.LIVEKIT_API_KEY, secret = process.env.LIVEKIT_API_SECRET;
@@ -95,15 +100,21 @@ export async function POST(request: Request) {
       canUpdateOwnMetadata: true, roomRecord: canRecord,
     });
 
-    const { data: lessonRow } = await client.from("pw_lessons").select("admin_id, payload").eq("id", input.data.lessonId).single();
+    const { data: lessonRow } = await client.from("pw_lessons").select("admin_id, student_id, payload").eq("id", input.data.lessonId).single();
     const payload = (lessonRow?.payload || {}) as Record<string, unknown>;
 
-    const canGrantAccess =
+    const requestUrl = new URL(request.url);
+    const asStudent = requestUrl.searchParams.get("as") === "student" || requestUrl.searchParams.get("role") === "student" || input.data.asRole === "student";
+    const staffRoles = ["super_admin", "admin", "head_admin", "general_manager", "teacher", "qc"];
+    const isStaff = staffRoles.includes(String(profile.role || "").toLowerCase());
+
+    const canGrantAccess = !asStudent && (
       profile.role === "super_admin" ||
       (profile.role === "admin" && profile.id === lessonRow?.admin_id) ||
-      profile.role === "head_admin";
+      profile.role === "head_admin"
+    );
 
-    const isRestrictedRole = profile.role === "student" || profile.role === "parent";
+    const isRestrictedRole = asStudent || !isStaff || ["student", "parent"].includes(String(profile.role || "").toLowerCase()) || profile.id === lessonRow?.student_id;
     const studentPermissions = resolveStudentPermissions(payload);
     const studentFeaturesEnabled = Object.values(studentPermissions).some(Boolean);
 
@@ -114,7 +125,7 @@ export async function POST(request: Request) {
       closesAt: data.closesAt,
       lessonId: input.data.lessonId,
       canRecord,
-      userRole: profile.role,
+      userRole: asStudent ? "student" : profile.role,
       canGrantAccess,
       isRestrictedRole,
       studentFeaturesEnabled,

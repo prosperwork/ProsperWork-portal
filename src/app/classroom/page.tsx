@@ -144,10 +144,15 @@ export default function ClassroomPage() {
     setJoinError("");
     setNotice("");
     try {
-      const response = await fetch(
-        `/api/classroom?lessonId=${encodeURIComponent(lessonId)}`,
-        { credentials: "include", cache: "no-store" }
-      );
+      const searchParams = new URLSearchParams(window.location.search);
+      const asParam = searchParams.get("as") || searchParams.get("role");
+      const endpoint = `/api/classroom?lessonId=${encodeURIComponent(
+        lessonId
+      )}${asParam ? `&as=${encodeURIComponent(asParam)}` : ""}`;
+      const response = await fetch(endpoint, {
+        credentials: "include",
+        cache: "no-store",
+      });
       const result = await json(response);
       if (response.status === 401) {
         window.location.assign("/login");
@@ -230,11 +235,16 @@ export default function ClassroomPage() {
     setCheckingPermissions(true);
     setRequesting(true);
     try {
-      const response = await fetch("/api/classroom", {
+      const searchParams = new URLSearchParams(window.location.search);
+      const asParam = searchParams.get("as") || searchParams.get("role");
+      const endpoint = asParam
+        ? `/api/classroom?as=${encodeURIComponent(asParam)}`
+        : "/api/classroom";
+      const response = await fetch(endpoint, {
         method: "POST",
         credentials: "include",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ lessonId }),
+        body: JSON.stringify({ lessonId, asRole: asParam || undefined }),
       });
       const result = await json(response);
       if (!response.ok || !result.token || !result.serverUrl)
@@ -254,10 +264,15 @@ export default function ClassroomPage() {
         canRecord:
           typeof result.canRecord === "boolean" ? result.canRecord : true,
         lessonId: (result.lessonId as string) || lessonId,
-        userRole: result.userRole || data?.userRole,
-        canGrantAccess: Boolean(result.canGrantAccess ?? data?.canGrantAccess),
+        userRole:
+          asParam === "student" ? "student" : result.userRole || data?.userRole,
+        canGrantAccess:
+          asParam === "student"
+            ? false
+            : Boolean(result.canGrantAccess ?? data?.canGrantAccess),
         isRestrictedRole: Boolean(
-          result.isRestrictedRole ?? data?.isRestrictedRole
+          asParam === "student" ||
+            (result.isRestrictedRole ?? data?.isRestrictedRole)
         ),
         studentFeaturesEnabled: Boolean(
           result.studentFeaturesEnabled ?? data?.studentFeaturesEnabled

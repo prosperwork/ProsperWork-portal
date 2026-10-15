@@ -71,6 +71,7 @@ export default function ClassroomMusicTools({
   const [musicMode, setMusicMode] = useState(true);
 
   // Per-feature student permission state
+  // Per-feature student permission state (strictly defaults to locked/false for students)
   const defaultStudentPermissions: StudentPermissions = {
     piano: false,
     whiteboard: false,
@@ -85,6 +86,7 @@ export default function ClassroomMusicTools({
     useState<StudentPermissions>(() => {
       if (initialStudentPermissions) return initialStudentPermissions;
       if (initialStudentFeaturesEnabled) {
+      if (initialStudentPermissions) {
         return {
           piano: true,
           whiteboard: true,
@@ -93,6 +95,13 @@ export default function ClassroomMusicTools({
           drone: true,
           chat: true,
           reactions: true,
+          piano: Boolean(initialStudentPermissions.piano),
+          whiteboard: Boolean(initialStudentPermissions.whiteboard),
+          metronome: Boolean(initialStudentPermissions.metronome),
+          tuner: Boolean(initialStudentPermissions.tuner),
+          drone: Boolean(initialStudentPermissions.drone),
+          chat: Boolean(initialStudentPermissions.chat),
+          reactions: Boolean(initialStudentPermissions.reactions),
         };
       }
       return defaultStudentPermissions;
@@ -136,6 +145,12 @@ export default function ClassroomMusicTools({
     // Teachers, Admins, SuperAdmins are never restricted from using any tool
     if (!isRestrictedRole) return false;
     return !studentPermissions[feature];
+    // If user is marked as restricted or student/parent role, strictly verify permission
+    if (isRestrictedRole || userRole === "student" || userRole === "parent") {
+      return !studentPermissions[feature];
+    }
+    // Teachers, Admins, SuperAdmins are not restricted
+    return false;
   };
 
   // Check and prompt if action is allowed
@@ -242,6 +257,25 @@ export default function ClassroomMusicTools({
       }
     }
   );
+
+  // Broadcast current permissions whenever room connects or a new participant arrives
+  useEffect(() => {
+    if (!canGrantAccess || !room) return;
+    const broadcastCurrent = () => {
+      if (sendBroadcast) {
+        const payload = JSON.stringify({
+          type: "student_permissions_changed",
+          permissions: studentPermissions,
+        });
+        sendBroadcast(new TextEncoder().encode(payload), { reliable: true });
+      }
+    };
+    broadcastCurrent();
+    room.on("participantConnected", broadcastCurrent);
+    return () => {
+      room.off("participantConnected", broadcastCurrent);
+    };
+  }, [canGrantAccess, room, studentPermissions, sendBroadcast]);
 
   // Toggle single permission for student
   const toggleSinglePermission = async (feature: keyof StudentPermissions) => {

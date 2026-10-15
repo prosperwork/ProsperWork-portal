@@ -935,7 +935,17 @@ export default function ClassroomWhiteboard({
           onTouchStart={handlePointerDown}
           onTouchMove={handlePointerMove}
           onTouchEnd={handlePointerUp}
-          style={{ width: "100%", height: "100%", display: "block" }}
+          style={{
+            width: "100%",
+            height: "100%",
+            display: "block",
+            pointerEvents: isLocked ? "none" : "auto",
+            cursor: isLocked
+              ? "not-allowed"
+              : tool === "text"
+              ? "text"
+              : "crosshair",
+          }}
         />
 
         {/* DIRECT ON-CANVAS TYPING: Borderless transparent input placed directly where clicked */}
