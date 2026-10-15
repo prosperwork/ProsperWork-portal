@@ -402,8 +402,23 @@ export default function ScheduleView({
                     <div className="table-small">Admin: {lesson.adminName}</div>
                   </td>
                   <td>
-                    <Pill tone="blue">{lesson.kind}</Pill>
+                    <div
+                      style={{
+                        display: "flex",
+                        gap: 4,
+                        flexWrap: "wrap",
+                        alignItems: "center",
+                      }}
+                    >
+                      <Pill tone="blue">{lesson.kind}</Pill>
+                      {lesson.classroomProvider === "google_meet" ? (
+                        <Pill tone="purple">Google Meet</Pill>
+                      ) : (
+                        <Pill tone="green">In-App Studio</Pill>
+                      )}
+                    </div>
                   </td>
+
                   <td>
                     <Pill>{lesson.status.replace("_", " ")}</Pill>
                     {lesson.verification && (
@@ -423,21 +438,40 @@ export default function ScheduleView({
                       className="row-actions"
                       style={{ justifyContent: "flex-end", gap: 6 }}
                     >
-                      <a
-                        className="icon-btn"
-                        style={{
-                          background: "#e8f3ec",
-                          color: "#1c7a5d",
-                          borderColor: "#c9e2d2",
-                        }}
-                        href={`/classroom?lessonId=${encodeURIComponent(
-                          lesson.id
-                        )}`}
-                        title="Enter virtual classroom"
-                        aria-label="Enter virtual classroom"
-                      >
-                        <Video size={14} />
-                      </a>
+                      {lesson.classroomProvider === "google_meet" &&
+                      lesson.meetUrl ? (
+                        <a
+                          className="icon-btn"
+                          style={{
+                            background: "#e8f0fe",
+                            color: "#1a73e8",
+                            borderColor: "#d2e3fc",
+                          }}
+                          href={lesson.meetUrl}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          title="Join Google Meet Classroom (opens in new tab)"
+                          aria-label="Join Google Meet Classroom"
+                        >
+                          <Video size={14} />
+                        </a>
+                      ) : (
+                        <a
+                          className="icon-btn"
+                          style={{
+                            background: "#e8f3ec",
+                            color: "#1c7a5d",
+                            borderColor: "#c9e2d2",
+                          }}
+                          href={`/classroom?lessonId=${encodeURIComponent(
+                            lesson.id
+                          )}`}
+                          title="Enter In-App Virtual Studio"
+                          aria-label="Enter In-App Virtual Studio"
+                        >
+                          <Video size={14} />
+                        </a>
+                      )}
                       <a
                         className="icon-btn"
                         href={`/learning?lessonId=${encodeURIComponent(

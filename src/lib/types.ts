@@ -92,8 +92,12 @@ export interface Lesson {
   notes: string;
   nextTopics: string;
   requestedSlots?: string[];
+  classroomProvider?: "inbuilt" | "google_meet";
+  meetUrl?: string;
   verification?: { teacher: string; admin: string; at: string };
 }
+
+
 
 export interface Lead {
   id: string;

@@ -92,7 +92,49 @@ export async function resolveChange(client: SupabaseClient, module: Module, inpu
       delete payload.verification; // Database controls the signature.
       if (operation === "insert" && payload.status !== "scheduled") throw new Error("New lessons must start as scheduled.");
       if (payload.requestedSlots && ["parent", "student"].includes(profile.role)) throw new Error("Use the reschedule request workflow; parents cannot move attendance records.");
+
+      // Default classroom provider to inbuilt studio if omitted
+      if (!payload.classroomProvider) {
+        payload.classroomProvider = "inbuilt";
+      }
+
+      // If Google Meet is chosen and no link exists yet, generate one via Google Calendar API
+      if (operation === "insert" && payload.classroomProvider === "google_meet" && !payload.meetUrl) {
+        try {
+          const { createGoogleCalendarEvent } = await import("@/lib/calendar/google");
+          const startsAt = String(payload.startsAt);
+          const duration = Number(payload.durationMinutes) || 60;
+          const endIso = new Date(new Date(startsAt).getTime() + duration * 60000).toISOString();
+
+          // Collect parent & teacher emails if available
+          const attendees: string[] = [];
+          if (teacher?.id) {
+            const { data: tProfile } = await client.from("pw_profiles").select("email").eq("id", teacher.id).single();
+            if (tProfile?.email) attendees.push(tProfile.email);
+          }
+          if (student.parent_id) {
+            const { data: pProfile } = await client.from("pw_profiles").select("email").eq("id", student.parent_id).single();
+            if (pProfile?.email) attendees.push(pProfile.email);
+          }
+
+          const calEvent = await createGoogleCalendarEvent({
+            summary: `🎵 ${payload.title || "Music Lesson"} - ${payload.studentName}`,
+            description: `ProsperWork Music Academy class with ${payload.teacherName}.\nJoin Link: Google Meet attached below.`,
+            startIso: startsAt,
+            endIso,
+            attendeeEmails: attendees,
+            createMeetLink: true
+          });
+
+          if (calEvent?.meetUrl) {
+            payload.meetUrl = calEvent.meetUrl;
+          }
+        } catch (gmeetErr) {
+          console.warn("[GoogleMeet] Could not auto-generate Meet link:", gmeetErr);
+        }
+      }
     } else if (operation === "insert" && payload.status !== "assigned") throw new Error("Homework must start as assigned.");
+
   } else if (module === "payments") {
     if (operation === "insert") {
       const { data: directory, error } = await client.rpc("pw_billing_directory");

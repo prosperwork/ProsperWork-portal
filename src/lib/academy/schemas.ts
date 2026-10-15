@@ -37,11 +37,14 @@ export const recordSchemas = {
     id, studentId: id, studentName: name, teacherName: name, adminName: text,
     title: name, instrument: name, startsAt: z.string().datetime({ offset: true }), studentTimezone: zone,
     status: z.enum(["scheduled", "teacher_done", "completed", "missed", "cancelled", "rescheduled"]), kind: z.enum(["standard", "trial", "cover"]),
+    classroomProvider: z.enum(["inbuilt", "google_meet"]).optional(),
+    meetUrl: z.string().url().max(500).optional(),
     notes: text, nextTopics: text, requestedSlots: z.array(text).max(10).optional(),
     durationMinutes: z.number().int().min(45).max(180).optional(), durationReason: z.string().trim().max(2000).optional(),
     leaveOriginalKind:z.enum(["standard","trial","cover"]).optional(),
     verification: z.object({ teacher: text, admin: text, at: z.string() }).strict().optional(),
   }).strict(),
+
   leads: z.object({
     id, parentName: name, email: z.string().email().max(254), phone: z.string().max(40), childName: name, instrument: name,
     source: name, status: z.enum(["new", "contacted", "callback", "trial_requested", "trial_booked", "trial_verified", "converted", "nursery", "winback"]),

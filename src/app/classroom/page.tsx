@@ -18,9 +18,11 @@ import {
   Mic,
   RefreshCw,
   ShieldCheck,
+  Video,
   Wifi,
   WifiOff,
 } from "lucide-react";
+
 import BrandEmblem from "../_components/BrandEmblem";
 import ClassroomRecorder from "./ClassroomRecorder";
 
@@ -39,7 +41,10 @@ type ClassroomData = {
   closesAt: string;
   joinEligible: boolean;
   serverTime: string;
+  classroomProvider?: "inbuilt" | "google_meet";
+  meetUrl?: string;
 };
+
 type DeviceSettings = Parameters<NonNullable<PreJoinProps["onSubmit"]>>[0];
 type RoomTicket = {
   token: string;
@@ -475,16 +480,36 @@ export default function ClassroomPage() {
                               : "at the scheduled time"
                           }. You can return here when it is ready.`}
                     </p>
-                    {effectiveJoinOpen && (
-                      <button
-                        className="pc-primary"
-                        type="button"
-                        onClick={openPreview}
-                        disabled={checkingPermissions || requesting}
-                      >
-                        Open device preview
-                      </button>
-                    )}
+                    {effectiveJoinOpen &&
+                      (data.classroomProvider === "google_meet" &&
+                      data.meetUrl ? (
+                        <a
+                          className="pc-primary"
+                          href={data.meetUrl}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          style={{
+                            display: "inline-flex",
+                            alignItems: "center",
+                            gap: 8,
+                            textDecoration: "none",
+                            background: "#1a73e8",
+                          }}
+                        >
+                          <Video size={16} />
+                          Join Lesson on Google Meet
+                        </a>
+                      ) : (
+                        <button
+                          className="pc-primary"
+                          type="button"
+                          onClick={openPreview}
+                          disabled={checkingPermissions || requesting}
+                        >
+                          Open In-App Studio Preview
+                        </button>
+                      ))}
+
                     <div className="pc-stage-footer">
                       <span>
                         <LockKeyhole size={13} />

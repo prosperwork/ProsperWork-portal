@@ -90,8 +90,14 @@ export function emailText(job, appUrl) {
   switch (job.template) {
     case "owner_test":
       return `Your ProsperWork application SMTP connection is working. This is a verification message, not a password reset.\n\nSupabase continues to send authentication emails separately.${signature}`;
-    case "class_reminder":
-      return `${p.title} for ${p.studentName} starts at ${localTime(p.startsAt,p.timezone)} (${p.timezone}).\n\nJoin your private in-app classroom:\n${appUrl}/classroom?lessonId=${encodeURIComponent(p.lessonId)}\n\nCamera and microphone access require your permission. Recordings are not started automatically.${signature}`;
+    case "class_reminder": {
+      const isGoogleMeet = p.classroomProvider === "google_meet" && p.meetUrl;
+      const joinSection = isGoogleMeet
+        ? `Join on Google Meet:\n${p.meetUrl}\n\nOr open your academy lesson board:\n${appUrl}/classroom?lessonId=${encodeURIComponent(p.lessonId)}`
+        : `Join your private in-app music studio:\n${appUrl}/classroom?lessonId=${encodeURIComponent(p.lessonId)}\n\nCamera and microphone access require your permission. Recordings are not started automatically.`;
+      return `${p.title} for ${p.studentName} starts at ${localTime(p.startsAt,p.timezone)} (${p.timezone}).\n\n${joinSection}${signature}`;
+    }
+
     case "payment_reminder":
       return `A payment of ${Math.max(0,Number(p.amount)-Number(p.referralDiscount||0)).toFixed(2)} ${p.currency} for ${p.studentName} is ${p.reminderDay === 1 ? "overdue" : "due"} on ${p.dueDate}.\n\nPlease sign in to view your billing record and upload your payment receipt:\n${appUrl}/workflows\n\nFor payment questions or assistance, reply to this email or write to fees@prosperworkmusic.com.${signature}`;
     case "payment_verified":

@@ -165,7 +165,23 @@ export function getFields(
           })),
         },
         {
+          name: "classroomProvider",
+          label: "Virtual Classroom Platform",
+          type: "select",
+          options: [
+            {
+              value: "inbuilt",
+              label: "ProsperWork In-App Studio (High-Fidelity Audio)",
+            },
+            {
+              value: "google_meet",
+              label: "Google Meet (Automatic Link & Calendar Invite)",
+            },
+          ],
+        },
+        {
           name: "durationMinutes",
+
           label: "Individual length (minutes, optional)",
           type: "number",
           placeholder:

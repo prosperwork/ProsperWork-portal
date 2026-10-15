@@ -16,9 +16,21 @@ export async function GET(request: Request) {
     if (!profile || profile.status !== "active") return NextResponse.json({ error: "Active academy access is required." }, { status: 403 });
     const { data, error } = await client.rpc("pw_classroom_access", { p_lesson: parsed.data, p_join: false });
     if (error) return NextResponse.json({ error: "You do not have access to this classroom." }, { status: error.code === "42501" ? 403 : 503 });
-    return NextResponse.json(data, { headers });
+
+    // Fetch lesson payload to expose classroomProvider & meetUrl
+    const { data: lessonRow } = await client.from("pw_lessons").select("payload").eq("id", parsed.data).single();
+    const payload = (lessonRow?.payload || {}) as Record<string, unknown>;
+
+    const enrichedData = {
+      ...data,
+      classroomProvider: payload.classroomProvider || "inbuilt",
+      meetUrl: payload.meetUrl || undefined,
+    };
+
+    return NextResponse.json(enrichedData, { headers });
   } catch { return NextResponse.json({ error: "Classroom details are unavailable." }, { status: 503 }); }
 }
+
 
 export async function POST(request: Request) {
   if (!sameOrigin(request)) return NextResponse.json({ error: "Invalid request origin." }, { status: 403 });
