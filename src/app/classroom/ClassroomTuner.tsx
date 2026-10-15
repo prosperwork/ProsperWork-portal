@@ -1,10 +1,13 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { Mic, MicOff, Radio, X } from "lucide-react";
+import { useDataChannel } from "@livekit/components-react";
+import { Lock, Mic, MicOff, Radio, X } from "lucide-react";
 
 interface ClassroomTunerProps {
   onClose: () => void;
+  isLocked?: boolean;
+  isAdmin?: boolean;
 }
 
 const NOTE_STRINGS = [
@@ -22,7 +25,11 @@ const NOTE_STRINGS = [
   "B",
 ];
 
-export default function ClassroomTuner({ onClose }: ClassroomTunerProps) {
+export default function ClassroomTuner({
+  onClose,
+  isLocked = false,
+  isAdmin = false,
+}: ClassroomTunerProps) {
   const [listening, setListening] = useState(false);
   const [note, setNote] = useState("-");
   const [octave, setOctave] = useState<number | null>(null);
@@ -35,8 +42,38 @@ export default function ClassroomTuner({ onClose }: ClassroomTunerProps) {
   const analyserRef = useRef<AnalyserNode | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const animationFrameRef = useRef<number | null>(null);
+  const lastBroadcastRef = useRef<number>(0);
+
+  // Sync Tuner Pitch across Call
+  const { send: sendTuner } = useDataChannel("tuner_sync", (msg) => {
+    try {
+      const decoded = new TextDecoder().decode(msg.payload);
+      const data = JSON.parse(decoded);
+      if (data.type === "pitch") {
+        setNote(data.note);
+        setOctave(data.octave);
+        setFrequency(data.frequency);
+        setCents(data.cents);
+        setInTune(Boolean(data.inTune));
+        setListening(true);
+      } else if (data.type === "stop") {
+        setNote("-");
+        setFrequency(0);
+        setCents(0);
+        setInTune(false);
+      }
+    } catch {
+      // ignore
+    }
+  });
 
   const startTuner = async () => {
+    // If student is locked, don't ask for microphone permission; they sync from teacher
+    if (isLocked) {
+      setListening(true);
+      return;
+    }
+
     setError("");
     try {
       const stream = await navigator.mediaDevices.getUserMedia({
@@ -87,11 +124,15 @@ export default function ClassroomTuner({ onClose }: ClassroomTunerProps) {
     setFrequency(0);
     setCents(0);
     setInTune(false);
+
+    if (sendTuner) {
+      const payload = JSON.stringify({ type: "stop" });
+      sendTuner(new TextEncoder().encode(payload), { reliable: false });
+    }
   };
 
   // Autocorrelation Pitch Detection
   const autoCorrelate = (buffer: Float32Array, sampleRate: number): number => {
-    // Calculate RMS to ensure signal is present
     let sumSquares = 0;
     for (let i = 0; i < buffer.length; i++) {
       sumSquares += buffer[i] * buffer[i];
@@ -106,7 +147,6 @@ export default function ClassroomTuner({ onClose }: ClassroomTunerProps) {
       Math.floor(sampleRate / 50)
     );
 
-    // Calculate autocorrelation across candidate periods
     const c = new Float32Array(maxPeriod + 2);
     const halfLen = Math.floor(buffer.length / 2);
 
@@ -118,13 +158,9 @@ export default function ClassroomTuner({ onClose }: ClassroomTunerProps) {
       c[lag] = sum;
     }
 
-    // Step past the initial zero-lag decay slope
-    let d = minPeriod;
-    while (d < maxPeriod && c[d] < c[d - 1]) {
-      d++;
-    }
+    let d = 0;
+    while (d < maxPeriod && c[d] > c[d + 1]) d++;
 
-    // Find the global maximum correlation peak in [d, maxPeriod]
     let maxVal = -1;
     let maxPos = -1;
     for (let i = d; i <= maxPeriod; i++) {
@@ -139,7 +175,6 @@ export default function ClassroomTuner({ onClose }: ClassroomTunerProps) {
     }
 
     let T0 = maxPos;
-    // Parabolic interpolation around peak for high-precision pitch
     if (T0 > 0 && T0 < maxPeriod) {
       const x1 = c[T0 - 1];
       const x2 = c[T0];
@@ -160,25 +195,41 @@ export default function ClassroomTuner({ onClose }: ClassroomTunerProps) {
     analyserRef.current.getFloatTimeDomainData(buffer);
 
     const freq = autoCorrelate(buffer, audioCtxRef.current.sampleRate);
-    // Support from 50 Hz up to 4500 Hz (easily covers C7 at 2093 Hz and C8 at 4186 Hz)
     if (freq !== -1 && freq >= 50 && freq <= 4500) {
-      // Calculate MIDI note: n = 12 * log2(freq / 440) + 69
       const midi = 12 * (Math.log(freq / 440) / Math.log(2)) + 69;
       const roundedMidi = Math.round(midi);
       const noteName = NOTE_STRINGS[roundedMidi % 12];
       const oct = Math.floor(roundedMidi / 12) - 1;
 
-      // Nearest frequency
       const targetFreq = 440 * Math.pow(2, (roundedMidi - 69) / 12);
       const centDiff = Math.floor(
         (1200 * Math.log(freq / targetFreq)) / Math.log(2)
       );
 
+      const isWithinTune = Math.abs(centDiff) <= 4;
+      const roundedFreq = Math.round(freq * 10) / 10;
+      const clampedCents = Math.max(-50, Math.min(50, centDiff));
+
       setNote(noteName);
       setOctave(oct);
-      setFrequency(Math.round(freq * 10) / 10);
-      setCents(Math.max(-50, Math.min(50, centDiff)));
-      setInTune(Math.abs(centDiff) <= 4);
+      setFrequency(roundedFreq);
+      setCents(clampedCents);
+      setInTune(isWithinTune);
+
+      // Broadcast detected pitch to other participants every 100ms
+      const now = Date.now();
+      if (sendTuner && now - lastBroadcastRef.current > 100) {
+        lastBroadcastRef.current = now;
+        const payload = JSON.stringify({
+          type: "pitch",
+          note: noteName,
+          octave: oct,
+          frequency: roundedFreq,
+          cents: clampedCents,
+          inTune: isWithinTune,
+        });
+        sendTuner(new TextEncoder().encode(payload), { reliable: false });
+      }
     }
 
     animationFrameRef.current = requestAnimationFrame(detectPitch);
@@ -189,7 +240,7 @@ export default function ClassroomTuner({ onClose }: ClassroomTunerProps) {
     return () => {
       stopTuner();
     };
-  }, []);
+  }, [isLocked]);
 
   return (
     <div
@@ -199,7 +250,9 @@ export default function ClassroomTuner({ onClose }: ClassroomTunerProps) {
         top: 55,
         right: 18,
         background: "#16201a",
-        border: "1px solid rgba(255, 255, 255, 0.22)",
+        border: `1px solid ${
+          isLocked ? "rgba(255, 177, 66, 0.35)" : "rgba(255, 255, 255, 0.22)"
+        }`,
         borderRadius: 14,
         padding: "16px 20px",
         boxShadow: "0 16px 40px rgba(0,0,0,0.7)",
@@ -209,7 +262,6 @@ export default function ClassroomTuner({ onClose }: ClassroomTunerProps) {
         userSelect: "none",
       }}
     >
-      {/* Header */}
       <div
         style={{
           display: "flex",
@@ -223,13 +275,31 @@ export default function ClassroomTuner({ onClose }: ClassroomTunerProps) {
             display: "flex",
             alignItems: "center",
             gap: 7,
-            color: "#2ed573",
+            color: isLocked ? "#ffb142" : "#2ed573",
             fontWeight: 700,
             fontSize: 13,
           }}
         >
           <Radio size={16} />
           Chromatic Tuner
+          {isLocked && (
+            <span
+              style={{
+                fontSize: 10,
+                background: "rgba(255, 177, 66, 0.18)",
+                color: "#ffb142",
+                border: "1px solid rgba(255, 177, 66, 0.35)",
+                padding: "2px 6px",
+                borderRadius: 4,
+                fontWeight: 700,
+                display: "inline-flex",
+                alignItems: "center",
+                gap: 3,
+              }}
+            >
+              <Lock size={10} /> View Only
+            </span>
+          )}
         </div>
         <button
           type="button"
@@ -247,67 +317,80 @@ export default function ClassroomTuner({ onClose }: ClassroomTunerProps) {
       </div>
 
       {error ? (
-        <div
-          style={{
-            color: "#ff4757",
-            fontSize: 11,
-            textAlign: "center",
-            padding: "10px 0",
-          }}
-        >
+        <div style={{ fontSize: 12, color: "#ff4757", margin: "10px 0" }}>
           {error}
         </div>
       ) : (
         <>
-          {/* Note Display */}
-          <div style={{ textAlign: "center", margin: "10px 0" }}>
+          {/* Main Note & Octave Display */}
+          <div
+            style={{
+              display: "flex",
+              flexDirection: "column",
+              alignItems: "center",
+              justifyContent: "center",
+              height: 105,
+              background: "#0e1511",
+              borderRadius: 10,
+              border: `2px solid ${
+                inTune
+                  ? "#2ed573"
+                  : isLocked
+                  ? "rgba(255,177,66,0.3)"
+                  : "rgba(255,255,255,0.1)"
+              }`,
+              boxShadow: inTune ? "0 0 20px rgba(46, 213, 115, 0.3)" : "none",
+              transition: "all 0.1s ease",
+              position: "relative",
+            }}
+          >
             <div
               style={{
-                fontSize: 54,
+                fontSize: 52,
                 fontWeight: 900,
+                color: inTune ? "#2ed573" : "#fff",
                 lineHeight: 1,
-                color: inTune
-                  ? "#2ed573"
-                  : cents === 0
-                  ? "#fff"
-                  : cents < 0
-                  ? "#ffb142"
-                  : "#ff4757",
-                textShadow: inTune
-                  ? "0 0 16px rgba(46, 213, 115, 0.6)"
-                  : "none",
-                transition: "color 0.1s ease",
+                display: "flex",
+                alignItems: "flex-start",
               }}
             >
-              {note}
+              <span>{note}</span>
               {octave !== null && (
-                <small
+                <span
                   style={{
-                    fontSize: 24,
-                    verticalAlign: "super",
-                    marginLeft: 4,
-                    opacity: 0.8,
+                    fontSize: 22,
+                    fontWeight: 700,
+                    marginLeft: 2,
+                    color: inTune ? "#2ed573" : "#8fcaab",
                   }}
                 >
                   {octave}
-                </small>
+                </span>
               )}
             </div>
-            <div
-              style={{
-                fontSize: 12,
-                color: "#8fcaab",
-                marginTop: 4,
-                fontWeight: 600,
-              }}
-            >
-              {frequency > 0
-                ? `${frequency.toFixed(1)} Hz`
-                : "Play or sing a note…"}
+            <div style={{ fontSize: 13, color: "#aaa", marginTop: 4 }}>
+              {frequency > 0 ? `${frequency} Hz` : "Listening…"}
             </div>
+            {inTune && (
+              <span
+                style={{
+                  position: "absolute",
+                  bottom: 6,
+                  fontSize: 10,
+                  fontWeight: 800,
+                  color: "#2ed573",
+                  background: "rgba(46, 213, 115, 0.2)",
+                  padding: "1px 6px",
+                  borderRadius: 4,
+                  letterSpacing: 0.5,
+                }}
+              >
+                ● IN TUNE
+              </span>
+            )}
           </div>
 
-          {/* Cents Needle Meter (-50 to +50 cents) */}
+          {/* Cent Meter Needle */}
           <div style={{ margin: "14px 0 8px" }}>
             <div
               style={{
@@ -316,16 +399,17 @@ export default function ClassroomTuner({ onClose }: ClassroomTunerProps) {
                 fontSize: 10,
                 color: "#777",
                 marginBottom: 4,
-                fontWeight: 600,
               }}
             >
               <span>-50 Flat</span>
-              <span style={{ color: inTune ? "#2ed573" : "#aaa" }}>
-                {inTune
-                  ? "IN TUNE"
-                  : cents > 0
-                  ? `+${cents}c Sharp`
-                  : `${cents}c Flat`}
+              <span
+                style={{
+                  color: inTune ? "#2ed573" : "#fff",
+                  fontWeight: 700,
+                  fontSize: 11,
+                }}
+              >
+                {cents > 0 ? `+${cents}` : cents} cents
               </span>
               <span>+50 Sharp</span>
             </div>
@@ -341,7 +425,6 @@ export default function ClassroomTuner({ onClose }: ClassroomTunerProps) {
                 border: "1px solid rgba(255, 255, 255, 0.15)",
               }}
             >
-              {/* Center in-tune target zone */}
               <div
                 style={{
                   position: "absolute",
@@ -351,7 +434,6 @@ export default function ClassroomTuner({ onClose }: ClassroomTunerProps) {
                   background: "rgba(46, 213, 115, 0.25)",
                 }}
               />
-              {/* Needle Indicator */}
               <div
                 style={{
                   position: "absolute",
@@ -375,27 +457,46 @@ export default function ClassroomTuner({ onClose }: ClassroomTunerProps) {
           <div style={{ display: "flex", gap: 8, marginTop: 14 }}>
             <button
               type="button"
+              disabled={isLocked}
               onClick={listening ? stopTuner : () => void startTuner()}
               style={{
                 flex: 1,
-                background: listening
+                background: isLocked
+                  ? "rgba(255, 177, 66, 0.15)"
+                  : listening
                   ? "rgba(255, 71, 87, 0.2)"
                   : "rgba(46, 213, 115, 0.2)",
-                border: `1px solid ${listening ? "#ff4757" : "#2ed573"}`,
-                color: listening ? "#ff4757" : "#2ed573",
+                border: `1px solid ${
+                  isLocked ? "#ffb142" : listening ? "#ff4757" : "#2ed573"
+                }`,
+                color: isLocked ? "#ffb142" : listening ? "#ff4757" : "#2ed573",
                 borderRadius: 8,
                 padding: "8px 12px",
                 fontSize: 12,
                 fontWeight: 700,
-                cursor: "pointer",
+                cursor: isLocked ? "default" : "pointer",
                 display: "inline-flex",
                 alignItems: "center",
                 justifyContent: "center",
                 gap: 6,
               }}
             >
-              {listening ? <MicOff size={14} /> : <Mic size={14} />}
-              {listening ? "Pause Mic Tuner" : "Start Mic Tuner"}
+              {isLocked ? (
+                <>
+                  <Lock size={13} />
+                  <span>Listening to Teacher’s Pitch</span>
+                </>
+              ) : listening ? (
+                <>
+                  <MicOff size={14} />
+                  <span>Pause Mic Tuner</span>
+                </>
+              ) : (
+                <>
+                  <Mic size={14} />
+                  <span>Start Mic Tuner</span>
+                </>
+              )}
             </button>
           </div>
         </>

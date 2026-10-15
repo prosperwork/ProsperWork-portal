@@ -6,6 +6,7 @@ import {
   Columns2,
   Eraser,
   Highlighter,
+  Lock,
   Maximize2,
   Minimize2,
   Pen,
@@ -17,6 +18,8 @@ import {
 interface ClassroomWhiteboardProps {
   onClose: () => void;
   pianoOpen?: boolean;
+  isLocked?: boolean;
+  isAdmin?: boolean;
 }
 
 interface DrawPoint {
@@ -45,6 +48,8 @@ type LayoutMode = "full" | "split-left" | "split-right" | "compact";
 export default function ClassroomWhiteboard({
   onClose,
   pianoOpen = false,
+  isLocked = false,
+  isAdmin = false,
 }: ClassroomWhiteboardProps) {
   const room = useRoomContext();
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
@@ -155,7 +160,7 @@ export default function ClassroomWhiteboard({
     drawStaffLines(ctx, canvas.width, canvas.height);
   };
 
-  // Listen to remote whiteboard events
+  // Listen to remote whiteboard events (Always active, even when isLocked is true)
   const { send: sendWhiteboard } = useDataChannel("whiteboard_sync", (msg) => {
     try {
       const decoded = new TextDecoder().decode(msg.payload);
@@ -188,6 +193,7 @@ export default function ClassroomWhiteboard({
   });
 
   const handleClearAll = () => {
+    if (isLocked) return;
     clearCanvasLocal();
     if (sendWhiteboard) {
       const payload = JSON.stringify({ type: "clear" });
@@ -197,7 +203,7 @@ export default function ClassroomWhiteboard({
 
   // Commit text directly onto canvas and broadcast
   const commitDirectText = (textOverride?: string) => {
-    if (!typingState) return;
+    if (!typingState || isLocked) return;
     const textToCommit = (typeof textOverride === "string" ? textOverride : typingState.text).trim();
     if (!textToCommit) {
       setTypingState(null);
@@ -256,15 +262,14 @@ export default function ClassroomWhiteboard({
 
   // Direct pointer click to type or draw
   const handlePointerDown = (e: React.MouseEvent | React.TouchEvent) => {
+    if (isLocked) return;
     const pt = getCoordinates(e);
     if (!pt) return;
 
     if (tool === "text") {
-      // If user was already typing, commit the existing text first
       if (typingState && typingState.text.trim()) {
         commitDirectText();
       }
-      // Place direct typing caret exactly at clicked location on the canvas
       setTypingState({
         x: pt.x,
         y: pt.y,
@@ -275,7 +280,6 @@ export default function ClassroomWhiteboard({
       return;
     }
 
-    // Pen / Highlighter / Eraser
     if (typingState) commitDirectText();
 
     isDrawingRef.current = true;
@@ -298,7 +302,7 @@ export default function ClassroomWhiteboard({
   };
 
   const handlePointerMove = (e: React.MouseEvent | React.TouchEvent) => {
-    if (tool === "text" || !isDrawingRef.current) return;
+    if (isLocked || tool === "text" || !isDrawingRef.current) return;
     const pt = getCoordinates(e);
     if (!pt) return;
 
@@ -314,7 +318,7 @@ export default function ClassroomWhiteboard({
   };
 
   const handlePointerUp = () => {
-    if (tool === "text" || !isDrawingRef.current) return;
+    if (isLocked || tool === "text" || !isDrawingRef.current) return;
     isDrawingRef.current = false;
 
     const canvas = canvasRef.current;
@@ -322,7 +326,6 @@ export default function ClassroomWhiteboard({
     const ctx = canvas.getContext("2d");
     if (ctx) ctx.restore();
 
-    // Broadcast stroke
     if (currentStrokeRef.current.length > 1 && sendWhiteboard) {
       const stroke: DrawStroke = {
         points: currentStrokeRef.current,
@@ -379,10 +382,9 @@ export default function ClassroomWhiteboard({
     }
   }, [typingState]);
 
-  // Insert a musical symbol at current caret position
   const insertSymbol = (sym: string) => {
+    if (isLocked) return;
     if (!typingState) {
-      // If not currently typing, start typing at center
       const canvas = canvasRef.current;
       const cx = canvas ? canvas.width / 2 : 250;
       const cy = canvas ? canvas.height / 2 : 150;
@@ -399,7 +401,6 @@ export default function ClassroomWhiteboard({
     directInputRef.current?.focus();
   };
 
-  // Determine modal styling based on layout mode and pianoOpen
   const getContainerStyle = (): React.CSSProperties => {
     const baseBottom = pianoOpen ? 215 : 20;
 
@@ -454,7 +455,9 @@ export default function ClassroomWhiteboard({
       style={{
         ...getContainerStyle(),
         background: "#16201a",
-        border: "1px solid rgba(255, 255, 255, 0.22)",
+        border: `1px solid ${
+          isLocked ? "rgba(255, 177, 66, 0.4)" : "rgba(255, 255, 255, 0.22)"
+        }`,
         borderRadius: 14,
         display: "flex",
         flexDirection: "column",
@@ -488,208 +491,234 @@ export default function ClassroomWhiteboard({
           }}
         >
           <strong
-            style={{ fontSize: 13, color: "#2ed573", whiteSpace: "nowrap" }}
+            style={{
+              fontSize: 13,
+              color: isLocked ? "#ffb142" : "#2ed573",
+              whiteSpace: "nowrap",
+            }}
           >
             Music Staff &amp; Whiteboard
           </strong>
 
-          {/* Tools Selector */}
-          <div
-            style={{
-              display: "flex",
-              gap: 3,
-              background: "rgba(0,0,0,0.3)",
-              padding: 3,
-              borderRadius: 6,
-            }}
-          >
-            <button
-              type="button"
-              onClick={() => {
-                if (typingState) commitDirectText();
-                setTool("pen");
-              }}
-              style={{
-                background: tool === "pen" ? "#2ed573" : "transparent",
-                color: tool === "pen" ? "#000" : "#fff",
-                border: "none",
-                borderRadius: 4,
-                padding: "4px 8px",
-                fontSize: 11,
-                fontWeight: 600,
-                cursor: "pointer",
-                display: "inline-flex",
-                alignItems: "center",
-                gap: 4,
-              }}
-            >
-              <Pen size={12} /> Pen
-            </button>
-            <button
-              type="button"
-              onClick={() => {
-                if (typingState) commitDirectText();
-                setTool("text");
-              }}
-              style={{
-                background: tool === "text" ? "#2ed573" : "transparent",
-                color: tool === "text" ? "#000" : "#fff",
-                border: "none",
-                borderRadius: 4,
-                padding: "4px 8px",
-                fontSize: 11,
-                fontWeight: 700,
-                cursor: "pointer",
-                display: "inline-flex",
-                alignItems: "center",
-                gap: 4,
-              }}
-              title="Click anywhere on the whiteboard to type directly"
-            >
-              <Type size={12} /> Direct Type
-            </button>
-            <button
-              type="button"
-              onClick={() => {
-                if (typingState) commitDirectText();
-                setTool("highlighter");
-              }}
-              style={{
-                background: tool === "highlighter" ? "#ffb142" : "transparent",
-                color: tool === "highlighter" ? "#000" : "#fff",
-                border: "none",
-                borderRadius: 4,
-                padding: "4px 8px",
-                fontSize: 11,
-                fontWeight: 600,
-                cursor: "pointer",
-                display: "inline-flex",
-                alignItems: "center",
-                gap: 4,
-              }}
-            >
-              <Highlighter size={12} /> Highlight
-            </button>
-            <button
-              type="button"
-              onClick={() => {
-                if (typingState) commitDirectText();
-                setTool("eraser");
-              }}
-              style={{
-                background: tool === "eraser" ? "#ff4757" : "transparent",
-                color: "#fff",
-                border: "none",
-                borderRadius: 4,
-                padding: "4px 8px",
-                fontSize: 11,
-                fontWeight: 600,
-                cursor: "pointer",
-                display: "inline-flex",
-                alignItems: "center",
-                gap: 4,
-              }}
-            >
-              <Eraser size={12} /> Eraser
-            </button>
-          </div>
-
-          {/* Direct Type Controls: Font Size & Musical Symbols */}
-          {tool === "text" && (
+          {/* Tools Selector or View-Only Badge */}
+          {isLocked ? (
             <div
               style={{
-                display: "flex",
+                display: "inline-flex",
                 alignItems: "center",
-                gap: 5,
-                background: "rgba(0,0,0,0.35)",
-                padding: "2px 8px",
+                gap: 6,
+                background: "rgba(255, 177, 66, 0.18)",
+                border: "1px solid rgba(255, 177, 66, 0.4)",
+                padding: "4px 10px",
                 borderRadius: 6,
-                flexWrap: "wrap",
+                color: "#ffb142",
+                fontSize: 11,
+                fontWeight: 700,
               }}
             >
-              <span style={{ fontSize: 10, color: "#8fcaab" }}>Font:</span>
-              {[
-                { label: "Sm (16)", size: 16 },
-                { label: "Md (22)", size: 22 },
-                { label: "Lg (30)", size: 30 },
-              ].map((f) => (
-                <button
-                  key={f.size}
-                  type="button"
-                  onClick={() => setFontSize(f.size)}
-                  style={{
-                    background: fontSize === f.size ? "#2ed573" : "transparent",
-                    color: fontSize === f.size ? "#000" : "#fff",
-                    border: "none",
-                    borderRadius: 3,
-                    padding: "2px 5px",
-                    fontSize: 10,
-                    fontWeight: 700,
-                    cursor: "pointer",
-                  }}
-                >
-                  {f.label}
-                </button>
-              ))}
-
-              <span
+              <Lock size={12} />
+              <span>View Only (Presenter Mode) · Live Teacher Sync</span>
+            </div>
+          ) : (
+            <>
+              <div
                 style={{
-                  fontSize: 10,
-                  color: "#8fcaab",
-                  marginLeft: 4,
-                  borderLeft: "1px solid rgba(255,255,255,0.2)",
-                  paddingLeft: 6,
+                  display: "flex",
+                  gap: 3,
+                  background: "rgba(0,0,0,0.3)",
+                  padding: 3,
+                  borderRadius: 6,
                 }}
               >
-                Insert:
-              </span>
-              {["♯", "♭", "♮", "♩", "♪", "♫", "Am", "C", "G"].map((sym) => (
                 <button
-                  key={sym}
                   type="button"
-                  onClick={() => insertSymbol(sym)}
-                  style={{
-                    background: "rgba(255,255,255,0.12)",
-                    border: "none",
-                    borderRadius: 3,
-                    color: "#fff",
-                    fontSize: 10,
-                    fontWeight: 700,
-                    padding: "2px 5px",
-                    cursor: "pointer",
+                  onClick={() => {
+                    if (typingState) commitDirectText();
+                    setTool("pen");
                   }}
-                  title={`Insert ${sym}`}
+                  style={{
+                    background: tool === "pen" ? "#2ed573" : "transparent",
+                    color: tool === "pen" ? "#000" : "#fff",
+                    border: "none",
+                    borderRadius: 4,
+                    padding: "4px 8px",
+                    fontSize: 11,
+                    fontWeight: 600,
+                    cursor: "pointer",
+                    display: "inline-flex",
+                    alignItems: "center",
+                    gap: 4,
+                  }}
                 >
-                  {sym}
+                  <Pen size={12} /> Pen
                 </button>
-              ))}
-            </div>
-          )}
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (typingState) commitDirectText();
+                    setTool("text");
+                  }}
+                  style={{
+                    background: tool === "text" ? "#2ed573" : "transparent",
+                    color: tool === "text" ? "#000" : "#fff",
+                    border: "none",
+                    borderRadius: 4,
+                    padding: "4px 8px",
+                    fontSize: 11,
+                    fontWeight: 700,
+                    cursor: "pointer",
+                    display: "inline-flex",
+                    alignItems: "center",
+                    gap: 4,
+                  }}
+                  title="Click anywhere on the whiteboard to type directly"
+                >
+                  <Type size={12} /> Direct Type
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (typingState) commitDirectText();
+                    setTool("highlighter");
+                  }}
+                  style={{
+                    background:
+                      tool === "highlighter" ? "#ffb142" : "transparent",
+                    color: tool === "highlighter" ? "#000" : "#fff",
+                    border: "none",
+                    borderRadius: 4,
+                    padding: "4px 8px",
+                    fontSize: 11,
+                    fontWeight: 600,
+                    cursor: "pointer",
+                    display: "inline-flex",
+                    alignItems: "center",
+                    gap: 4,
+                  }}
+                >
+                  <Highlighter size={12} /> Highlight
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (typingState) commitDirectText();
+                    setTool("eraser");
+                  }}
+                  style={{
+                    background: tool === "eraser" ? "#ff4757" : "transparent",
+                    color: "#fff",
+                    border: "none",
+                    borderRadius: 4,
+                    padding: "4px 8px",
+                    fontSize: 11,
+                    fontWeight: 600,
+                    cursor: "pointer",
+                    display: "inline-flex",
+                    alignItems: "center",
+                    gap: 4,
+                  }}
+                >
+                  <Eraser size={12} /> Eraser
+                </button>
+              </div>
 
-          {/* Color Palette */}
-          {tool !== "eraser" && (
-            <div style={{ display: "flex", gap: 5, alignItems: "center" }}>
-              {["#2ed573", "#ff4757", "#ffb142", "#70a1ff", "#ffffff"].map(
-                (c) => (
-                  <button
-                    key={c}
-                    type="button"
-                    onClick={() => setColor(c)}
+              {tool === "text" && (
+                <div
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 5,
+                    background: "rgba(0,0,0,0.35)",
+                    padding: "2px 8px",
+                    borderRadius: 6,
+                    flexWrap: "wrap",
+                  }}
+                >
+                  <span style={{ fontSize: 10, color: "#8fcaab" }}>Font:</span>
+                  {[
+                    { label: "Sm (16)", size: 16 },
+                    { label: "Md (22)", size: 22 },
+                    { label: "Lg (30)", size: 30 },
+                  ].map((f) => (
+                    <button
+                      key={f.size}
+                      type="button"
+                      onClick={() => setFontSize(f.size)}
+                      style={{
+                        background:
+                          fontSize === f.size ? "#2ed573" : "transparent",
+                        color: fontSize === f.size ? "#000" : "#fff",
+                        border: "none",
+                        borderRadius: 3,
+                        padding: "2px 5px",
+                        fontSize: 10,
+                        fontWeight: 700,
+                        cursor: "pointer",
+                      }}
+                    >
+                      {f.label}
+                    </button>
+                  ))}
+
+                  <span
                     style={{
-                      width: 18,
-                      height: 18,
-                      borderRadius: "50%",
-                      background: c,
-                      border:
-                        color === c
-                          ? "2px solid #fff"
-                          : "1px solid rgba(0,0,0,0.4)",
-                      cursor: "pointer",
+                      fontSize: 10,
+                      color: "#8fcaab",
+                      marginLeft: 4,
+                      borderLeft: "1px solid rgba(255,255,255,0.2)",
+                      paddingLeft: 6,
                     }}
-                  />
-                )
+                  >
+                    Insert:
+                  </span>
+                  {["♯", "♭", "♮", "♩", "♪", "♫", "Am", "C", "G"].map((sym) => (
+                    <button
+                      key={sym}
+                      type="button"
+                      onClick={() => insertSymbol(sym)}
+                      style={{
+                        background: "rgba(255,255,255,0.12)",
+                        border: "none",
+                        borderRadius: 3,
+                        color: "#fff",
+                        fontSize: 10,
+                        fontWeight: 700,
+                        padding: "2px 5px",
+                        cursor: "pointer",
+                      }}
+                      title={`Insert ${sym}`}
+                    >
+                      {sym}
+                    </button>
+                  ))}
+                </div>
               )}
-            </div>
+
+              {tool !== "eraser" && (
+                <div style={{ display: "flex", gap: 5, alignItems: "center" }}>
+                  {["#2ed573", "#ff4757", "#ffb142", "#70a1ff", "#ffffff"].map(
+                    (c) => (
+                      <button
+                        key={c}
+                        type="button"
+                        onClick={() => setColor(c)}
+                        style={{
+                          width: 18,
+                          height: 18,
+                          borderRadius: "50%",
+                          background: c,
+                          border:
+                            color === c
+                              ? "2px solid #fff"
+                              : "1px solid rgba(0,0,0,0.4)",
+                          cursor: "pointer",
+                        }}
+                      />
+                    )
+                  )}
+                </div>
+              )}
+            </>
           )}
 
           {/* Staff Lines Toggle */}
@@ -717,7 +746,6 @@ export default function ClassroomWhiteboard({
 
         {/* Layout Sizing & Actions */}
         <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-          {/* Multi-Tool Layout Modes */}
           <div
             style={{
               display: "flex",
@@ -813,24 +841,26 @@ export default function ClassroomWhiteboard({
             </button>
           </div>
 
-          <button
-            type="button"
-            onClick={handleClearAll}
-            style={{
-              background: "rgba(255, 71, 87, 0.15)",
-              border: "1px solid rgba(255, 71, 87, 0.3)",
-              color: "#ff4757",
-              borderRadius: 4,
-              padding: "4px 8px",
-              fontSize: 11,
-              cursor: "pointer",
-              display: "inline-flex",
-              alignItems: "center",
-              gap: 4,
-            }}
-          >
-            <Trash2 size={12} /> Clear
-          </button>
+          {!isLocked && (
+            <button
+              type="button"
+              onClick={handleClearAll}
+              style={{
+                background: "rgba(255, 71, 87, 0.15)",
+                border: "1px solid rgba(255, 71, 87, 0.3)",
+                color: "#ff4757",
+                borderRadius: 4,
+                padding: "4px 8px",
+                fontSize: 11,
+                cursor: "pointer",
+                display: "inline-flex",
+                alignItems: "center",
+                gap: 4,
+              }}
+            >
+              <Trash2 size={12} /> Clear
+            </button>
+          )}
 
           <button
             type="button"
@@ -854,7 +884,7 @@ export default function ClassroomWhiteboard({
         style={{
           flex: 1,
           position: "relative",
-          cursor: tool === "text" ? "text" : "crosshair",
+          cursor: isLocked ? "default" : tool === "text" ? "text" : "crosshair",
           touchAction: "none",
           overflow: "hidden",
         }}
@@ -872,7 +902,7 @@ export default function ClassroomWhiteboard({
         />
 
         {/* DIRECT ON-CANVAS TYPING: Borderless transparent input placed directly where clicked */}
-        {typingState && (
+        {typingState && !isLocked && (
           <input
             ref={directInputRef}
             type="text"
@@ -890,7 +920,6 @@ export default function ClassroomWhiteboard({
                 const committedScreenX = typingState.screenX;
                 const committedScreenY = typingState.screenY;
                 commitDirectText();
-                // Move direct typing caret down to the next line for continuous typing
                 const canvas = canvasRef.current;
                 if (canvas) {
                   const nextScreenY = committedScreenY + fontSize * 1.35;

@@ -1,10 +1,13 @@
+"use client";
+
 import { useEffect, useRef, useState } from "react";
 import { useDataChannel } from "@livekit/components-react";
-import { Disc3, Volume2, VolumeX, X } from "lucide-react";
+import { Disc3, Lock, Volume2, VolumeX, X } from "lucide-react";
 
 interface ClassroomDroneProps {
   onClose: () => void;
   tunerOpen?: boolean;
+  isLocked?: boolean;
 }
 
 const NOTES = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"];
@@ -12,6 +15,7 @@ const NOTES = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"];
 export default function ClassroomDrone({
   onClose,
   tunerOpen = false,
+  isLocked = false,
 }: ClassroomDroneProps) {
   const [selectedNote, setSelectedNote] = useState("A");
   const [octave, setOctave] = useState(4);
@@ -63,45 +67,48 @@ export default function ClassroomDrone({
     fifth = includeFifth
   ) => {
     try {
+      stopDroneAudio();
+
       const AudioCtx =
         window.AudioContext ||
         (window as unknown as { webkitAudioContext: typeof AudioContext })
           .webkitAudioContext;
-      const ctx = audioCtxRef.current || new AudioCtx();
+      const ctx = new AudioCtx();
       audioCtxRef.current = ctx;
 
-      if (ctx.state === "suspended") void ctx.resume();
-
-      // Stop previous if active
-      if (rootOscRef.current) rootOscRef.current.stop();
-      if (fifthOscRef.current) fifthOscRef.current.stop();
-
-      // Master Gain
       const masterGain = ctx.createGain();
       masterGain.gain.setValueAtTime(0.001, ctx.currentTime);
-      masterGain.gain.linearRampToValueAtTime(volume, ctx.currentTime + 0.15);
+      masterGain.gain.linearRampToValueAtTime(volume, ctx.currentTime + 0.1);
       masterGain.connect(ctx.destination);
       masterGainRef.current = masterGain;
 
-      // Root Oscillator
-      const rootFreq = getFreq(note, oct, baseA);
+      // Root Note (Warm Triangle Wave)
       const rootOsc = ctx.createOscillator();
-      rootOsc.type = "sine";
-      rootOsc.frequency.setValueAtTime(rootFreq, ctx.currentTime);
+      rootOsc.type = "triangle";
+      rootOsc.frequency.setValueAtTime(getFreq(note, oct, baseA), ctx.currentTime);
       rootOsc.connect(masterGain);
       rootOsc.start();
       rootOscRef.current = rootOsc;
 
-      // Fifth Harmonic Oscillator
+      // Fifth (Subtle Sine Wave for harmonic resonance)
       if (fifth) {
-        const fifthFreq = rootFreq * 1.498307; // perfect fifth interval (7 semitones)
+        const rootIndex = NOTES.indexOf(note);
+        const fifthIndex = (rootIndex + 7) % 12;
+        const fifthOctave = rootIndex + 7 >= 12 ? oct + 1 : oct;
+        const fifthNote = NOTES[fifthIndex];
+
         const fifthOsc = ctx.createOscillator();
+        fifthOsc.type = "sine";
+        fifthOsc.frequency.setValueAtTime(
+          getFreq(fifthNote, fifthOctave, baseA),
+          ctx.currentTime
+        );
+
         const fifthGain = ctx.createGain();
-        fifthGain.gain.value = 0.35; // quieter overtone
-        fifthOsc.type = "triangle";
-        fifthOsc.frequency.setValueAtTime(fifthFreq, ctx.currentTime);
+        fifthGain.gain.setValueAtTime(0.4, ctx.currentTime);
         fifthOsc.connect(fifthGain);
         fifthGain.connect(masterGain);
+
         fifthOsc.start();
         fifthOscRef.current = fifthOsc;
       }
@@ -116,16 +123,23 @@ export default function ClassroomDrone({
     if (audioCtxRef.current && masterGainRef.current) {
       try {
         const ctx = audioCtxRef.current;
-        masterGainRef.current.gain.linearRampToValueAtTime(
+        masterGainRef.current.gain.cancelScheduledValues(ctx.currentTime);
+        masterGainRef.current.gain.setValueAtTime(
+          masterGainRef.current.gain.value,
+          ctx.currentTime
+        );
+        masterGainRef.current.gain.exponentialRampToValueAtTime(
           0.0001,
-          ctx.currentTime + 0.1
+          ctx.currentTime + 0.12
         );
         setTimeout(() => {
           rootOscRef.current?.stop();
           fifthOscRef.current?.stop();
+          void audioCtxRef.current?.close();
           rootOscRef.current = null;
           fifthOscRef.current = null;
-        }, 120);
+          audioCtxRef.current = null;
+        }, 130);
       } catch {
         // ignore
       }
@@ -134,7 +148,8 @@ export default function ClassroomDrone({
   };
 
   const startDrone = () => {
-    startDroneAudio(selectedNote, octave, standardFreq, includeFifth);
+    if (isLocked) return;
+    startDroneAudio();
     if (sendDrone) {
       const payload = JSON.stringify({
         type: "play",
@@ -148,6 +163,7 @@ export default function ClassroomDrone({
   };
 
   const stopDrone = () => {
+    if (isLocked) return;
     stopDroneAudio();
     if (sendDrone) {
       const payload = JSON.stringify({ type: "stop" });
@@ -155,38 +171,20 @@ export default function ClassroomDrone({
     }
   };
 
-  // Re-tune active oscillator if parameters change while playing
-  useEffect(() => {
-    if (isPlaying && rootOscRef.current && audioCtxRef.current) {
-      const rootFreq = getFreq(selectedNote, octave, standardFreq);
-      rootOscRef.current.frequency.setTargetAtTime(
-        rootFreq,
-        audioCtxRef.current.currentTime,
-        0.05
-      );
-      if (fifthOscRef.current) {
-        fifthOscRef.current.frequency.setTargetAtTime(
-          rootFreq * 1.498307,
-          audioCtxRef.current.currentTime,
-          0.05
-        );
-      }
-    }
-  }, [selectedNote, octave, standardFreq, isPlaying]);
-
-  useEffect(() => {
+  // Adjust volume live
+  const handleVolumeChange = (newVol: number) => {
+    setVolume(newVol);
     if (masterGainRef.current && audioCtxRef.current) {
-      masterGainRef.current.gain.setTargetAtTime(
-        volume,
-        audioCtxRef.current.currentTime,
-        0.05
+      masterGainRef.current.gain.setValueAtTime(
+        newVol,
+        audioCtxRef.current.currentTime
       );
     }
-  }, [volume]);
+  };
 
   useEffect(() => {
     return () => {
-      stopDrone();
+      stopDroneAudio();
     };
   }, []);
 
@@ -198,7 +196,9 @@ export default function ClassroomDrone({
         top: 55,
         right: tunerOpen ? 320 : 18,
         background: "#16201a",
-        border: "1px solid rgba(255, 255, 255, 0.22)",
+        border: `1px solid ${
+          isLocked ? "rgba(255, 177, 66, 0.35)" : "rgba(255, 255, 255, 0.22)"
+        }`,
         borderRadius: 14,
         padding: "16px 20px",
         boxShadow: "0 16px 40px rgba(0,0,0,0.7)",
@@ -221,13 +221,31 @@ export default function ClassroomDrone({
             display: "flex",
             alignItems: "center",
             gap: 7,
-            color: "#a55eea",
+            color: isLocked ? "#ffb142" : "#a55eea",
             fontWeight: 700,
             fontSize: 13,
           }}
         >
           <Disc3 size={16} />
-          Pitch Drone &amp; Ear Training
+          Pitch Drone
+          {isLocked && (
+            <span
+              style={{
+                fontSize: 10,
+                background: "rgba(255, 177, 66, 0.18)",
+                color: "#ffb142",
+                border: "1px solid rgba(255, 177, 66, 0.35)",
+                padding: "2px 6px",
+                borderRadius: 4,
+                fontWeight: 700,
+                display: "inline-flex",
+                alignItems: "center",
+                gap: 3,
+              }}
+            >
+              <Lock size={10} /> View Only
+            </span>
+          )}
         </div>
         <button
           type="button"
@@ -257,6 +275,7 @@ export default function ClassroomDrone({
           <button
             key={n}
             type="button"
+            disabled={isLocked}
             onClick={() => setSelectedNote(n)}
             style={{
               background:
@@ -269,7 +288,8 @@ export default function ClassroomDrone({
               padding: "6px 0",
               fontSize: 12,
               fontWeight: 700,
-              cursor: "pointer",
+              cursor: isLocked ? "default" : "pointer",
+              opacity: isLocked && selectedNote !== n ? 0.6 : 1,
             }}
           >
             {n}
@@ -295,6 +315,7 @@ export default function ClassroomDrone({
               <button
                 key={o}
                 type="button"
+                disabled={isLocked}
                 onClick={() => setOctave(o)}
                 style={{
                   flex: 1,
@@ -309,7 +330,7 @@ export default function ClassroomDrone({
                   borderRadius: 4,
                   padding: "4px 0",
                   fontSize: 11,
-                  cursor: "pointer",
+                  cursor: isLocked ? "default" : "pointer",
                 }}
               >
                 Oct {o}
@@ -334,6 +355,7 @@ export default function ClassroomDrone({
               <button
                 key={hz}
                 type="button"
+                disabled={isLocked}
                 onClick={() => setStandardFreq(hz)}
                 style={{
                   flex: 1,
@@ -348,7 +370,7 @@ export default function ClassroomDrone({
                   borderRadius: 4,
                   padding: "4px 0",
                   fontSize: 11,
-                  cursor: "pointer",
+                  cursor: isLocked ? "default" : "pointer",
                 }}
               >
                 {hz} Hz
@@ -374,11 +396,12 @@ export default function ClassroomDrone({
             display: "inline-flex",
             alignItems: "center",
             gap: 6,
-            cursor: "pointer",
+            cursor: isLocked ? "default" : "pointer",
           }}
         >
           <input
             type="checkbox"
+            disabled={isLocked}
             checked={includeFifth}
             onChange={(e) => setIncludeFifth(e.target.checked)}
             style={{ accentColor: "#a55eea" }}
@@ -393,25 +416,36 @@ export default function ClassroomDrone({
       {/* Play/Stop Drone Button */}
       <button
         type="button"
+        disabled={isLocked}
         onClick={isPlaying ? stopDrone : startDrone}
         style={{
           width: "100%",
-          background: isPlaying ? "#ff4757" : "#a55eea",
-          border: "none",
+          background: isLocked
+            ? isPlaying
+              ? "rgba(165, 94, 234, 0.4)"
+              : "rgba(255,255,255,0.1)"
+            : isPlaying
+            ? "#ff4757"
+            : "#a55eea",
+          border: isLocked ? "1px solid rgba(255, 177, 66, 0.3)" : "none",
           color: "#fff",
           borderRadius: 8,
           padding: "9px 12px",
           fontSize: 13,
           fontWeight: 700,
-          cursor: "pointer",
+          cursor: isLocked ? "default" : "pointer",
           display: "inline-flex",
           alignItems: "center",
           justifyContent: "center",
           gap: 6,
         }}
       >
-        {isPlaying ? <VolumeX size={15} /> : <Volume2 size={15} />}
-        {isPlaying
+        {isPlaying ? <Volume2 size={15} color="#2ed573" /> : <VolumeX size={15} />}
+        {isLocked
+          ? isPlaying
+            ? `Listening to ${selectedNote}${octave} Drone (Set by Teacher)`
+            : `Drone Idle (Managed by Teacher)`
+          : isPlaying
           ? `Stop ${selectedNote}${octave} Drone`
           : `Play ${selectedNote}${octave} Drone`}
       </button>
