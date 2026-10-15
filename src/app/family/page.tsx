@@ -29,6 +29,12 @@ import {
 } from "lucide-react";
 import type { FamilyResponse } from "@/lib/academy/family";
 import type { LearningResponse } from "@/lib/academy/learning";
+import {
+  FAMILY_CACHE_KEY,
+  LEARNING_CACHE_KEY,
+  getCachedJson,
+  saveCachedJson,
+} from "@/lib/storage";
 import BrandEmblem from "@/app/_components/BrandEmblem";
 import ProfileAvatar from "@/app/_components/ProfileAvatar";
 type StudentForm = { password: string };
@@ -133,7 +139,7 @@ export default function FamilyPage() {
   const [addError, setAddError] = useState("");
 
   // Academy Support & Complaints State
-  
+
   const role = normalizedRole(family?.profile.role ?? "");
   const active = family?.profile.status.trim().toLowerCase() === "active";
   const isParent = role === "parent";
@@ -179,6 +185,7 @@ export default function FamilyPage() {
       if (!result.profile || !Array.isArray(result.children))
         throw new Error("The family response was incomplete.");
       setFamily(result);
+      saveCachedJson(FAMILY_CACHE_KEY, result);
       if (!learningResponse) {
         setLearningError(
           "The lesson service could not be reached. Family information is still available."
@@ -196,6 +203,7 @@ export default function FamilyPage() {
         if (Array.isArray(learningResult.lessons)) {
           setLearning(learningResult);
           setLearningError("");
+          saveCachedJson(LEARNING_CACHE_KEY, learningResult);
         } else {
           setLearning(null);
           setLearningError("Lesson progress could not be verified.");
@@ -205,8 +213,6 @@ export default function FamilyPage() {
         setLearning(null);
         setLearningError(await apiError(learningResponse, learningResult));
       }
-
-      
 
       return result;
     } catch (cause) {
@@ -223,6 +229,20 @@ export default function FamilyPage() {
   }, []);
 
   useEffect(() => {
+    const cachedFamily = getCachedJson<FamilyResponse>(FAMILY_CACHE_KEY, (p) =>
+      Boolean(p && p.profile && Array.isArray(p.children))
+    );
+    if (cachedFamily) {
+      setFamily(cachedFamily);
+      setLoading(false);
+    }
+    const cachedLearning = getCachedJson<LearningResponse>(
+      LEARNING_CACHE_KEY,
+      (p) => Boolean(p && p.profile && Array.isArray(p.lessons))
+    );
+    if (cachedLearning) {
+      setLearning(cachedLearning);
+    }
     void load();
   }, [load]);
 
@@ -1164,7 +1184,7 @@ export default function FamilyPage() {
                       )}
                     </div>
                   </section>
-</aside>
+                </aside>
               )}
             </div>
           )

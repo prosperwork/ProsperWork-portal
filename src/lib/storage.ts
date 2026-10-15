@@ -35,16 +35,47 @@ export interface Snapshot {
 }
 
 const CACHE_KEY = "pw_academy_workspace_cache_v1";
+export const FAMILY_CACHE_KEY = "pw_family_cache_v1";
+export const LEARNING_CACHE_KEY = "pw_learning_cache_v1";
+export const WORKFLOWS_CACHE_KEY = "pw_workflows_cache_v1";
 
 export function clearAcademyCache() {
   if (typeof window !== "undefined") {
     try {
       localStorage.removeItem(CACHE_KEY);
+      localStorage.removeItem(FAMILY_CACHE_KEY);
+      localStorage.removeItem(LEARNING_CACHE_KEY);
+      localStorage.removeItem(WORKFLOWS_CACHE_KEY);
     } catch {
       // ignore storage access errors
     }
   }
 }
+
+export function getCachedJson<T>(key: string, validator: (obj: any) => boolean): T | null {
+  if (typeof window === "undefined") return null;
+  try {
+    const raw = localStorage.getItem(key);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    if (parsed && typeof parsed === "object" && validator(parsed)) {
+      return parsed as T;
+    }
+  } catch {
+    // Corrupted or inaccessible storage
+  }
+  return null;
+}
+
+export function saveCachedJson(key: string, value: unknown) {
+  if (typeof window === "undefined") return;
+  try {
+    localStorage.setItem(key, JSON.stringify(value));
+  } catch {
+    // Quota exceeded or private browsing restrictions
+  }
+}
+
 
 export function getCachedWorkspace(): Snapshot | null {
   if (typeof window === "undefined") return null;

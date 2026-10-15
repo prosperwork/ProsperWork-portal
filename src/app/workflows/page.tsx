@@ -17,6 +17,11 @@ import {
   maxReceiptBytes,
   maxHomeworkBytes,
 } from "./workflow-types";
+import {
+  WORKFLOWS_CACHE_KEY,
+  getCachedJson,
+  saveCachedJson,
+} from "@/lib/storage";
 import WorkflowPaymentsSection from "./components/WorkflowPaymentsSection";
 import WorkflowHomeworkSection from "./components/WorkflowHomeworkSection";
 import WorkflowRescheduleSection from "./components/WorkflowRescheduleSection";
@@ -60,9 +65,15 @@ export default function WorkflowsPage() {
   // Reschedule Negotiation State
   // --------------------------------------------------------------------------
   const [chosenSlots, setChosenSlots] = useState<Record<string, string>>({});
-  const [counterSlots, setCounterSlots] = useState<Record<string, string[]>>({});
-  const [counterReasons, setCounterReasons] = useState<Record<string, string>>({});
-  const [selectedCounter, setSelectedCounter] = useState<Record<string, string>>({});
+  const [counterSlots, setCounterSlots] = useState<Record<string, string[]>>(
+    {}
+  );
+  const [counterReasons, setCounterReasons] = useState<Record<string, string>>(
+    {}
+  );
+  const [selectedCounter, setSelectedCounter] = useState<
+    Record<string, string>
+  >({});
   const [qcAssignedLessonIds, setQcAssignedLessonIds] = useState<string[]>([]);
   const [qcAssignmentError, setQcAssignmentError] = useState("");
 
@@ -70,7 +81,6 @@ export default function WorkflowsPage() {
   // Data Loader & QC Verification
   // --------------------------------------------------------------------------
   const load = useCallback(async (): Promise<boolean> => {
-    setLoading(true);
     setRefreshing(true);
     setError("");
     try {
@@ -90,6 +100,7 @@ export default function WorkflowsPage() {
         );
       const workspace = result as WorkflowData;
       setData(workspace);
+      saveCachedJson(WORKFLOWS_CACHE_KEY, workspace);
       if (workspace.profile?.role === "qc") {
         try {
           const assignmentResponse = await fetch("/api/management", {
@@ -142,6 +153,13 @@ export default function WorkflowsPage() {
   }, []);
 
   useEffect(() => {
+    const cached = getCachedJson<WorkflowData>(WORKFLOWS_CACHE_KEY, (p) =>
+      Boolean(p && p.profile && Array.isArray(p.recentHomework))
+    );
+    if (cached) {
+      setData(cached);
+      setLoading(false);
+    }
     void load();
   }, [load]);
 
@@ -183,7 +201,8 @@ export default function WorkflowsPage() {
     [data, isQC, qcAssignedLessonIds]
   );
   const pendingRequests = useMemo(
-    () => (data?.requests || []).filter((request) => request.status === "pending"),
+    () =>
+      (data?.requests || []).filter((request) => request.status === "pending"),
     [data]
   );
 
@@ -320,7 +339,9 @@ export default function WorkflowsPage() {
   async function submitHomework(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const form = event.currentTarget;
-    const homeworkSelect = form.elements.namedItem("homework-assignment") as HTMLSelectElement | null;
+    const homeworkSelect = form.elements.namedItem(
+      "homework-assignment"
+    ) as HTMLSelectElement | null;
     const hwId = homeworkSelect?.value || "";
     const file =
       (form.elements.namedItem("homeworkFile") as HTMLInputElement)

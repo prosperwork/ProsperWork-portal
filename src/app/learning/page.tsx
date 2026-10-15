@@ -11,6 +11,11 @@ import {
 import { createBrowserClient } from "@supabase/ssr";
 import { RefreshCw, X } from "lucide-react";
 import type { LearningResponse, LiveBoard } from "@/lib/academy/learning";
+import {
+  LEARNING_CACHE_KEY,
+  getCachedJson,
+  saveCachedJson,
+} from "@/lib/storage";
 import ProfileAvatar from "@/app/_components/ProfileAvatar";
 import {
   blankResource,
@@ -155,9 +160,12 @@ export default function LearningPage() {
   }, [data?.recordings, selectedLessonId]);
 
   const adoptData = useCallback(
-    (fresh: LearningResponse, preserveDirty = true) => {
+    (fresh: LearningResponse, preserveDirty = true, persist = true) => {
       dataRef.current = fresh;
       setData(fresh);
+      if (persist) {
+        saveCachedJson(LEARNING_CACHE_KEY, fresh);
+      }
       const requested = deepLinkLessonRef.current;
       const currentId = selectedIdRef.current;
       const chosen =
@@ -219,7 +227,7 @@ export default function LearningPage() {
           !Array.isArray(fresh.resources)
         )
           throw new Error("The learning response was incomplete.");
-        adoptData(fresh, preserveDirty);
+        adoptData(fresh, preserveDirty, true);
         return true;
       } catch (cause) {
         setLoadError(
@@ -241,12 +249,25 @@ export default function LearningPage() {
     deepLinkLessonRef.current = new URLSearchParams(window.location.search).get(
       "lessonId"
     );
+    const cached = getCachedJson<LearningResponse>(LEARNING_CACHE_KEY, (p) =>
+      Boolean(
+        p &&
+          p.profile &&
+          Array.isArray(p.lessons) &&
+          Array.isArray(p.boards) &&
+          Array.isArray(p.resources)
+      )
+    );
+    if (cached) {
+      adoptData(cached, true, false);
+      setLoading(false);
+    }
     void load(true);
     return () => {
       mountedRef.current = false;
       if (saveTimer.current) clearTimeout(saveTimer.current);
     };
-  }, [load]);
+  }, [adoptData, load]);
 
   useEffect(() => {
     selectedIdRef.current = selectedLessonId;
