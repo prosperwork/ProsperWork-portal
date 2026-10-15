@@ -162,13 +162,16 @@ export function emailText(job, appUrl) {
         `${appUrl}/complaints${signature}`;
     case "parent_complaint_acknowledgement":
       return `Hello ${p.parentName || "Guardian"},\n\n` +
-        `We have received your complaint regarding "${p.subject}".\n\n` +
-        `Ticket Reference: ${p.ticketNumber}\n` +
+        `We have received your inquiry regarding "${p.subject}".\n\n` +
+        `Official Ticket Reference: #${p.ticketNumber}\n` +
         `Urgency: ${p.urgency?.toUpperCase() || "NORMAL"}\n` +
-        `Category: ${p.categoryLabel || p.category}\n\n` +
-        `Our administrative and quality assurance leadership has been notified and is currently looking into this matter. We take every parent concern very seriously and will update you promptly once investigated.\n\n` +
-        `You can track the live status of this ticket in your Family Portal:\n` +
-        `${appUrl}/family${signature}`;
+        `Category: ${p.categoryLabel || p.category}\n` +
+        (p.studentName ? `Student: ${p.studentName}\n` : "") +
+        `Status: Under Review by Academy Administration\n\n` +
+        `Your Submitted Statement:\n${p.message || p.subject}\n\n` +
+        `Our administrative and quality assurance leadership has been notified and is actively investigating your report. We aim to address all parent concerns promptly and with the utmost care.\n\n` +
+        `You can track live status or chat with academy leadership in the Academy Portal:\n` +
+        `${appUrl}${signature}`;
     case "parent_complaint_resolved":
       return `Hello ${p.parentName || "Guardian"},\n\n` +
         `This is an update regarding your complaint ticket #${p.ticketNumber}: "${p.subject}".\n\n` +
@@ -381,31 +384,38 @@ export function emailHtml(job, appUrl) {
   }
 
   if (job.template === "parent_complaint_acknowledgement") {
-    const targetUrl = `${appUrl}/family`;
+    const targetUrl = appUrl;
     const bodyHtml = `Hello <strong>${p.parentName || "Guardian"}</strong>,<br><br>
-      Thank you for contacting ProsperWork Music Academy. We have logged your complaint regarding <strong>${p.subject}</strong> under ticket reference <strong>#${p.ticketNumber}</strong>.<br><br>
-      <div style="background-color: #f7faf8; padding: 16px; border-radius: 8px; border: 1px solid #dce6df; margin: 16px 0;">
-        <strong style="color: #0a2e22; font-size: 14px;">Ticket Summary</strong><br>
-        &bull; <strong>Reference:</strong> #${p.ticketNumber}<br>
+      Thank you for contacting ProsperWork Music Academy. We have logged your inquiry regarding <strong>${p.subject}</strong> under ticket reference <strong>#${p.ticketNumber}</strong>.<br><br>
+      <div style="background-color: #f7faf8; padding: 18px; border-radius: 10px; border: 1px solid #dce6df; margin: 16px 0;">
+        <strong style="color: #0a2e22; font-size: 14px; display: block; margin-bottom: 8px;">Official Ticket Receipt</strong>
+        &bull; <strong>Ticket Reference:</strong> #${p.ticketNumber}<br>
         &bull; <strong>Category:</strong> ${p.categoryLabel || p.category}<br>
         &bull; <strong>Urgency:</strong> ${p.urgency?.toUpperCase() || "NORMAL"}<br>
-        ${p.studentName ? `&bull; <strong>Student:</strong> ${p.studentName}<br>` : ""}
-        &bull; <strong>Status:</strong> Under Review by Academy Administration
+        ${p.studentName ? `&bull; <strong>Student / Learner:</strong> ${p.studentName}<br>` : ""}
+        &bull; <strong>Status:</strong> Under Review by Academy Administration<br><br>
+        <div style="margin-top: 10px; padding-top: 12px; border-top: 1px solid #dce6df;">
+          <strong style="color: #0a2e22; font-size: 13px;">Inquiry Subject:</strong> ${p.subject}<br><br>
+          <strong style="color: #0a2e22; font-size: 13px;">Your Submitted Statement:</strong>
+          <div style="white-space: pre-line; color: #1e2924; font-size: 13.5px; line-height: 1.6; margin-top: 6px; padding: 12px; background: #ffffff; border-radius: 8px; border: 1px solid #e2ece7;">
+            ${p.message || p.subject}
+          </div>
+        </div>
       </div>
-      Our administrative and quality assurance leadership has been notified and is actively investigating your report. We aim to address all parent concerns promptly and with the utmost care.`;
+      Our administrative and quality assurance leadership has been notified and is actively investigating your report. We aim to address all concerns promptly and with the utmost care. Whenever academy staff replies to this ticket, you will receive an immediate response by email and in your portal.`;
     return emailWrapper({
-      title: "Complaint Received",
-      badge: "Inquiry Logged",
-      heading: `We've received your inquiry #${p.ticketNumber}`,
+      title: `Complaint Receipt #${p.ticketNumber}`,
+      badge: "Inquiry Receipt",
+      heading: `Ticket Receipt #${p.ticketNumber}`,
       bodyHtml,
-      buttonLabel: "View Family Dashboard &rarr;",
+      buttonLabel: "Open Academy Portal &rarr;",
       buttonUrl: targetUrl,
-      noteHtml: "You can track the progress of this ticket at any time in your Family Portal. You will receive an email once resolved."
+      noteHtml: "Please keep this receipt for your records. You can check ticket updates or chat with our team at any time in the portal."
     });
   }
 
   if (job.template === "parent_complaint_resolved") {
-    const targetUrl = `${appUrl}/family`;
+    const targetUrl = appUrl;
     const isResolved = p.status === "resolved";
     const bodyHtml = `Hello <strong>${p.parentName || "Guardian"}</strong>,<br><br>
       We are writing to provide an update regarding your complaint ticket <strong>#${p.ticketNumber}</strong> (<em>${p.subject}</em>).<br><br>
@@ -422,7 +432,7 @@ export function emailHtml(job, appUrl) {
       badge: isResolved ? "Resolved" : "Under Review",
       heading: `Update on Ticket #${p.ticketNumber}`,
       bodyHtml,
-      buttonLabel: "Open Family Portal &rarr;",
+      buttonLabel: "Open Academy Portal &rarr;",
       buttonUrl: targetUrl,
       noteHtml: "If you have any further questions or follow-up regarding this matter, please feel free to reach out to complaints@prosperworkmusic.com."
     });
@@ -430,25 +440,25 @@ export function emailHtml(job, appUrl) {
 
   if (job.template === "complaint_reply_alert") {
     const isFromStaff = p.senderRole !== "parent";
-    const targetUrl = isFromStaff ? `${appUrl}/family` : `${appUrl}/complaints`;
+    const targetUrl = isFromStaff ? appUrl : `${appUrl}/complaints`;
     const bodyHtml = `Hello <strong>${p.recipientName}</strong>,<br><br>
-      A new message has been posted regarding ticket <strong>#${p.ticketNumber}</strong> (<em>${p.subject}</em>):<br><br>
-      <div style="background-color: #f7faf8; padding: 16px; border-radius: 8px; border: 1px solid #dce6df; margin: 16px 0;">
+      A new response has been posted regarding inquiry ticket <strong>#${p.ticketNumber}</strong> (<em>${p.subject}</em>):<br><br>
+      <div style="background-color: #f7faf8; padding: 18px; border-radius: 10px; border: 1px solid #dce6df; margin: 16px 0;">
         <strong style="color: #0a2e22; font-size: 14px;">${p.senderName}</strong>
         <span style="display: inline-block; margin-left: 8px; font-size: 11px; padding: 2px 8px; border-radius: 12px; background-color: ${isFromStaff ? "#edf6f1" : "#fef3c7"}; color: ${isFromStaff ? "#1c7a5d" : "#92400e"}; font-weight: 700; text-transform: uppercase;">${isFromStaff ? "Academy Administration" : "Family / Guardian"}</span><br><br>
-        <div style="white-space: pre-line; color: #1e2924; font-size: 13.5px; line-height: 1.6;">
+        <div style="white-space: pre-line; color: #1e2924; font-size: 13.5px; line-height: 1.6; padding: 12px; background: #ffffff; border-radius: 8px; border: 1px solid #e2ece7;">
           ${p.message}
         </div>
       </div>
-      You can review the full discussion thread and send a reply directly through your portal.`;
+      You can review the full discussion thread and send a reply directly through your Academy Portal.`;
     return emailWrapper({
-      title: `New Message on Ticket #${p.ticketNumber}`,
-      badge: "Inquiry Message",
-      heading: `New message on #${p.ticketNumber}`,
+      title: `Response on Ticket #${p.ticketNumber}`,
+      badge: "Inquiry Response",
+      heading: `Response on Ticket #${p.ticketNumber}`,
       bodyHtml,
-      buttonLabel: isFromStaff ? "Reply in Family Portal &rarr;" : "Open Complaints Desk &rarr;",
+      buttonLabel: isFromStaff ? "View & Reply in Academy Portal &rarr;" : "Open Complaints Desk &rarr;",
       buttonUrl: targetUrl,
-      noteHtml: "This is a direct notification from ProsperWork Music Academy Support."
+      noteHtml: "This is a direct response notification from ProsperWork Music Academy Support."
     });
   }
   return null;

@@ -216,7 +216,7 @@ export async function POST(request: Request) {
             lease_id: randomUUID(),
             category: "complaints",
             email: complaint.parent_email,
-            subject: `[${complaint.ticket_number}] We have received your inquiry: ${complaint.subject}`,
+            subject: `[Receipt #${complaint.ticket_number}] Inquiry Logged: ${complaint.subject}`,
             template: "parent_complaint_acknowledgement",
             payload: {
               ticketNumber: complaint.ticket_number,
@@ -226,6 +226,7 @@ export async function POST(request: Request) {
               categoryLabel: categoryLabel(complaint.category),
               urgency: complaint.urgency,
               subject: complaint.subject,
+              message: complaint.message,
             },
           },
           appUrl
@@ -423,7 +424,9 @@ export async function POST(request: Request) {
               lease_id: randomUUID(),
               category: "complaints",
               email: recipientEmail,
-              subject: `[${complaint.ticket_number}] New reply from ${senderName}: ${complaint.subject}`,
+              subject: isStaff
+                ? `[Ticket #${complaint.ticket_number}] Response from Academy: ${complaint.subject}`
+                : `[${complaint.ticket_number}] New reply from ${senderName}: ${complaint.subject}`,
               template: "complaint_reply_alert",
               payload: {
                 ticketNumber: complaint.ticket_number,
