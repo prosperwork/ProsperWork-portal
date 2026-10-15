@@ -426,7 +426,7 @@ export async function POST(request: Request) {
               email: recipientEmail,
               subject: isStaff
                 ? `[Ticket #${complaint.ticket_number}] Response from Academy: ${complaint.subject}`
-                : `[${complaint.ticket_number}] New reply from ${senderName}: ${complaint.subject}`,
+                : `[Ticket #${complaint.ticket_number}] New reply from ${senderName}: ${complaint.subject}`,
               template: "complaint_reply_alert",
               payload: {
                 ticketNumber: complaint.ticket_number,

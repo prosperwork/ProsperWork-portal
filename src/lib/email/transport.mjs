@@ -9,7 +9,7 @@ import process from "node:process";
  * - Administration & Technology: dev@prosperworkmusic.com (and aliases)
  */
 export const senderAliases = Object.freeze({
-  // Administrative & Technology
+  // Administrative & Technology (verified Spacemail aliases for dev@prosperworkmusic.com)
   admin: "admin@prosperworkmusic.com",
   automated: "noreply@prosperworkmusic.com",
   technical: "tech@prosperworkmusic.com",
@@ -18,29 +18,29 @@ export const senderAliases = Object.freeze({
   systems: "systems@prosperworkmusic.com",
   alerts: "alerts@prosperworkmusic.com",
   finance: "finance@prosperworkmusic.com",
-  accounts: "accounts@prosperworkmusic.com",
-  billing: "billing@prosperworkmusic.com",
+  accounts: "finance@prosperworkmusic.com",
+  billing: "finance@prosperworkmusic.com",
 
-  // School Communications
-  admissions: "admissions@prosperworkmusic.com",
-  support: "support@prosperworkmusic.com",
-  payments: "fees@prosperworkmusic.com",
-  fees: "fees@prosperworkmusic.com",
-  contact: "info@prosperworkmusic.com",
-  enquiries: "enquiries@prosperworkmusic.com",
-  students: "students@prosperworkmusic.com",
-  registration: "registration@prosperworkmusic.com",
-  courses: "courses@prosperworkmusic.com",
-  partnerships: "partnerships@prosperworkmusic.com",
-  feedback: "feedback@prosperworkmusic.com",
-  complaints: "complaints@prosperworkmusic.com",
-  events: "events@prosperworkmusic.com",
+  // School Communications (sent via verified admin/finance alias with purpose-aware Reply-To)
+  admissions: "admin@prosperworkmusic.com",
+  support: "admin@prosperworkmusic.com",
+  payments: "finance@prosperworkmusic.com",
+  fees: "finance@prosperworkmusic.com",
+  contact: "admin@prosperworkmusic.com",
+  enquiries: "admin@prosperworkmusic.com",
+  students: "admin@prosperworkmusic.com",
+  registration: "admin@prosperworkmusic.com",
+  courses: "admin@prosperworkmusic.com",
+  partnerships: "admin@prosperworkmusic.com",
+  feedback: "admin@prosperworkmusic.com",
+  complaints: "admin@prosperworkmusic.com",
+  events: "admin@prosperworkmusic.com",
 
   // Leadership
-  management: "management@prosperworkmusic.com",
-  director: "director@prosperworkmusic.com",
-  official: "official@prosperworkmusic.com",
-  leadership: "stephen@prosperworkmusic.com",
+  management: "admin@prosperworkmusic.com",
+  director: "admin@prosperworkmusic.com",
+  official: "admin@prosperworkmusic.com",
+  leadership: "admin@prosperworkmusic.com",
 });
 
 /**
