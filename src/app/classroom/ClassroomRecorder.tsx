@@ -124,22 +124,17 @@ export default function ClassroomRecorder({
     try {
       const blob = new Blob(chunksRef.current, { type: "video/webm" });
       if (blob.size === 0) throw new Error("No video was captured.");
-      if (blob.size > 50 * 1024 * 1024) {
-        throw new Error(
-          "Recording exceeded 50 MiB limit. Keep clips focused for lesson review."
-        );
-      }
 
       const file = new File([blob], `lesson-recording-${lessonId}.webm`, {
         type: "video/webm",
       });
 
       const formData = new FormData();
-      formData.set("category", "lesson_recording");
-      formData.set("targetId", lessonId);
+      formData.set("lessonId", lessonId);
       formData.set("file", file);
 
-      const response = await fetch("/api/files", {
+      // Upload directly to Google Drive via /api/classroom/recording
+      const response = await fetch("/api/classroom/recording", {
         method: "POST",
         credentials: "include",
         body: formData,
@@ -150,7 +145,9 @@ export default function ClassroomRecorder({
         throw new Error(result.error || `Upload failed (${response.status})`);
       }
 
-      setNotice("Class recording saved to lesson notebook & QC video queue.");
+      setNotice(
+        "Full lesson recording uploaded to Google Drive & attached to notebook."
+      );
       if (onRecordingSaved) onRecordingSaved();
     } catch (cause) {
       setError(
