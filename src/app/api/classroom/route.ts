@@ -53,7 +53,7 @@ export async function POST(request: Request) {
     access.addGrant({
       roomJoin: true, room: data.roomName, roomAdmin: Boolean(data.host),
       canPublish: true, canSubscribe: true, canPublishData: true,
-      canUpdateOwnMetadata: false, roomRecord: canRecord,
+      canUpdateOwnMetadata: true, roomRecord: canRecord,
     });
     return NextResponse.json({
       token: await access.toJwt(),

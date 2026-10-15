@@ -8,6 +8,6 @@ const allowedDevOrigins = [
   "localhost",
 ].filter((origin): origin is string => Boolean(origin));
 
-const nextConfig: NextConfig = { allowedDevOrigins, experimental: { proxyClientMaxBodySize: "55mb" } };
+const nextConfig: NextConfig = { allowedDevOrigins, experimental: { proxyClientMaxBodySize: "500mb" } };
 
 export default nextConfig;

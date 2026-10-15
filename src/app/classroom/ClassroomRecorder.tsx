@@ -1,7 +1,7 @@
 "use client";
 
 import { useRef, useState } from "react";
-import { Disc, LoaderCircle, Square, Video } from "lucide-react";
+import { CircleDot, Disc, LoaderCircle, Square, Video } from "lucide-react";
 
 interface ClassroomRecorderProps {
   lessonId: string;
@@ -32,14 +32,13 @@ export default function ClassroomRecorder({
     totalBytesRef.current = 0;
     setRecordedBytes(0);
     try {
-      // Capture the browser display/tab or screen with system audio
-      // Request 720p 24fps to optimize for clarity (sheet music/notes) and small file size
+      // Capture the browser display/tab or screen with system and microphone audio
       const stream = await navigator.mediaDevices.getDisplayMedia({
         video: {
           displaySurface: "browser",
-          width: { ideal: 1280, max: 1280 },
-          height: { ideal: 720, max: 720 },
-          frameRate: { ideal: 24, max: 24 },
+          width: { ideal: 1280, max: 1920 },
+          height: { ideal: 720, max: 1080 },
+          frameRate: { ideal: 24, max: 30 },
         } as MediaTrackConstraints,
         audio: true,
       });
@@ -55,11 +54,11 @@ export default function ClassroomRecorder({
         ? "video/webm;codecs=vp8,opus"
         : "video/webm";
 
-      // 400 kbps video + 64 kbps audio keeps ~40 min lessons under 35 MB, safely within Supabase Free 50 MB
+      // 900 kbps video + 96 kbps audio provides crystal-clear music notation and instrument sound
       const recorder = new MediaRecorder(stream, {
         mimeType,
-        videoBitsPerSecond: 400_000,
-        audioBitsPerSecond: 64_000,
+        videoBitsPerSecond: 900_000,
+        audioBitsPerSecond: 96_000,
       });
       mediaRecorderRef.current = recorder;
 
@@ -68,11 +67,6 @@ export default function ClassroomRecorder({
           chunksRef.current.push(event.data);
           totalBytesRef.current += event.data.size;
           setRecordedBytes(totalBytesRef.current);
-
-          // Auto-stop if approaching Supabase Free 50 MB ceiling (stop at 48 MB for safety)
-          if (totalBytesRef.current >= 48 * 1024 * 1024) {
-            recorder.stop();
-          }
         }
       };
 
@@ -82,11 +76,14 @@ export default function ClassroomRecorder({
       };
 
       // Handle user clicking native browser "Stop sharing" bar
-      stream.getVideoTracks()[0].onended = () => {
-        if (recorder.state === "recording") {
-          recorder.stop();
-        }
-      };
+      const videoTrack = stream.getVideoTracks()[0];
+      if (videoTrack) {
+        videoTrack.onended = () => {
+          if (recorder.state === "recording") {
+            recorder.stop();
+          }
+        };
+      }
 
       recorder.start(1000); // 1-second chunks
       setRecording(true);
@@ -145,9 +142,7 @@ export default function ClassroomRecorder({
         throw new Error(result.error || `Upload failed (${response.status})`);
       }
 
-      setNotice(
-        "Full lesson recording uploaded to Google Drive & attached to notebook."
-      );
+      setNotice("Lesson recording saved to Google Drive and attached to notebook.");
       if (onRecordingSaved) onRecordingSaved();
     } catch (cause) {
       setError(
@@ -162,9 +157,20 @@ export default function ClassroomRecorder({
   };
 
   const formatDuration = (secs: number) => {
-    const m = Math.floor(secs / 60);
+    const hrs = Math.floor(secs / 3600);
+    const m = Math.floor((secs % 3600) / 60);
     const s = secs % 60;
-    return `${m}:${s < 10 ? "0" : ""}${s}`;
+    if (hrs > 0) {
+      return `${hrs}:${m < 10 ? "0" : ""}${m}:${s < 10 ? "0" : ""}${s}`;
+    }
+    return `${m < 10 ? "0" : ""}${m}:${s < 10 ? "0" : ""}${s}`;
+  };
+
+  const formatBytes = (bytes: number) => {
+    if (bytes < 1024 * 1024) {
+      return `${Math.round(bytes / 1024)} KB`;
+    }
+    return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
   };
 
   return (
@@ -176,27 +182,40 @@ export default function ClassroomRecorder({
         <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
           <span
             style={{
-              color: "#d9383a",
+              color: "#ff4757",
+              background: "rgba(255, 71, 87, 0.15)",
+              border: "1px solid rgba(255, 71, 87, 0.35)",
+              padding: "3px 8px",
+              borderRadius: 6,
               display: "inline-flex",
               alignItems: "center",
-              gap: 5,
+              gap: 6,
               fontSize: 11,
               fontWeight: 700,
+              letterSpacing: 0.3,
             }}
           >
-            <Disc
-              size={13}
-              className="pc-spinning"
-              style={{ animation: "spin 2s linear infinite" }}
+            <span
+              style={{
+                width: 8,
+                height: 8,
+                borderRadius: "50%",
+                background: "#ff4757",
+                display: "inline-block",
+                boxShadow: "0 0 8px #ff4757",
+                animation: "pulse 1.5s infinite",
+              }}
             />
-            REC {formatDuration(duration)} (
-            {(recordedBytes / (1024 * 1024)).toFixed(1)} MB / 48 MB)
+            REC {formatDuration(duration)}
+            <small style={{ color: "#ffb4bc", fontWeight: 500, fontSize: 10 }}>
+              ({formatBytes(recordedBytes)})
+            </small>
           </span>
           <button
             type="button"
             className="pc-primary"
             style={{
-              background: "#d9383a",
+              background: "#ff4757",
               color: "#fff",
               padding: "4px 10px",
               fontSize: 11,
@@ -205,6 +224,9 @@ export default function ClassroomRecorder({
               display: "inline-flex",
               alignItems: "center",
               gap: 5,
+              border: "none",
+              cursor: "pointer",
+              fontWeight: 600,
             }}
             onClick={stopRecording}
           >
@@ -216,20 +238,24 @@ export default function ClassroomRecorder({
           style={{
             display: "inline-flex",
             alignItems: "center",
-            gap: 5,
+            gap: 6,
             fontSize: 11,
-            color: "#1c7a5d",
+            color: "#6ee7b7",
+            background: "rgba(110, 231, 183, 0.1)",
+            padding: "4px 9px",
+            borderRadius: 6,
+            border: "1px solid rgba(110, 231, 183, 0.25)",
           }}
         >
-          <LoaderCircle size={13} className="pc-spinning" /> Uploading
-          recording…
+          <LoaderCircle size={13} className="pc-spinning" /> Saving to Google Drive…
         </span>
       ) : (
         <button
           type="button"
           className="pc-primary"
           style={{
-            background: "#1c7a5d",
+            background: "rgba(255, 255, 255, 0.12)",
+            border: "1px solid rgba(255, 255, 255, 0.22)",
             color: "#fff",
             padding: "4px 10px",
             fontSize: 11,
@@ -237,17 +263,26 @@ export default function ClassroomRecorder({
             borderRadius: 6,
             display: "inline-flex",
             alignItems: "center",
-            gap: 5,
+            gap: 6,
+            cursor: "pointer",
+            fontWeight: 600,
           }}
           onClick={() => void startRecording()}
+          title="Record this lesson directly to academy Google Drive"
         >
-          <Video size={13} /> Record class
+          <CircleDot size={13} color="#ff4757" /> Record class
         </button>
       )}
 
-      {error && <span style={{ color: "#d9383a", fontSize: 10 }}>{error}</span>}
+      {error && (
+        <span style={{ color: "#ff6b81", fontSize: 11, fontWeight: 500 }}>
+          {error}
+        </span>
+      )}
       {notice && (
-        <span style={{ color: "#1c7a5d", fontSize: 10 }}>{notice}</span>
+        <span style={{ color: "#2ed573", fontSize: 11, fontWeight: 500 }}>
+          {notice}
+        </span>
       )}
     </div>
   );

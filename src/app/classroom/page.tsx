@@ -27,6 +27,7 @@ import {
 
 import BrandEmblem from "../_components/BrandEmblem";
 import ClassroomRecorder from "./ClassroomRecorder";
+import ClassroomMusicTools from "./ClassroomMusicTools";
 
 type Lesson = {
   id: string;
@@ -374,120 +375,124 @@ export default function ClassroomPage() {
             <div className="pc-room-layout">
               <section className="pc-stage">
                 {ticket ? (
-                  <div className="pc-live-wrap">
-                    <div className="pc-live-head">
-                      <div
-                        style={{
-                          display: "flex",
-                          alignItems: "center",
-                          gap: 10,
-                          minWidth: 0,
-                        }}
-                      >
-                        <span className="pc-live-indicator">
-                          <i /> In the lesson
-                        </span>
-                        <span
+                  <LiveKitRoom
+                    token={ticket.token}
+                    serverUrl={ticket.serverUrl}
+                    connect
+                    audio={devices?.audioEnabled ?? true}
+                    video={devices?.videoEnabled ?? true}
+                    options={{
+                      audioCaptureDefaults: {
+                        deviceId: devices?.audioDeviceId || undefined,
+                        echoCancellation: false,
+                        noiseSuppression: false,
+                        autoGainControl: false,
+                      },
+                      videoCaptureDefaults: {
+                        deviceId: devices?.videoDeviceId || undefined,
+                      },
+                      publishDefaults: {
+                        audioPreset: AudioPresets.musicHighQualityStereo,
+                      },
+                    }}
+                    onDisconnected={onDisconnect}
+                    onError={(cause) =>
+                      setJoinError(
+                        cause?.message ||
+                          "The secure room connection failed. Check your network and try again."
+                      )
+                    }
+                    data-lk-theme="default"
+                    className="pc-livekit"
+                  >
+                    <div className="pc-live-wrap">
+                      <div className="pc-live-head">
+                        <div
                           style={{
-                            fontSize: 12,
-                            fontWeight: 700,
-                            color: "#d1ded5",
-                            overflow: "hidden",
-                            textOverflow: "ellipsis",
-                            whiteSpace: "nowrap",
-                          }}
-                        >
-                          · {data.lesson.title || "Music Lesson"} (
-                          {data.lesson.studentName})
-                        </span>
-                      </div>
-                      <div
-                        style={{
-                          display: "flex",
-                          alignItems: "center",
-                          gap: 12,
-                        }}
-                      >
-                        {ticket.canRecord && (
-                          <ClassroomRecorder
-                            lessonId={ticket.lessonId || lessonId}
-                            onRecordingSaved={() =>
-                              setNotice(
-                                "Recording saved to lesson notebook and QC video queue."
-                              )
-                            }
-                          />
-                        )}
-                        <span className="pc-countdown">
-                          <Clock3 size={13} /> Room closes in {remaining}
-                        </span>
-                        <button
-                          type="button"
-                          onClick={toggleFullscreen}
-                          className="pc-fullscreen-btn"
-                          title={
-                            isFullscreen
-                              ? "Exit Fullscreen"
-                              : "Fullscreen Mode (Zoom / Meet Style)"
-                          }
-                          style={{
-                            background: "rgba(255, 255, 255, 0.12)",
-                            border: "1px solid rgba(255, 255, 255, 0.2)",
-                            color: "#fff",
-                            borderRadius: 6,
-                            padding: "4px 9px",
-                            cursor: "pointer",
-                            display: "inline-flex",
+                            display: "flex",
                             alignItems: "center",
-                            gap: 5,
-                            fontSize: 11,
-                            fontWeight: 600,
+                            gap: 10,
+                            minWidth: 0,
                           }}
                         >
-                          {isFullscreen ? (
-                            <Minimize2 size={13} />
-                          ) : (
-                            <Maximize2 size={13} />
-                          )}
-                          <span>
-                            {isFullscreen ? "Exit Fullscreen" : "Fullscreen"}
+                          <span className="pc-live-indicator">
+                            <i /> In the lesson
                           </span>
-                        </button>
+                          <span
+                            style={{
+                              fontSize: 12,
+                              fontWeight: 700,
+                              color: "#d1ded5",
+                              overflow: "hidden",
+                              textOverflow: "ellipsis",
+                              whiteSpace: "nowrap",
+                            }}
+                          >
+                            · {data.lesson.title || "Music Lesson"} (
+                            {data.lesson.studentName})
+                          </span>
+                        </div>
+                        <div
+                          style={{
+                            display: "flex",
+                            alignItems: "center",
+                            gap: 10,
+                            flexWrap: "wrap",
+                          }}
+                        >
+                          <ClassroomMusicTools />
+                          {ticket.canRecord && (
+                            <ClassroomRecorder
+                              lessonId={ticket.lessonId || lessonId}
+                              onRecordingSaved={() =>
+                                setNotice(
+                                  "Recording saved to lesson notebook and QC video queue."
+                                )
+                              }
+                            />
+                          )}
+                          <span className="pc-countdown">
+                            <Clock3 size={13} /> Room closes in {remaining}
+                          </span>
+                          <button
+                            type="button"
+                            onClick={toggleFullscreen}
+                            className="pc-fullscreen-btn"
+                            title={
+                              isFullscreen
+                                ? "Exit Fullscreen"
+                                : "Fullscreen Mode (Zoom / Meet Style)"
+                            }
+                            style={{
+                              background: "rgba(255, 255, 255, 0.12)",
+                              border: "1px solid rgba(255, 255, 255, 0.2)",
+                              color: "#fff",
+                              borderRadius: 6,
+                              padding: "4px 9px",
+                              cursor: "pointer",
+                              display: "inline-flex",
+                              alignItems: "center",
+                              gap: 5,
+                              fontSize: 11,
+                              fontWeight: 600,
+                            }}
+                          >
+                            {isFullscreen ? (
+                              <Minimize2 size={13} />
+                            ) : (
+                              <Maximize2 size={13} />
+                            )}
+                            <span>
+                              {isFullscreen ? "Exit Fullscreen" : "Fullscreen"}
+                            </span>
+                          </button>
+                        </div>
+                      </div>
+                      <div className="pc-live-conference-area">
+                        <VideoConference />
                       </div>
                     </div>
-                    <LiveKitRoom
-                      token={ticket.token}
-                      serverUrl={ticket.serverUrl}
-                      connect
-                      audio={devices?.audioEnabled ?? true}
-                      video={devices?.videoEnabled ?? true}
-                      options={{
-                        audioCaptureDefaults: {
-                          deviceId: devices?.audioDeviceId || undefined,
-                          echoCancellation: false,
-                          noiseSuppression: false,
-                          autoGainControl: false,
-                        },
-                        videoCaptureDefaults: {
-                          deviceId: devices?.videoDeviceId || undefined,
-                        },
-                        publishDefaults: {
-                          audioPreset: AudioPresets.musicHighQualityStereo,
-                        },
-                      }}
-                      onDisconnected={onDisconnect}
-                      onError={(cause) =>
-                        setJoinError(
-                          cause?.message ||
-                            "The secure room connection failed. Check your network and try again."
-                        )
-                      }
-                      data-lk-theme="default"
-                      className="pc-livekit"
-                    >
-                      <VideoConference />
-                    </LiveKitRoom>
-                  </div>
+                  </LiveKitRoom>
                 ) : previewOpen && permissionReady && effectiveJoinOpen ? (
                   <div className="pc-preview" data-lk-theme="default">
                     <div className="pc-preview-title">

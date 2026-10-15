@@ -905,13 +905,89 @@
 
 .pw-classroom.in-call .pc-livekit {
   flex: 1;
-  height: calc(100% - 50px);
+  height: 100%;
   min-height: 0;
   background: #111;
+  position: relative;
+  display: flex;
+  flex-direction: column;
+}
+
+.pw-classroom.in-call .pc-live-wrap {
+  flex: 1;
+  height: 100%;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  background: #111;
+}
+
+.pw-classroom.in-call .pc-live-head {
+  min-height: 48px;
+  height: auto;
+  background: #18221c;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.12);
+  color: #fff;
+  padding: 6px 14px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 8px;
+  flex-shrink: 0;
+  z-index: 25;
+}
+
+.pw-classroom.in-call .pc-live-head .pc-live-indicator {
+  color: #8fcaab;
+  font-weight: 700;
+  font-size: 11px;
+}
+
+.pw-classroom.in-call .pc-live-head .pc-countdown {
+  color: #c9d8ce;
+  font-size: 11px;
+}
+
+.pw-classroom.in-call .pc-live-conference-area {
+  flex: 1;
+  height: calc(100% - 48px);
+  min-height: 0;
   position: relative;
 }
 
 .pw-classroom.in-call .pc-livekit .lk-video-conference {
   height: 100%;
   min-height: 0;
+}
+
+@keyframes pulse {
+  0%,
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.45;
+    transform: scale(1.15);
+  }
+}
+
+@keyframes floatUp {
+  0% {
+    opacity: 0;
+    transform: translateY(0) scale(0.65);
+  }
+  15% {
+    opacity: 1;
+    transform: translateY(-25px) scale(1.12);
+  }
+  75% {
+    opacity: 1;
+    transform: translateY(-160px) scale(1);
+  }
+  100% {
+    opacity: 0;
+    transform: translateY(-230px) scale(0.85);
+  }
 }
