@@ -16,9 +16,11 @@ export interface AccountListProps {
   listError: string;
   query: string;
   viewAsPendingId: string | null;
+  resendingId?: string | null;
   onQueryChange: (query: string) => void;
   onRetry: () => void;
   onStartViewAs: (target: Account) => Promise<void>;
+  onResendInvite?: (target: Account) => Promise<void> | void;
   onSelectStatusChange: (account: Account, next: AccountStatus) => void;
   onRequestDelete?: (account: Account) => void;
 }
@@ -30,9 +32,11 @@ export default function AccountList({
   listError,
   query,
   viewAsPendingId,
+  resendingId,
   onQueryChange,
   onRetry,
   onStartViewAs,
+  onResendInvite,
   onSelectStatusChange,
 }: AccountListProps) {
   return (
@@ -209,6 +213,28 @@ export default function AccountList({
                           ? "Switching…"
                           : "View as user"}
                       </button>
+                      {onResendInvite && account.email && (
+                        <button
+                          type="button"
+                          className="pw-text-button"
+                          style={{
+                            padding: "4px 8px",
+                            fontSize: "12px",
+                            fontWeight: 600,
+                            borderRadius: "6px",
+                            border: "1px solid #d1d5db",
+                            background: "#ffffff",
+                            color: "#374151",
+                            cursor: "pointer",
+                            whiteSpace: "nowrap",
+                          }}
+                          disabled={resendingId === String(account.id)}
+                          onClick={() => void onResendInvite(account)}
+                          title={`Resend invitation email to ${account.email}`}
+                        >
+                          {resendingId === String(account.id) ? "Sending…" : "Resend invite"}
+                        </button>
+                      )}
                       <label className="pw-status-select">
                         <span className="pw-visually-hidden">
                           Change status for {account.name}

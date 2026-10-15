@@ -74,7 +74,7 @@ export async function POST(request:Request){
            roleTitle,
            inviteLink,
          },
-       }, publicAppUrl().href);
+       }, publicAppUrl("/").origin);
      } catch (err) {
        console.error("Hiring invitation email delivery failed:", err);
      }

@@ -230,13 +230,51 @@ export async function POST(request: Request) {
               roleTitle,
               inviteLink,
             },
-          }, publicAppUrl().href);
+          }, publicAppUrl("/").origin);
         } catch (mailErr) {
           console.error("Direct invitation email dispatch failed:", mailErr);
         }
       }
 
       return NextResponse.json({ ok: true, message: `Invitation sent to ${account.name} (${account.email}).` });
+    }
+
+    if (body?.action === "resend_invite") {
+      const targetId = String(body.id || "");
+      if (!/^[0-9a-f-]{36}$/i.test(targetId)) return NextResponse.json({ error: "Invalid account identifier." }, { status: 400 });
+      const { data: target, error: targetError } = await admin.from("pw_profiles").select("id,name,email,role").eq("id", targetId).single();
+      if (targetError || !target || !target.email) return NextResponse.json({ error: "Account not found or missing email." }, { status: 404 });
+
+      const redirectTo = publicAppUrl("/auth/confirm?next=/reset-password&reason=invite").href;
+      const linkResult = await admin.auth.admin.generateLink({
+        type: "invite",
+        email: target.email.toLowerCase(),
+        options: {
+          data: { name: target.name },
+          redirectTo,
+        },
+      });
+
+      if (!linkResult.data?.properties?.action_link) {
+        return NextResponse.json({ error: "Could not generate an invitation link for this account." }, { status: 500 });
+      }
+
+      const roleTitle = target.role.replace(/_/g, " ").replace(/\b\w/g, (l: string) => l.toUpperCase());
+      await deliverEmail({
+        id: `invite-${Date.now()}`,
+        category: "admissions",
+        email: target.email.toLowerCase(),
+        subject: "Welcome to ProsperWork Music Academy — Complete Your Account Setup",
+        template: "account_invitation",
+        payload: {
+          name: target.name,
+          role: target.role,
+          roleTitle,
+          inviteLink: linkResult.data.properties.action_link,
+        },
+      }, publicAppUrl("/").origin);
+
+      return NextResponse.json({ ok: true, message: `Invitation email resent to ${target.name} (${target.email}).` });
     }
     const parsed = z.object({
       action: z.literal("status"), id: z.string().uuid(),

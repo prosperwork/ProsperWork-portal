@@ -107,3 +107,4 @@ export async function createStudentAuthUser(
 
   throw lastError || new Error("Failed to generate an available student email address.");
 }
+

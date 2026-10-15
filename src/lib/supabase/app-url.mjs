@@ -1,6 +1,6 @@
 // Server-only public URLs must come from trusted configuration, not Next's
 // internal bind address or arbitrary Host/X-Forwarded-Host headers.
-export function publicAppUrl(path,env=process.env){
+export function publicAppUrl(path = "/", env = process.env){
  const configured=env.APP_BASE_URL||(env.NODE_ENV!=="production"&&env.REPLIT_DEV_DOMAIN?`https://${env.REPLIT_DEV_DOMAIN}`:null);
  if(!configured)throw Error("PUBLIC_APP_URL_NOT_CONFIGURED");
  const base=new URL(configured);

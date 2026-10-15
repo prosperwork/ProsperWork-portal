@@ -65,6 +65,32 @@ export default function AccountsPage() {
     }
   };
 
+  const [resendingId, setResendingId] = useState<string | null>(null);
+
+  const handleResendInvite = async (target: Account) => {
+    if (!target.email) return;
+    setResendingId(String(target.id));
+    setMutationError("");
+    setSuccessMessage("");
+    try {
+      const response = await fetch("/api/accounts", {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "resend_invite", id: target.id }),
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok || data.error) {
+        throw new Error(data.error || "Failed to resend invitation.");
+      }
+      setSuccessMessage(data.message || `Invitation email resent to ${target.name} (${target.email}).`);
+    } catch (err) {
+      setMutationError(err instanceof Error ? err.message : "Failed to resend invitation.");
+    } finally {
+      setResendingId(null);
+    }
+  };
+
   const loadAccounts = useCallback(async () => {
     setLoading(true);
     setListError("");
@@ -318,9 +344,11 @@ export default function AccountsPage() {
                 listError={listError}
                 query={query}
                 viewAsPendingId={viewAsPendingId}
+                resendingId={resendingId}
                 onQueryChange={setQuery}
                 onRetry={() => void loadAccounts()}
                 onStartViewAs={startViewAs}
+                onResendInvite={handleResendInvite}
                 onSelectStatusChange={(account, next) =>
                   setStatusChange({ account, next })
                 }
