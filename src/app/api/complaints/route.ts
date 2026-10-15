@@ -29,6 +29,16 @@ export async function GET(request: Request) {
     const { searchParams } = new URL(request.url);
     const filterStatus = searchParams.get("status");
     const query = searchParams.get("q")?.trim().toLowerCase();
+    const shouldSync = searchParams.get("sync") === "true";
+
+    if (shouldSync) {
+      try {
+        const { syncComplaintEmailReplies } = await import("@/lib/email/inbox-sync");
+        await syncComplaintEmailReplies();
+      } catch (syncErr) {
+        console.error("Complaint email sync error on request:", syncErr);
+      }
+    }
 
     const adminClient = provisioningClient();
 

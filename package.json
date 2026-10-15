@@ -23,9 +23,11 @@
     "@types/pdfkit": "^0.17.6",
     "@types/pg": "^8.23.1",
     "@types/react": "^19.3.0",
+    "imapflow": "^2.4.3",
     "livekit-client": "^2.22.4",
     "livekit-server-sdk": "^2.19.1",
     "lucide-react": "^1.55.0",
+    "mailparser": "^3.9.39",
     "next": "^16.4.0",
     "nodemailer": "^10.1.0",
     "pdfkit": "^0.20.2",
@@ -34,5 +36,8 @@
     "react-dom": "^19.3.0",
     "typescript": "^7.0.2",
     "zod": "^4.6.6"
+  },
+  "devDependencies": {
+    "@types/mailparser": "^3.9.0"
   }
 }

@@ -160,7 +160,11 @@ function formatAssistantResponse(content: string): React.ReactNode {
       {blocks.map((block, idx) => {
         const lines = block.split("\n");
 
-        if (lines.every((l) => l.trim().startsWith("- ") || l.trim().startsWith("* "))) {
+        if (
+          lines.every(
+            (l) => l.trim().startsWith("- ") || l.trim().startsWith("* ")
+          )
+        ) {
           return (
             <ul
               key={idx}
@@ -282,11 +286,26 @@ function formatShortDate(dateStr: string) {
 function getStatusPill(status: string) {
   switch (status) {
     case "resolved":
-      return { label: "Resolved", bg: "#dcfce7", color: "#166534", border: "#bbf7d0" };
+      return {
+        label: "Resolved",
+        bg: "#dcfce7",
+        color: "#166534",
+        border: "#bbf7d0",
+      };
     case "in_progress":
-      return { label: "In Progress", bg: "#eff6ff", color: "#1e40af", border: "#bfdbfe" };
+      return {
+        label: "In Progress",
+        bg: "#eff6ff",
+        color: "#1e40af",
+        border: "#bfdbfe",
+      };
     default:
-      return { label: "Under Review", bg: "#fef3c7", color: "#92400e", border: "#fde68a" };
+      return {
+        label: "Under Review",
+        bg: "#fef3c7",
+        color: "#92400e",
+        border: "#fde68a",
+      };
   }
 }
 
@@ -323,12 +342,16 @@ export default function PortalAiChatBubble({
   const [complaints, setComplaints] = useState<ComplaintRecord[]>([]);
   const [complaintsLoading, setComplaintsLoading] = useState(false);
   const [complaintsError, setComplaintsError] = useState("");
-  const [selectedComplaintId, setSelectedComplaintId] = useState<string | null>(null);
+  const [selectedComplaintId, setSelectedComplaintId] = useState<string | null>(
+    null
+  );
   const [showCreateComplaint, setShowCreateComplaint] = useState(false);
 
   // New Complaint Form
-  const [createCategory, setCreateCategory] = useState<ComplaintCategory>("lesson_quality");
-  const [createUrgency, setCreateUrgency] = useState<ComplaintUrgency>("normal");
+  const [createCategory, setCreateCategory] =
+    useState<ComplaintCategory>("lesson_quality");
+  const [createUrgency, setCreateUrgency] =
+    useState<ComplaintUrgency>("normal");
   const [createSubject, setCreateSubject] = useState("");
   const [createMessage, setCreateMessage] = useState("");
   const [createStudentName, setCreateStudentName] = useState("");
@@ -342,8 +365,12 @@ export default function PortalAiChatBubble({
   const threadEndRef = useRef<HTMLDivElement>(null);
 
   // Dragging state for launcher button & chat dialog
-  const [buttonPos, setButtonPos] = useState<{ x: number; y: number } | null>(null);
-  const [panelPos, setPanelPos] = useState<{ x: number; y: number } | null>(null);
+  const [buttonPos, setButtonPos] = useState<{ x: number; y: number } | null>(
+    null
+  );
+  const [panelPos, setPanelPos] = useState<{ x: number; y: number } | null>(
+    null
+  );
   const [isDragging, setIsDragging] = useState(false);
   const dragStartRef = useRef<{
     startX: number;
@@ -354,7 +381,9 @@ export default function PortalAiChatBubble({
   } | null>(null);
 
   // Launcher button drag logic
-  const handleButtonPointerDown = (e: React.PointerEvent<HTMLButtonElement>) => {
+  const handleButtonPointerDown = (
+    e: React.PointerEvent<HTMLButtonElement>
+  ) => {
     if (e.button !== 0) return;
     const rect = e.currentTarget.getBoundingClientRect();
     dragStartRef.current = {
@@ -368,7 +397,9 @@ export default function PortalAiChatBubble({
     setIsDragging(true);
   };
 
-  const handleButtonPointerMove = (e: React.PointerEvent<HTMLButtonElement>) => {
+  const handleButtonPointerMove = (
+    e: React.PointerEvent<HTMLButtonElement>
+  ) => {
     if (!dragStartRef.current) return;
     const deltaX = e.clientX - dragStartRef.current.startX;
     const deltaY = e.clientY - dragStartRef.current.startY;
@@ -411,8 +442,14 @@ export default function PortalAiChatBubble({
 
       if (targetY < 16) targetY = buttonPos.y;
 
-      targetX = Math.max(12, Math.min(window.innerWidth - panelWidth - 12, targetX));
-      targetY = Math.max(12, Math.min(window.innerHeight - panelHeight - 12, targetY));
+      targetX = Math.max(
+        12,
+        Math.min(window.innerWidth - panelWidth - 12, targetX)
+      );
+      targetY = Math.max(
+        12,
+        Math.min(window.innerHeight - panelHeight - 12, targetY)
+      );
 
       setPanelPos({ x: targetX, y: targetY });
     }
@@ -423,7 +460,9 @@ export default function PortalAiChatBubble({
   const handlePanelPointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
     if (e.button !== 0) return;
     if ((e.target as HTMLElement).closest("button")) return;
-    const panel = e.currentTarget.closest('[role="dialog"]') as HTMLElement | null;
+    const panel = e.currentTarget.closest(
+      '[role="dialog"]'
+    ) as HTMLElement | null;
     if (!panel) return;
     const rect = panel.getBoundingClientRect();
     dragStartRef.current = {
@@ -512,31 +551,36 @@ export default function PortalAiChatBubble({
   }, [messages, profile, storageKey]);
 
   // Fetch complaints
-  const loadComplaints = useCallback(async () => {
-    if (!profile) return;
-    setComplaintsLoading(true);
-    setComplaintsError("");
-    try {
-      const res = await fetch("/api/complaints", {
-        credentials: "include",
-        cache: "no-store",
-      });
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(data.error || "Failed to load complaints.");
-      setComplaints(data.complaints || []);
-    } catch (err) {
-      setComplaintsError(
-        err instanceof Error ? err.message : "Could not load support tickets."
-      );
-    } finally {
-      setComplaintsLoading(false);
-    }
-  }, [profile]);
+  const loadComplaints = useCallback(
+    async (sync = false) => {
+      if (!profile) return;
+      setComplaintsLoading(true);
+      setComplaintsError("");
+      try {
+        const url = sync ? "/api/complaints?sync=true" : "/api/complaints";
+        const res = await fetch(url, {
+          credentials: "include",
+          cache: "no-store",
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok)
+          throw new Error(data.error || "Failed to load complaints.");
+        setComplaints(data.complaints || []);
+      } catch (err) {
+        setComplaintsError(
+          err instanceof Error ? err.message : "Could not load support tickets."
+        );
+      } finally {
+        setComplaintsLoading(false);
+      }
+    },
+    [profile]
+  );
 
   // Load complaints on initial open or when tab changes to complaints
   useEffect(() => {
     if (open && activeTab === "complaints") {
-      void loadComplaints();
+      void loadComplaints(true);
     }
   }, [open, activeTab, loadComplaints]);
 
@@ -617,12 +661,16 @@ export default function PortalAiChatBubble({
         });
 
         if (res.status === 429) {
-          throw new Error("You're asking questions too quickly. Please wait a moment.");
+          throw new Error(
+            "You're asking questions too quickly. Please wait a moment."
+          );
         }
 
         if (!res.ok) {
           const errData = await res.json().catch(() => ({}));
-          throw new Error(errData.error || "The AI assistant is temporarily unavailable.");
+          throw new Error(
+            errData.error || "The AI assistant is temporarily unavailable."
+          );
         }
 
         const data = await res.json();
@@ -660,7 +708,9 @@ export default function PortalAiChatBubble({
   const handleCreateComplaint = async (e: FormEvent) => {
     e.preventDefault();
     if (!createSubject.trim() || createMessage.trim().length < 10) {
-      setCreateError("Please provide a subject and at least 10 characters describing the issue.");
+      setCreateError(
+        "Please provide a subject and at least 10 characters describing the issue."
+      );
       return;
     }
 
@@ -755,8 +805,12 @@ export default function PortalAiChatBubble({
   if (!profile) return null;
 
   const suggestions = roleSuggestionChips(profile.role);
-  const selectedComplaint = complaints.find((c) => c.id === selectedComplaintId);
-  const activeTicketCount = complaints.filter((c) => c.status !== "resolved").length;
+  const selectedComplaint = complaints.find(
+    (c) => c.id === selectedComplaintId
+  );
+  const activeTicketCount = complaints.filter(
+    (c) => c.status !== "resolved"
+  ).length;
 
   return (
     <>
@@ -1114,8 +1168,7 @@ export default function PortalAiChatBubble({
                           msg.role === "user"
                             ? "14px 14px 2px 14px"
                             : "14px 14px 14px 2px",
-                        background:
-                          msg.role === "user" ? "#135B45" : "#ffffff",
+                        background: msg.role === "user" ? "#135B45" : "#ffffff",
                         color: msg.role === "user" ? "#ffffff" : "#1f2937",
                         fontSize: "13px",
                         lineHeight: "1.5",
@@ -1201,8 +1254,9 @@ export default function PortalAiChatBubble({
                               objectFit: "cover",
                             }}
                             onError={(e) => {
-                              (e.currentTarget as HTMLImageElement).style.display =
-                                "none";
+                              (
+                                e.currentTarget as HTMLImageElement
+                              ).style.display = "none";
                             }}
                           />
                         ) : (
@@ -1883,9 +1937,7 @@ export default function PortalAiChatBubble({
                                     fontSize: "9.5px",
                                     padding: "1px 6px",
                                     borderRadius: "8px",
-                                    background: isStaff
-                                      ? "#dcfce7"
-                                      : "#fef3c7",
+                                    background: isStaff ? "#dcfce7" : "#fef3c7",
                                     color: isStaff ? "#166534" : "#92400e",
                                     fontWeight: 700,
                                     textTransform: "uppercase",
@@ -2155,8 +2207,8 @@ export default function PortalAiChatBubble({
                         </strong>
                         <p style={{ margin: 0, lineHeight: 1.45 }}>
                           If you ever experience lesson quality issues, teacher
-                          punctuality problems, or billing concerns, you can file a
-                          complaint directly to school leadership.
+                          punctuality problems, or billing concerns, you can
+                          file a complaint directly to school leadership.
                         </p>
                         <button
                           type="button"
@@ -2181,7 +2233,7 @@ export default function PortalAiChatBubble({
                     {complaints.map((c) => {
                       const s = getStatusPill(c.status);
                       const u = getUrgencyPill(c.urgency);
-                      const replyCount = (c.messages?.length || 0);
+                      const replyCount = c.messages?.length || 0;
 
                       return (
                         <div
@@ -2200,7 +2252,8 @@ export default function PortalAiChatBubble({
                           }}
                           onMouseEnter={(e) => {
                             e.currentTarget.style.borderColor = "#135b45";
-                            e.currentTarget.style.transform = "translateY(-1px)";
+                            e.currentTarget.style.transform =
+                              "translateY(-1px)";
                           }}
                           onMouseLeave={(e) => {
                             e.currentTarget.style.borderColor = "#dce8df";
@@ -2274,10 +2327,18 @@ export default function PortalAiChatBubble({
                             }}
                           >
                             <span>{categoryLabel(c.category)}</span>
-                            <span style={{ display: "flex", alignItems: "center", gap: "3px" }}>
+                            <span
+                              style={{
+                                display: "flex",
+                                alignItems: "center",
+                                gap: "3px",
+                              }}
+                            >
                               <MessageSquare size={11} />
                               {replyCount > 0
-                                ? `${replyCount} ${replyCount === 1 ? "reply" : "replies"}`
+                                ? `${replyCount} ${
+                                    replyCount === 1 ? "reply" : "replies"
+                                  }`
                                 : "No replies yet"}
                             </span>
                           </div>

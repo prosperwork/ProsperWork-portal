@@ -55,7 +55,7 @@ export const replyToAliases = Object.freeze({
   admissions: "admissions@prosperworkmusic.com",
   registration: "registration@prosperworkmusic.com",
   students: "students@prosperworkmusic.com",
-  complaints: "complaints@prosperworkmusic.com",
+  complaints: "admin@prosperworkmusic.com",
   management: "management@prosperworkmusic.com",
   director: "director@prosperworkmusic.com",
   official: "official@prosperworkmusic.com",

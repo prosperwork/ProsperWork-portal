@@ -64,7 +64,8 @@ export default function ComplaintsPage() {
     else setLoading(true);
     setError("");
     try {
-      const response = await fetch("/api/complaints", {
+      const url = isRefresh ? "/api/complaints?sync=true" : "/api/complaints";
+      const response = await fetch(url, {
         method: "GET",
         credentials: "include",
         cache: "no-store",
@@ -302,7 +303,7 @@ export default function ComplaintsPage() {
               size={14}
               className={refreshing ? "spinning" : undefined}
             />
-            {refreshing ? "Refreshing…" : "Refresh records"}
+            {refreshing ? "Syncing emails…" : "Sync emails & refresh"}
           </button>
         </div>
       </div>
