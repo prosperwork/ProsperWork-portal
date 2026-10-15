@@ -39,7 +39,7 @@ export const legacyViewForPath = Object.fromEntries(
 ) as Record<string, LegacyWorkspaceView>;
 
 export const portalNavigation: PortalNavigationItem[] = [
-  { href: "/family", label: "My Family", icon: Users, roles: ["parent", "super_admin", "general_manager", "head_admin", "admin"] },
+  { href: "/family", label: "My Family", icon: Users, roles: ["parent", "super_admin"] },
   { href: legacyWorkspaceRoutes.overview.href, label: "Overview", icon: LayoutDashboard, roles: legacyWorkspaceRoutes.overview.roles },
   { href: legacyWorkspaceRoutes.schedule.href, label: "Schedule", icon: CalendarDays, roles: legacyWorkspaceRoutes.schedule.roles },
   { href: legacyWorkspaceRoutes.families.href, label: "Families & students", icon: Users, roles: legacyWorkspaceRoutes.families.roles },
@@ -60,7 +60,7 @@ export const portalNavigation: PortalNavigationItem[] = [
   { href: "/documents", label: "Invoices & receipts", icon: FileText, roles: ["super_admin", "general_manager", "head_admin", "admin", "finance", "parent"] },
   { href: "/policies", label: "Policies", icon: ShieldCheck, roles: ["super_admin", "general_manager", "head_admin", "admin", "hr"] },
   { href: "/leave", label: "Leave", icon: CalendarDays, roles: staffRoles },
-  { href: "/hiring", label: "Hiring", icon: BriefcaseBusiness, roles: ["super_admin", "general_manager", "head_admin", "admin", "hr", "qc", "sales_marketing", "social_media"] },
+  { href: "/hiring", label: "Hiring", icon: BriefcaseBusiness, roles: ["super_admin", "general_manager", "head_admin", "admin", "hr", "qc"] },
   { href: "/communications", label: "Communications", icon: MessageSquare, roles: ["super_admin", "sales_marketing"] },
   { href: "/studio", label: "Studio", icon: Music2, roles: ["super_admin", "head_admin", "admin", "teacher", "qc", "parent", "student"] },
   { href: "/manual", label: "Manual usage", icon: BookOpen, roles: internalStaffRoles },
