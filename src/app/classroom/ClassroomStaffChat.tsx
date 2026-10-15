@@ -101,24 +101,23 @@ export default function ClassroomStaffChat({
       return;
     }
 
-    let mount = lkChatEl.querySelector("#pc-staff-chat-portal") as HTMLElement | null;
+    const header = lkChatEl.querySelector(".lk-chat-header");
+    let mount = lkChatEl.querySelector(
+      "#pc-staff-chat-portal"
+    ) as HTMLElement | null;
+
     if (!mount) {
       mount = document.createElement("div");
       mount.id = "pc-staff-chat-portal";
-      mount.style.display = "flex";
-      mount.style.flexDirection = "column";
-      mount.style.width = "100%";
-      mount.style.overflow = "hidden";
-
-      const header = lkChatEl.querySelector(".lk-chat-header");
-      if (header && header.nextSibling) {
-        lkChatEl.insertBefore(mount, header.nextSibling);
-      } else if (header) {
-        header.after(mount);
-      } else {
-        lkChatEl.prepend(mount);
-      }
     }
+
+    // Ensure mount is always placed directly after .lk-chat-header
+    if (header && mount.previousElementSibling !== header) {
+      header.after(mount);
+    } else if (!header && !lkChatEl.contains(mount)) {
+      lkChatEl.prepend(mount);
+    }
+
     setPortalTarget(mount);
 
     return () => {
@@ -130,11 +129,25 @@ export default function ClassroomStaffChat({
     };
   }, [lkChatEl]);
 
+  // Synchronize staff-active class on portal container
+  useEffect(() => {
+    if (!portalTarget) return;
+    if (activeTab === "staff") {
+      portalTarget.classList.add("staff-active");
+    } else {
+      portalTarget.classList.remove("staff-active");
+    }
+  }, [portalTarget, activeTab]);
+
   // Control visibility of default LiveKit public elements based on activeTab
   useEffect(() => {
     if (!lkChatEl) return;
-    const msgList = lkChatEl.querySelector(".lk-chat-messages") as HTMLElement | null;
-    const msgForm = lkChatEl.querySelector(".lk-chat-form") as HTMLElement | null;
+    const msgList = lkChatEl.querySelector(
+      ".lk-chat-messages"
+    ) as HTMLElement | null;
+    const msgForm = lkChatEl.querySelector(
+      ".lk-chat-form"
+    ) as HTMLElement | null;
 
     if (activeTab === "staff") {
       if (msgList) msgList.style.display = "none";
@@ -298,10 +311,13 @@ export default function ClassroomStaffChat({
         <div
           style={{
             display: "flex",
-            background: "rgba(0, 0, 0, 0.4)",
-            borderBottom: "1px solid rgba(255, 255, 255, 0.1)",
-            padding: "6px 10px",
-            gap: 6,
+            background: "rgba(0, 0, 0, 0.6)",
+            borderBottom: "1px solid rgba(255, 255, 255, 0.12)",
+            padding: "8px 10px",
+            gap: 8,
+            flexShrink: 0,
+            width: "100%",
+            boxSizing: "border-box",
           }}
         >
           <button
@@ -309,67 +325,70 @@ export default function ClassroomStaffChat({
             onClick={() => setActiveTab("public")}
             style={{
               flex: 1,
-              padding: "7px 10px",
-              borderRadius: 6,
-              fontSize: 11,
+              height: "38px",
+              padding: "0 10px",
+              borderRadius: 8,
+              fontSize: 12,
               fontWeight: 700,
               cursor: "pointer",
               border:
                 activeTab === "public"
-                  ? "1px solid rgba(46, 213, 115, 0.5)"
-                  : "1px solid transparent",
+                  ? "2px solid #2ed573"
+                  : "1px solid rgba(255, 255, 255, 0.15)",
               background:
                 activeTab === "public"
-                  ? "rgba(46, 213, 115, 0.2)"
-                  : "rgba(255, 255, 255, 0.05)",
-              color: activeTab === "public" ? "#2ed573" : "#aaa",
+                  ? "rgba(46, 213, 115, 0.25)"
+                  : "rgba(255, 255, 255, 0.06)",
+              color: activeTab === "public" ? "#2ed573" : "#bbb",
               display: "inline-flex",
               alignItems: "center",
               justifyContent: "center",
-              gap: 5,
+              gap: 6,
               transition: "all 0.15s ease",
             }}
           >
-            <Globe size={13} />
-            <span>Everyone (Public)</span>
+            <Globe size={14} />
+            <span>Everyone</span>
           </button>
           <button
             type="button"
             onClick={() => setActiveTab("staff")}
             style={{
               flex: 1,
-              padding: "7px 10px",
-              borderRadius: 6,
-              fontSize: 11,
+              height: "38px",
+              padding: "0 10px",
+              borderRadius: 8,
+              fontSize: 12,
               fontWeight: 700,
               cursor: "pointer",
               border:
                 activeTab === "staff"
-                  ? "1px solid rgba(255, 177, 66, 0.5)"
-                  : "1px solid rgba(255, 177, 66, 0.2)",
+                  ? "2px solid #ffb142"
+                  : "1px solid rgba(255, 177, 66, 0.35)",
               background:
                 activeTab === "staff"
-                  ? "rgba(255, 177, 66, 0.22)"
+                  ? "rgba(255, 177, 66, 0.28)"
                   : "rgba(255, 177, 66, 0.08)",
               color: activeTab === "staff" ? "#ffb142" : "#ffc078",
               display: "inline-flex",
               alignItems: "center",
               justifyContent: "center",
-              gap: 5,
+              gap: 6,
               transition: "all 0.15s ease",
             }}
           >
-            <Lock size={12} />
-            <span>Staff Only (Private)</span>
+            <Lock size={13} />
+            <span>Staff Only</span>
             {staffMessages.length > 0 && (
               <span
                 style={{
                   background: activeTab === "staff" ? "#ffb142" : "#ff4757",
                   color: activeTab === "staff" ? "#111" : "#fff",
-                  fontSize: 9,
+                  fontSize: 10,
                   fontWeight: 800,
-                  padding: "1px 5px",
+                  padding: "1px 6px",
                   borderRadius: 10,
+                  marginLeft: 2,
                 }}
               >
                 {staffMessages.length}
@@ -384,9 +403,11 @@ export default function ClassroomStaffChat({
             style={{
               display: "flex",
               flexDirection: "column",
-              height: "calc(100vh - 165px)",
-              minHeight: "360px",
+              flex: "1 1 0%",
+              minHeight: 0,
+              width: "100%",
               background: "rgba(18, 24, 21, 0.98)",
+              overflow: "hidden",
             }}
           >
             {/* Private Banner */}
@@ -405,7 +426,8 @@ export default function ClassroomStaffChat({
               <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
                 <ShieldAlert size={14} color="#ffb142" />
                 <span>
-                  <strong>Private Staff Channel:</strong> Invisible to student & parent.
+                  <strong>Private Staff Channel:</strong> Invisible to student &
+                  parent.
                 </span>
               </div>
               <div
@@ -443,13 +465,23 @@ export default function ClassroomStaffChat({
                     padding: "30px 14px",
                   }}
                 >
-                  <Lock size={32} color="#ffb142" style={{ margin: "0 auto 10px" }} />
+                  <Lock
+                    size={32}
+                    color="#ffb142"
+                    style={{ margin: "0 auto 10px" }}
+                  />
                   <div style={{ fontSize: 13, fontWeight: 700, color: "#fff" }}>
                     Private Staff Backchannel
                   </div>
-                  <p style={{ fontSize: 11, margin: "6px 0 12px", color: "#a5b8ae" }}>
-                    Messages here are sent directly between Teacher and Admin only.
-                    The student will not see or hear these messages.
+                  <p
+                    style={{
+                      fontSize: 11,
+                      margin: "6px 0 12px",
+                      color: "#a5b8ae",
+                    }}
+                  >
+                    Messages here are sent directly between Teacher and Admin
+                    only. The student will not see or hear these messages.
                   </p>
                   <div
                     style={{
@@ -467,7 +499,8 @@ export default function ClassroomStaffChat({
                 </div>
               ) : (
                 staffMessages.map((msg) => {
-                  const isMe = msg.senderId === room?.localParticipant?.identity;
+                  const isMe =
+                    msg.senderId === room?.localParticipant?.identity;
                   const roleBadge = formatRoleBadge(msg.senderRole);
                   return (
                     <div
@@ -579,13 +612,16 @@ export default function ClassroomStaffChat({
                     transition: "all 0.15s ease",
                   }}
                   onMouseEnter={(e) => {
-                    e.currentTarget.style.background = "rgba(255, 177, 66, 0.25)";
+                    e.currentTarget.style.background =
+                      "rgba(255, 177, 66, 0.25)";
                     e.currentTarget.style.borderColor = "#ffb142";
                     e.currentTarget.style.color = "#ffb142";
                   }}
                   onMouseLeave={(e) => {
-                    e.currentTarget.style.background = "rgba(255, 255, 255, 0.06)";
-                    e.currentTarget.style.borderColor = "rgba(255, 255, 255, 0.15)";
+                    e.currentTarget.style.background =
+                      "rgba(255, 255, 255, 0.06)";
+                    e.currentTarget.style.borderColor =
+                      "rgba(255, 255, 255, 0.15)";
                     e.currentTarget.style.color = "#c2d1c9";
                   }}
                 >
@@ -642,7 +678,8 @@ export default function ClassroomStaffChat({
                   border: "none",
                   borderRadius: 8,
                   padding: "8px 14px",
-                  cursor: !inputText.trim() || isSending ? "not-allowed" : "pointer",
+                  cursor:
+                    !inputText.trim() || isSending ? "not-allowed" : "pointer",
                   display: "inline-flex",
                   alignItems: "center",
                   justifyContent: "center",
