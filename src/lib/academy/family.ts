@@ -63,6 +63,7 @@ export interface FamilyChild {
   timezone: string;
   studentUserId: string | null;
   username: string | null;
+  email?: string | null;
   avatarFileId: string | null;
   consent: boolean;
   rank: string;

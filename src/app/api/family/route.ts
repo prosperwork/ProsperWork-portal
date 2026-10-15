@@ -8,6 +8,7 @@ import {familyAction} from "@/lib/academy/family";
 import {deliverEmail} from "@/lib/email/transport.mjs";
 import {open,seal,pinDigest,pinMatches,sessionId} from "@/lib/academy/kid-session";
 import {loadAllRecords} from "@/lib/academy/paged-records";
+import {createStudentAuthUser} from "@/lib/academy/student-accounts";
 
 export const dynamic="force-dynamic";
 const reply=(body:object,status=200)=>NextResponse.json(body,{status,headers:{"Cache-Control":"private, no-store"}});
@@ -23,7 +24,7 @@ export async function GET(){
   const photo=await client.from("pw_profiles").select("avatar_file_id").eq("id",profile.id).single();
   if(students.error||photo.error)throw Error();
   const ids=students.data.flatMap(s=>s.student_user_id?[s.student_user_id]:[]);
-  const usernames=ids.length?await client.from("pw_profiles").select("id,username,avatar_file_id").in("id",ids):{data:[],error:null};
+  const usernames=ids.length?await client.from("pw_profiles").select("id,username,avatar_file_id,email").in("id",ids):{data:[],error:null};
   if(usernames.error)throw Error();
   const pin=profile.role==="parent"?await provisioningClient().from("pw_family_pins").select("parent_id").eq("parent_id",profile.id).maybeSingle():{data:null,error:null};
   if(pin.error)throw Error();
@@ -50,6 +51,7 @@ export async function GET(){
      adminName:d.adminName||undefined,
      studentUserId:s.student_user_id,
      username:u?.username||null,
+     email:u?.email||null,
      avatarFileId:u?.avatar_file_id||null,
      consent:d.consent===true,
      rank:d.rank||"Beginner"
@@ -203,24 +205,24 @@ export async function POST(request:Request){
    let linkedUsername:string|null=null;
    const initialPass = d.studentPassword || d.password;
    if(d.createLogin && initialPass && initialPass.length>=8){
-     const created=await admin.auth.admin.createUser({
-       email:`student-${randomUUID()}@students.prosperworkmusic.com`,
-       password:initialPass,
-       email_confirm:true,
-       user_metadata:{name:d.name.trim()}
-     });
-     if(!created.error&&created.data.user){
-       const linkRes=await admin.rpc("pw_link_student_account",{
-         p_actor:user.id,
-         p_child:studentId,
-         p_user:created.data.user.id,
-         p_username:null
+     try {
+       const studentAuth = await createStudentAuthUser(admin, {
+         name: d.name.trim(),
+         password: initialPass,
        });
-       if(!linkRes.error){
-         await admin.from("pw_profiles").update({ status: "pending" }).eq("id", created.data.user.id);
-         const profileRow=await admin.from("pw_profiles").select("username").eq("id",created.data.user.id).single();
-         linkedUsername=profileRow.data?.username||null;
+       const linkRes = await admin.rpc("pw_link_student_account", {
+         p_actor: user.id,
+         p_child: studentId,
+         p_user: studentAuth.user.id,
+         p_username: null,
+       });
+       if (!linkRes.error) {
+         await admin.from("pw_profiles").update({ status: "pending" }).eq("id", studentAuth.user.id);
+         const profileRow = await admin.from("pw_profiles").select("username").eq("id", studentAuth.user.id).single();
+         linkedUsername = profileRow.data?.username || null;
        }
+     } catch (authErr) {
+       console.error("Student login account creation failed:", authErr);
      }
    }
 
@@ -303,13 +305,31 @@ export async function POST(request:Request){
   }
   if(d.action==="student_account"){
    if(child.data.student_user_id)return reply({error:"This learner already has an account. Use password reset."},409);
-   const created=await admin.auth.admin.createUser({email:`student-${randomUUID()}@students.prosperworkmusic.com`,password:d.password,email_confirm:true,user_metadata:{name:child.data.payload.name}});
-   if(created.error||!created.data.user)return reply({error:"Student account could not be created."},503);
-    const linked=await admin.rpc("pw_link_student_account",{p_actor:user.id,p_child:d.childId,p_user:created.data.user.id,p_username:null});
-    if(linked.error){const cleaned=await admin.auth.admin.deleteUser(created.data.user.id);if(cleaned.error)throw Error();return reply({error:"Student login could not be linked. Try again or contact the academy."},409);}
-    const assigned=await admin.from("pw_profiles").select("username").eq("id",created.data.user.id).single();
-    if(assigned.error||!assigned.data)return reply({error:"Student login was created, but its username could not be loaded. Refresh this family record."},503);
-    return reply({ok:true,username:assigned.data.username});
+   let studentUser: { id: string };
+   try {
+     const studentAcc = await createStudentAuthUser(admin, {
+       name: child.data.payload.name,
+       password: d.password,
+     });
+     studentUser = studentAcc.user;
+   } catch (authErr) {
+     console.error("Student account generation error:", authErr);
+     return reply({ error: "Student account could not be created." }, 503);
+   }
+   const linked = await admin.rpc("pw_link_student_account", {
+     p_actor: user.id,
+     p_child: d.childId,
+     p_user: studentUser.id,
+     p_username: null,
+   });
+   if (linked.error) {
+     const cleaned = await admin.auth.admin.deleteUser(studentUser.id);
+     if (cleaned.error) throw Error();
+     return reply({ error: "Student login could not be linked. Try again or contact the academy." }, 409);
+   }
+   const assigned = await admin.from("pw_profiles").select("username").eq("id", studentUser.id).single();
+   if (assigned.error || !assigned.data) return reply({ error: "Student login was created, but its username could not be loaded. Refresh this family record." }, 503);
+   return reply({ ok: true, username: assigned.data.username });
   }
   const target=child.data.student_user_id;
   if(!target)return reply({error:"Create a student account first."},409);

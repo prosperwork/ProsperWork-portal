@@ -44,13 +44,28 @@ export async function POST(request: Request) {
     }
     if (action === "login") {
       if (!password) return NextResponse.json({ error: "Enter your password." }, { status: 400 });
-      let loginEmail=email!;
-      if(!email!.includes("@")){
-        const lookup=await provisioningClient().rpc("pw_login_email_for_username",{p_username:email!.trim()});
-        if(lookup.error||typeof lookup.data!=="string"||!lookup.data)return NextResponse.json({error:"Sign-in failed. Check your details and email verification."},{status:401});
-        loginEmail=lookup.data;
+      let loginEmail = email!.trim();
+      const rawUser = loginEmail.replace(/^@/, "");
+      if (!loginEmail.includes("@") || !rawUser.includes("@")) {
+        let lookup = await provisioningClient().rpc("pw_login_email_for_username", { p_username: rawUser });
+        if ((lookup.error || !lookup.data) && !rawUser.startsWith("pw_")) {
+          lookup = await provisioningClient().rpc("pw_login_email_for_username", { p_username: `pw_${rawUser}` });
+        }
+        if (lookup.error || typeof lookup.data !== "string" || !lookup.data) {
+          return NextResponse.json({ error: "Sign-in failed. Check your details and email verification." }, { status: 401 });
+        }
+        loginEmail = lookup.data;
       }
-      const { error } = await client.auth.signInWithPassword({ email: loginEmail, password });
+      let { error } = await client.auth.signInWithPassword({ email: loginEmail, password });
+      if (error && (loginEmail.endsWith("@student.prosperworkmusic.com") || loginEmail.endsWith("@students.prosperworkmusic.com"))) {
+        const altEmail = loginEmail.endsWith("@student.prosperworkmusic.com")
+          ? loginEmail.replace("@student.prosperworkmusic.com", "@students.prosperworkmusic.com")
+          : loginEmail.replace("@students.prosperworkmusic.com", "@student.prosperworkmusic.com");
+        const retry = await client.auth.signInWithPassword({ email: altEmail, password });
+        if (!retry.error) {
+          error = null;
+        }
+      }
       if (error) return NextResponse.json({ error: "Sign-in failed. Check your details and email verification." }, { status: 401 });
       // Root proxy runs account/role validation after establishing the session.
       const res = NextResponse.json({ ok: true, redirect: "/welcome" });
