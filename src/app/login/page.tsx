@@ -92,6 +92,7 @@ export default function LoginPage() {
         setFeedback({
           kind: "info",
           text: "For your security, you were signed out after 10 minutes of inactivity. Please sign in to continue.",
+          text: "For your security, you were signed out after 1 hour of inactivity. Please sign in to continue.",
         });
       } else if (reason === "password_changed") {
         setFeedback({
