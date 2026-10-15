@@ -24,6 +24,7 @@ import {
   Sparkles,
   X,
 } from "lucide-react";
+import ProfileAvatar from "./ProfileAvatar";
 import type { Role } from "@/lib/types";
 import {
   COMPLAINT_CATEGORIES,
@@ -1849,72 +1850,116 @@ export default function PortalAiChatBubble({
                       gap: "12px",
                     }}
                   >
-                    {/* Initial Parent Grievance Message */}
-                    <div
-                      style={{
-                        padding: "12px",
-                        borderRadius: "10px",
-                        background: "#ffffff",
-                        border: "1px solid #dce8df",
-                        borderLeft: "4px solid #135b45",
-                        fontSize: "12.5px",
-                      }}
-                    >
-                      <div
-                        style={{
-                          display: "flex",
-                          justifyContent: "space-between",
-                          alignItems: "center",
-                          marginBottom: "4px",
-                        }}
-                      >
-                        <strong style={{ color: "#0a2e22", fontSize: "12px" }}>
-                          {selectedComplaint.parent_name} (Initial Inquiry)
-                        </strong>
-                        <span style={{ fontSize: "10px", color: "#6b7280" }}>
-                          {formatShortDate(selectedComplaint.created_at)}
-                        </span>
-                      </div>
-                      <p
-                        style={{
-                          margin: 0,
-                          whiteSpace: "pre-wrap",
-                          lineHeight: 1.5,
-                          color: "#1e2924",
-                        }}
-                      >
-                        {selectedComplaint.message}
-                      </p>
-                    </div>
-
-                    {/* Replies */}
-                    {selectedComplaint.messages &&
-                      selectedComplaint.messages.map((m) => {
-                        const isStaff = m.sender_role !== "parent";
-                        return (
+                    {/* Initial Parent Inquiry Message */}
+                    {(() => {
+                      const isMe =
+                        profile?.role === "parent" &&
+                        selectedComplaint.parent_id === profile?.id;
+                      return (
+                        <div
+                          style={{
+                            display: "flex",
+                            gap: "10px",
+                            alignItems: "flex-start",
+                            flexDirection: isMe ? "row-reverse" : "row",
+                          }}
+                        >
+                          <ProfileAvatar
+                            name={selectedComplaint.parent_name}
+                            size={30}
+                          />
                           <div
-                            key={m.id}
                             style={{
-                              padding: "12px",
-                              borderRadius: "10px",
-                              background: isStaff ? "#edf8f2" : "#ffffff",
-                              border: isStaff
-                                ? "1px solid #bbf7d0"
-                                : "1px solid #dce8df",
-                              borderLeft: isStaff
-                                ? "4px solid #16a34a"
-                                : "4px solid #d97706",
-                              marginLeft: isStaff ? "16px" : "0",
-                              marginRight: isStaff ? "0" : "16px",
-                              fontSize: "12.5px",
+                              maxWidth: "82%",
+                              display: "flex",
+                              flexDirection: "column",
+                              alignItems: isMe ? "flex-end" : "flex-start",
                             }}
                           >
                             <div
                               style={{
                                 display: "flex",
-                                justifyContent: "space-between",
                                 alignItems: "center",
-                                marginBottom: "4px",
+                                gap: "6px",
+                                marginBottom: "3px",
+                                flexDirection: isMe ? "row-reverse" : "row",
+                              }}
+                            >
+                              <strong
+                                style={{
+                                  fontSize: "11.5px",
+                                  color: "#0a2e22",
+                                }}
+                              >
+                                {isMe ? "You" : selectedComplaint.parent_name}
+                              </strong>
+                              <span
+                                style={{
+                                  fontSize: "9px",
+                                  padding: "1px 5px",
+                                  borderRadius: "6px",
+                                  background: "#fef3c7",
+                                  color: "#92400e",
+                                  fontWeight: 700,
+                                  textTransform: "uppercase",
+                                }}
+                              >
+                                Parent
+                              </span>
+                              <span
+                                style={{ fontSize: "10px", color: "#6b7280" }}
+                              >
+                                {formatShortDate(selectedComplaint.created_at)}
+                              </span>
+                            </div>
+                            <div
+                              style={{
+                                background: isMe ? "#135b45" : "#ffffff",
+                                color: isMe ? "#ffffff" : "#1e2924",
+                                border: isMe
+                                  ? "1px solid #0f4b39"
+                                  : "1px solid #dce8df",
+                                borderRadius: isMe
+                                  ? "14px 4px 14px 14px"
+                                  : "4px 14px 14px 14px",
+                                padding: "10px 14px",
+                                fontSize: "12.5px",
+                                lineHeight: "1.55",
+                                whiteSpace: "pre-wrap",
+                                wordBreak: "break-word",
+                                boxShadow: "0 1px 2px rgba(0, 0, 0, 0.04)",
+                              }}
+                            >
+                              {selectedComplaint.message}
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })()}
+
+                    {/* Replies */}
+                    {selectedComplaint.messages &&
+                      selectedComplaint.messages.map((m) => {
+                        const isStaff = m.sender_role !== "parent";
+                        const isMe =
+                          profile?.id && m.sender_id === profile.id;
+                        return (
+                          <div
+                            key={m.id}
+                            style={{
+                              display: "flex",
+                              gap: "10px",
+                              alignItems: "flex-start",
+                              flexDirection: isMe ? "row-reverse" : "row",
+                            }}
+                          >
+                            <ProfileAvatar name={m.sender_name} size={30} />
+                            <div
+                              style={{
+                                maxWidth: "82%",
+                                display: "flex",
+                                flexDirection: "column",
+                                alignItems: isMe ? "flex-end" : "flex-start",
                               }}
                             >
                               <div
@@ -1922,22 +1967,26 @@ export default function PortalAiChatBubble({
                                   display: "flex",
                                   alignItems: "center",
                                   gap: "6px",
+                                  marginBottom: "3px",
+                                  flexDirection: isMe ? "row-reverse" : "row",
                                 }}
                               >
                                 <strong
                                   style={{
+                                    fontSize: "11.5px",
                                     color: isStaff ? "#14532d" : "#0a2e22",
-                                    fontSize: "12px",
                                   }}
                                 >
-                                  {m.sender_name}
+                                  {isMe ? "You" : m.sender_name}
                                 </strong>
                                 <span
                                   style={{
-                                    fontSize: "9.5px",
-                                    padding: "1px 6px",
-                                    borderRadius: "8px",
-                                    background: isStaff ? "#dcfce7" : "#fef3c7",
+                                    fontSize: "9px",
+                                    padding: "1px 5px",
+                                    borderRadius: "6px",
+                                    background: isStaff
+                                      ? "#dcfce7"
+                                      : "#fef3c7",
                                     color: isStaff ? "#166534" : "#92400e",
                                     fontWeight: 700,
                                     textTransform: "uppercase",
@@ -1945,23 +1994,46 @@ export default function PortalAiChatBubble({
                                 >
                                   {isStaff ? "Academy Staff" : "Parent"}
                                 </span>
+                                <span
+                                  style={{
+                                    fontSize: "10px",
+                                    color: "#6b7280",
+                                  }}
+                                >
+                                  {formatShortDate(m.created_at)}
+                                </span>
                               </div>
-                              <span
-                                style={{ fontSize: "10px", color: "#6b7280" }}
+                              <div
+                                style={{
+                                  background: isMe
+                                    ? "#135b45"
+                                    : isStaff
+                                    ? "#edf8f2"
+                                    : "#ffffff",
+                                  color: isMe
+                                    ? "#ffffff"
+                                    : isStaff
+                                    ? "#14532d"
+                                    : "#1e2924",
+                                  border: isMe
+                                    ? "1px solid #0f4b39"
+                                    : isStaff
+                                    ? "1px solid #bbf7d0"
+                                    : "1px solid #dce8df",
+                                  borderRadius: isMe
+                                    ? "14px 4px 14px 14px"
+                                    : "4px 14px 14px 14px",
+                                  padding: "10px 14px",
+                                  fontSize: "12.5px",
+                                  lineHeight: "1.55",
+                                  whiteSpace: "pre-wrap",
+                                  wordBreak: "break-word",
+                                  boxShadow: "0 1px 2px rgba(0, 0, 0, 0.04)",
+                                }}
                               >
-                                {formatShortDate(m.created_at)}
-                              </span>
+                                {m.message}
+                              </div>
                             </div>
-                            <p
-                              style={{
-                                margin: 0,
-                                whiteSpace: "pre-wrap",
-                                lineHeight: 1.5,
-                                color: isStaff ? "#14532d" : "#1e2924",
-                              }}
-                            >
-                              {m.message}
-                            </p>
                           </div>
                         );
                       })}
