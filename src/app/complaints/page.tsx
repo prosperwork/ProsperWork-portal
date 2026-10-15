@@ -1,31 +1,32 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState, type FormEvent } from "react";
 import {
   AlertCircle,
-  AlertTriangle,
+  Check,
   CheckCircle2,
+  ChevronRight,
   Clock,
-  Filter,
-  Inbox,
   Mail,
   MessageSquare,
   RefreshCw,
   Search,
-  Send,
   ShieldCheck,
   User,
-  X,
 } from "lucide-react";
+import ProfileAvatar from "../_components/ProfileAvatar";
+import {
+  Empty,
+  Pill,
+  SectionTitle,
+  niceDate,
+} from "../_lib/portal-formatters";
 import {
   COMPLAINT_CATEGORIES,
   categoryLabel,
-  urgencyBadge,
-  statusBadge,
   type ComplaintRecord,
   type ComplaintCategory,
   type ComplaintStatus,
-  type ComplaintUrgency,
 } from "@/lib/academy/complaints";
 
 export default function ComplaintsPage() {
@@ -33,7 +34,7 @@ export default function ComplaintsPage() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState("");
-  const [notice, setNotice] = useState("");
+  const [toast, setToast] = useState("");
 
   const [searchQuery, setSearchQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState<
@@ -41,14 +42,16 @@ export default function ComplaintsPage() {
   >("all");
   const [categoryFilter, setCategoryFilter] = useState<string>("all");
 
-  // Resolution modal state
-  const [activeComplaint, setActiveComplaint] =
-    useState<ComplaintRecord | null>(null);
-  const [modalStatus, setModalStatus] = useState<ComplaintStatus>("resolved");
-  const [modalNotes, setModalNotes] = useState("");
-  const [modalNotifyParent, setModalNotifyParent] = useState(true);
-  const [modalBusy, setModalBusy] = useState(false);
-  const [modalError, setModalError] = useState("");
+  // Master-Detail selection & Resolution state
+  const [selectedComplaintId, setSelectedComplaintId] = useState<string | null>(
+    null
+  );
+  const [actionStatus, setActionStatus] =
+    useState<ComplaintStatus>("resolved");
+  const [actionNotes, setActionNotes] = useState("");
+  const [notifyParent, setNotifyParent] = useState(true);
+  const [actionBusy, setActionBusy] = useState(false);
+  const [actionError, setActionError] = useState("");
 
   const loadComplaints = useCallback(async (isRefresh = false) => {
     if (isRefresh) setRefreshing(true);
@@ -64,7 +67,13 @@ export default function ComplaintsPage() {
       if (!response.ok) {
         throw new Error(data.error || "Failed to load complaints.");
       }
-      setComplaints(data.complaints || []);
+      const list = (data.complaints || []) as ComplaintRecord[];
+      setComplaints(list);
+      // Auto-select first ticket if none selected
+      setSelectedComplaintId((prev) => {
+        if (prev && list.some((c) => c.id === prev)) return prev;
+        return list[0]?.id || null;
+      });
     } catch (err) {
       setError(
         err instanceof Error ? err.message : "Failed to load complaints."
@@ -93,59 +102,79 @@ export default function ComplaintsPage() {
     return { total, open, inProgress, resolved, urgent };
   }, [complaints]);
 
-  // Filtered complaints
+  // Filtered complaints list
   const filteredComplaints = useMemo(() => {
     return complaints.filter((c) => {
-      // Status tab
       if (statusFilter === "open" && c.status !== "open") return false;
       if (statusFilter === "in_progress" && c.status !== "in_progress")
         return false;
       if (statusFilter === "resolved" && c.status !== "resolved") return false;
-      if (statusFilter === "urgent") {
-        if (c.urgency !== "urgent") return false;
-      }
+      if (
+        statusFilter === "urgent" &&
+        (c.urgency !== "urgent" || c.status === "resolved")
+      )
+        return false;
 
-      // Category
       if (categoryFilter !== "all" && c.category !== categoryFilter)
         return false;
 
-      // Text search
       if (searchQuery.trim()) {
-        const q = searchQuery.toLowerCase();
-        const matches =
-          c.ticket_number.toLowerCase().includes(q) ||
-          c.subject.toLowerCase().includes(q) ||
-          c.message.toLowerCase().includes(q) ||
-          c.parent_name.toLowerCase().includes(q) ||
-          c.parent_email.toLowerCase().includes(q) ||
-          (c.student_name && c.student_name.toLowerCase().includes(q));
-        if (!matches) return false;
+        const query = searchQuery.toLowerCase().trim();
+        const haystack = [
+          c.ticket_number,
+          c.parent_name,
+          c.parent_email,
+          c.student_name || "",
+          c.subject,
+          c.message,
+          categoryLabel(c.category),
+        ]
+          .join(" ")
+          .toLowerCase();
+        return haystack.includes(query);
       }
-
       return true;
     });
   }, [complaints, statusFilter, categoryFilter, searchQuery]);
 
-  const openResolutionModal = (complaint: ComplaintRecord) => {
-    setActiveComplaint(complaint);
-    setModalStatus(
-      complaint.status === "open" ? "in_progress" : complaint.status
+  const selectedComplaint = useMemo(() => {
+    if (!selectedComplaintId) return filteredComplaints[0] || null;
+    return (
+      filteredComplaints.find((c) => c.id === selectedComplaintId) ||
+      complaints.find((c) => c.id === selectedComplaintId) ||
+      filteredComplaints[0] ||
+      null
     );
-    setModalNotes(complaint.resolution_notes || "");
-    setModalNotifyParent(true);
-    setModalError("");
+  }, [selectedComplaintId, filteredComplaints, complaints]);
+
+  // When selected complaint changes, prepopulate resolution form
+  useEffect(() => {
+    if (selectedComplaint) {
+      setActionStatus(
+        selectedComplaint.status === "open"
+          ? "in_progress"
+          : selectedComplaint.status
+      );
+      setActionNotes(selectedComplaint.resolution_notes || "");
+      setActionError("");
+    }
+  }, [selectedComplaint?.id]);
+
+  const showToast = (message: string) => {
+    setToast(message);
+    setTimeout(() => setToast(""), 4500);
   };
 
-  const handleSaveResolution = async (e: React.FormEvent) => {
+  const handleSaveResolution = async (e: FormEvent) => {
     e.preventDefault();
-    if (!activeComplaint) return;
-    if (modalNotes.trim().length < 3) {
-      setModalError("Please provide resolution or update notes for the parent.");
+    if (!selectedComplaint) return;
+    if (actionNotes.trim().length < 3) {
+      setActionError("Please provide resolution or update notes for the parent.");
       return;
     }
 
-    setModalBusy(true);
-    setModalError("");
+    setActionBusy(true);
+    setActionError("");
 
     try {
       const response = await fetch("/api/complaints", {
@@ -154,10 +183,10 @@ export default function ComplaintsPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           action: "update_status",
-          complaintId: activeComplaint.id,
-          status: modalStatus,
-          resolutionNotes: modalNotes.trim(),
-          notifyParent: modalNotifyParent,
+          complaintId: selectedComplaint.id,
+          status: actionStatus,
+          resolutionNotes: actionNotes.trim(),
+          notifyParent,
         }),
       });
 
@@ -171,463 +200,531 @@ export default function ComplaintsPage() {
         current.map((c) => (c.id === updated.id ? updated : c))
       );
 
-      setNotice(
-        `Ticket #${updated.ticket_number} marked as ${updated.status === "resolved" ? "Resolved" : "Under Review"}. ${modalNotifyParent ? "Parent has been notified by email." : ""}`
+      showToast(
+        `Ticket #${updated.ticket_number} marked as ${
+          updated.status === "resolved" ? "Resolved" : "Under Review"
+        }. ${notifyParent ? "Parent notified by email." : ""}`
       );
-      setActiveComplaint(null);
     } catch (err) {
-      setModalError(
+      setActionError(
         err instanceof Error ? err.message : "Failed to update ticket."
       );
     } finally {
-      setModalBusy(false);
+      setActionBusy(false);
     }
   };
 
   return (
-    <main className="complaints-wrap">
-      {/* Header */}
-      <div className="complaints-header">
+    <div className="page-wrap">
+      {/* Page Heading matching all other workspaces */}
+      <div className="page-heading">
         <div>
-          <span className="eyebrow">Quality & Operations</span>
-          <h1>Complaints & Support Center</h1>
-          <p>
-            Review, investigate, and resolve grievances raised by academy
-            parents and families.
+          <span className="eyebrow">Quality &amp; Operations</span>
+          <h1>Complaints &amp; Support</h1>
+          <p className="page-subtitle">
+            Review, investigate, and resolve grievances raised by academy parents and families.
           </p>
         </div>
-        <button
-          className="btn ghost"
-          onClick={() => void loadComplaints(true)}
-          disabled={loading || refreshing}
-          aria-label="Refresh tickets"
-        >
-          <RefreshCw
-            size={14}
-            className={refreshing ? "spinning" : undefined}
-          />
-          {refreshing ? "Refreshing…" : "Refresh"}
-        </button>
-      </div>
-
-      {/* Notifications / Alerts */}
-      {error && (
-        <div className="family-alert" role="alert">
-          <AlertCircle size={16} />
-          <p>{error}</p>
-        </div>
-      )}
-
-      {notice && (
-        <div className="family-alert success" role="status">
-          <CheckCircle2 size={16} />
-          <p>{notice}</p>
+        <div className="heading-actions">
           <button
-            className="family-modal-close"
-            style={{ marginLeft: "auto" }}
-            onClick={() => setNotice("")}
+            type="button"
+            className="btn ghost"
+            onClick={() => void loadComplaints(true)}
+            disabled={loading || refreshing}
+            aria-label="Refresh tickets"
           >
-            <X size={14} />
-          </button>
-        </div>
-      )}
-
-      {/* Metric Cards */}
-      <div className="complaints-stats">
-        <div className="complaints-stat-card">
-          <span className="complaints-stat-num">{stats.total}</span>
-          <span className="complaints-stat-label">Total Inquiries</span>
-        </div>
-        <div className="complaints-stat-card open-stat">
-          <span className="complaints-stat-num" style={{ color: "#d97706" }}>
-            {stats.open}
-          </span>
-          <span className="complaints-stat-label">Open / Pending Review</span>
-        </div>
-        <div className="complaints-stat-card">
-          <span className="complaints-stat-num" style={{ color: "#0284c7" }}>
-            {stats.inProgress}
-          </span>
-          <span className="complaints-stat-label">Under Investigation</span>
-        </div>
-        <div className="complaints-stat-card resolved-stat">
-          <span className="complaints-stat-num" style={{ color: "#059669" }}>
-            {stats.resolved}
-          </span>
-          <span className="complaints-stat-label">Resolved</span>
-        </div>
-        <div className="complaints-stat-card urgent-stat">
-          <span className="complaints-stat-num" style={{ color: "#dc2626" }}>
-            {stats.urgent}
-          </span>
-          <span className="complaints-stat-label">Urgent Priority</span>
-        </div>
-      </div>
-
-      {/* Controls & Filters */}
-      <div className="complaints-controls">
-        <div className="complaints-filter-tabs">
-          <button
-            className={`complaints-tab-btn ${statusFilter === "all" ? "active" : ""}`}
-            onClick={() => setStatusFilter("all")}
-          >
-            All Tickets ({stats.total})
-          </button>
-          <button
-            className={`complaints-tab-btn ${statusFilter === "open" ? "active" : ""}`}
-            onClick={() => setStatusFilter("open")}
-          >
-            Open ({stats.open})
-          </button>
-          <button
-            className={`complaints-tab-btn ${statusFilter === "in_progress" ? "active" : ""}`}
-            onClick={() => setStatusFilter("in_progress")}
-          >
-            Under Review ({stats.inProgress})
-          </button>
-          <button
-            className={`complaints-tab-btn ${statusFilter === "resolved" ? "active" : ""}`}
-            onClick={() => setStatusFilter("resolved")}
-          >
-            Resolved ({stats.resolved})
-          </button>
-          <button
-            className={`complaints-tab-btn ${statusFilter === "urgent" ? "active" : ""}`}
-            onClick={() => setStatusFilter("urgent")}
-          >
-            Urgent ({stats.urgent})
-          </button>
-        </div>
-
-        <div className="complaints-filter-group">
-          <div style={{ position: "relative", display: "flex", alignItems: "center" }}>
-            <Search
+            <RefreshCw
               size={14}
-              style={{
-                position: "absolute",
-                left: 10,
-                color: "#6a7f74",
-                pointerEvents: "none",
-              }}
+              className={refreshing ? "spinning" : undefined}
             />
-            <input
-              type="text"
-              placeholder="Search parent, student, ticket…"
-              className="complaints-search-input"
-              style={{ paddingLeft: 30 }}
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-            />
-          </div>
-
-          <select
-            className="complaints-select"
-            value={categoryFilter}
-            onChange={(e) => setCategoryFilter(e.target.value)}
-            aria-label="Filter by category"
-          >
-            <option value="all">All Categories</option>
-            {COMPLAINT_CATEGORIES.map((c) => (
-              <option key={c.value} value={c.value}>
-                {c.label}
-              </option>
-            ))}
-          </select>
+            {refreshing ? "Refreshing…" : "Refresh records"}
+          </button>
         </div>
       </div>
 
-      {/* Ticket List */}
-      {loading ? (
-        <div className="complaints-empty">
-          <div className="skeleton-line" style={{ width: 140 }} />
-          <div className="skeleton-line short" />
-          <p>Loading complaints queue…</p>
+      {/* Global Alerts */}
+      {error && (
+        <div role="alert" className="form-error" style={{ marginBottom: 16 }}>
+          {error}
         </div>
-      ) : filteredComplaints.length === 0 ? (
-        <div className="complaints-empty">
-          <div className="complaints-empty-icon">
-            <Inbox size={26} />
-          </div>
-          <h3>No complaints found</h3>
-          <p>
-            {complaints.length === 0
-              ? "No complaints or feedback have been submitted by parents yet."
-              : "No tickets match your current filters. Try selecting a different tab or clearing your search."}
-          </p>
-        </div>
-      ) : (
-        <div className="complaints-list">
-          {filteredComplaints.map((c) => {
-            const urgency = urgencyBadge(c.urgency);
-            const status = statusBadge(c.status);
-            const isResolved = c.status === "resolved";
+      )}
 
-            return (
-              <article key={c.id} className="complaint-card">
-                <div className="complaint-card-top">
-                  <div className="complaint-meta-badges">
-                    <span className="complaint-ticket-id">
-                      #{c.ticket_number}
-                    </span>
-                    <span className={urgency.className}>{urgency.label}</span>
-                    <span className={status.className}>{status.label}</span>
+      {/* Stat Cards - using exact base.css .stat-grid layout */}
+      <div className="stat-grid">
+        <div className="card stat-card">
+          <div className="stat-top">
+            Total Inquiries{" "}
+            <span className="stat-icon">
+              <MessageSquare size={15} />
+            </span>
+          </div>
+          <div className="stat-value">{stats.total}</div>
+          <div className="stat-foot">Logged across academy families</div>
+        </div>
+
+        <div className="card stat-card">
+          <div className="stat-top">
+            Awaiting Review{" "}
+            <span
+              className="stat-icon"
+              style={{ background: "#fef3c7", color: "#d97706" }}
+            >
+              <Clock size={15} />
+            </span>
+          </div>
+          <div
+            className="stat-value"
+            style={{ color: stats.open > 0 ? "#b45309" : undefined }}
+          >
+            {stats.open}
+          </div>
+          <div className="stat-foot">
+            {stats.urgent} urgent priority ticket{stats.urgent === 1 ? "" : "s"}
+          </div>
+        </div>
+
+        <div className="card stat-card">
+          <div className="stat-top">
+            Under Investigation{" "}
+            <span
+              className="stat-icon"
+              style={{ background: "#e0f2fe", color: "#0284c7" }}
+            >
+              <Search size={15} />
+            </span>
+          </div>
+          <div
+            className="stat-value"
+            style={{ color: stats.inProgress > 0 ? "#0284c7" : undefined }}
+          >
+            {stats.inProgress}
+          </div>
+          <div className="stat-foot">Staff follow-up in progress</div>
+        </div>
+
+        <div className="card stat-card">
+          <div className="stat-top">
+            Resolved{" "}
+            <span
+              className="stat-icon"
+              style={{ background: "#d1fae5", color: "#059669" }}
+            >
+              <CheckCircle2 size={15} />
+            </span>
+          </div>
+          <div className="stat-value" style={{ color: "#059669" }}>
+            {stats.resolved}
+          </div>
+          <div className="stat-foot">Issues concluded and confirmed</div>
+        </div>
+      </div>
+
+      {/* Toolbar matching FamiliesView and LeadsView */}
+      <div className="toolbar">
+        <div className="search">
+          <Search size={14} />
+          <input
+            type="search"
+            placeholder="Search by ticket #, parent, student or subject…"
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+          />
+        </div>
+
+        <select
+          className="select-mini"
+          value={categoryFilter}
+          onChange={(e) => setCategoryFilter(e.target.value)}
+          aria-label="Filter by category"
+        >
+          <option value="all">All Categories</option>
+          {COMPLAINT_CATEGORIES.map((cat) => (
+            <option key={cat.value} value={cat.value}>
+              {cat.label}
+            </option>
+          ))}
+        </select>
+
+        <select
+          className="select-mini"
+          value={statusFilter}
+          onChange={(e) =>
+            setStatusFilter(e.target.value as typeof statusFilter)
+          }
+          aria-label="Filter by status"
+        >
+          <option value="all">All Statuses ({stats.total})</option>
+          <option value="open">Awaiting Review ({stats.open})</option>
+          <option value="in_progress">
+            Under Investigation ({stats.inProgress})
+          </option>
+          <option value="resolved">Resolved ({stats.resolved})</option>
+          {stats.urgent > 0 && (
+            <option value="urgent">Urgent Priority ({stats.urgent})</option>
+          )}
+        </select>
+      </div>
+
+      {/* Master-Detail Layout - exactly matching FamiliesView */}
+      <div
+        className="grid-main"
+        style={{
+          gridTemplateColumns: "minmax(300px, 380px) 1fr",
+          gap: "18px",
+          alignItems: "start",
+        }}
+      >
+        {/* Left: Ticket Roster */}
+        <section className="card section-card">
+          <SectionTitle
+            title="Grievance Tickets"
+            detail={`${filteredComplaints.length} tickets matching filters`}
+          />
+
+          {filteredComplaints.length > 0 ? (
+            filteredComplaints.map((c) => {
+              const isSelected = selectedComplaint?.id === c.id;
+              return (
+                <button
+                  key={c.id}
+                  type="button"
+                  className={`student-select ${isSelected ? "selected" : ""}`}
+                  onClick={() => setSelectedComplaintId(c.id)}
+                >
+                  <ProfileAvatar name={c.parent_name} size={32} />
+                  <span className="student-select-copy">
                     <span
                       style={{
-                        fontSize: 12,
-                        color: "#6a7f74",
-                        fontWeight: 600,
+                        display: "flex",
+                        alignItems: "center",
+                        gap: "6px",
                       }}
                     >
-                      {categoryLabel(c.category)}
+                      <strong>{c.parent_name}</strong>
+                      <small style={{ color: "var(--muted)" }}>
+                        #{c.ticket_number}
+                      </small>
                     </span>
-                  </div>
-
-                  <span
+                    <small
+                      style={{
+                        color: "var(--pine-950)",
+                        fontWeight: 600,
+                        overflow: "hidden",
+                        textOverflow: "ellipsis",
+                        whiteSpace: "nowrap",
+                      }}
+                    >
+                      {c.subject}
+                    </small>
+                    <small>
+                      {c.student_name ? `${c.student_name} · ` : ""}
+                      {categoryLabel(c.category)} · {niceDate(c.created_at)}
+                    </small>
+                  </span>
+                  <div
                     style={{
-                      fontSize: 12,
-                      color: "#6a7f74",
+                      display: "flex",
+                      flexDirection: "column",
+                      gap: "4px",
+                      alignItems: "flex-end",
+                    }}
+                  >
+                    <Pill
+                      tone={
+                        c.status === "resolved"
+                          ? "green"
+                          : c.status === "in_progress"
+                          ? "blue"
+                          : "amber"
+                      }
+                    >
+                      {c.status === "in_progress"
+                        ? "In Review"
+                        : c.status === "resolved"
+                        ? "Resolved"
+                        : "Open"}
+                    </Pill>
+                    {c.urgency === "urgent" && (
+                      <span
+                        style={{
+                          fontSize: "9px",
+                          fontWeight: 700,
+                          color: "#dc2626",
+                          textTransform: "uppercase",
+                        }}
+                      >
+                        Urgent
+                      </span>
+                    )}
+                  </div>
+                  <ChevronRight size={14} color="#829087" />
+                </button>
+              );
+            })
+          ) : (
+            <Empty
+              title="No tickets found"
+              detail={
+                searchQuery || categoryFilter !== "all" || statusFilter !== "all"
+                  ? "No tickets match the selected filters."
+                  : "No parent complaints or inquiries recorded."
+              }
+            />
+          )}
+        </section>
+
+        {/* Right: Selected Ticket Detail & Action Desk */}
+        {selectedComplaint ? (
+          <div className="stack">
+            {/* Ticket Header & Context Card */}
+            <section className="card">
+              <div className="profile-head">
+                <ProfileAvatar name={selectedComplaint.parent_name} size={49} />
+                <div style={{ flex: 1 }}>
+                  <div
+                    style={{
                       display: "flex",
                       alignItems: "center",
-                      gap: 4,
+                      gap: "8px",
+                      flexWrap: "wrap",
+                      marginBottom: "4px",
                     }}
                   >
-                    <Clock size={12} />
-                    {new Date(c.created_at).toLocaleDateString("en-GB", {
-                      day: "numeric",
-                      month: "short",
-                      year: "numeric",
-                      hour: "2-digit",
-                      minute: "2-digit",
-                    })}
+                    <h3 style={{ margin: 0 }}>
+                      {selectedComplaint.parent_name}
+                    </h3>
+                    <Pill
+                      tone={
+                        selectedComplaint.status === "resolved"
+                          ? "green"
+                          : selectedComplaint.status === "in_progress"
+                          ? "blue"
+                          : "amber"
+                      }
+                    >
+                      {selectedComplaint.status === "in_progress"
+                        ? "Under Investigation"
+                        : selectedComplaint.status === "resolved"
+                        ? "Resolved"
+                        : "Awaiting Review"}
+                    </Pill>
+                    <Pill
+                      tone={
+                        selectedComplaint.urgency === "urgent"
+                          ? "red"
+                          : selectedComplaint.urgency === "high"
+                          ? "amber"
+                          : "blue"
+                      }
+                    >
+                      {selectedComplaint.urgency.toUpperCase()} Urgency
+                    </Pill>
+                  </div>
+                  <span className="page-subtitle">
+                    Ticket #{selectedComplaint.ticket_number} · Logged{" "}
+                    {niceDate(selectedComplaint.created_at)}
                   </span>
                 </div>
-
-                <h2 className="complaint-subject">{c.subject}</h2>
-
-                <div className="complaint-parties">
-                  <div>
-                    <strong>Guardian:</strong> {c.parent_name}{" "}
-                    <a
-                      href={`mailto:${c.parent_email}`}
-                      style={{
-                        color: "#135b45",
-                        fontWeight: 600,
-                        marginLeft: 4,
-                      }}
-                    >
-                      ({c.parent_email})
-                    </a>
-                  </div>
-                  {c.student_name && (
-                    <div>
-                      <strong>Student:</strong> {c.student_name}
-                    </div>
-                  )}
-                </div>
-
-                <div className="complaint-body-box">{c.message}</div>
-
-                {/* Resolution Notes Box if present */}
-                {c.resolution_notes && (
-                  <div
-                    className={`complaint-resolution-box ${
-                      !isResolved ? "in-progress-box" : ""
-                    }`}
-                  >
-                    <div className="complaint-resolution-header">
-                      <span className="complaint-resolution-title">
-                        {isResolved
-                          ? "✓ Official Resolution"
-                          : "⚙ Administrative Notes"}
-                      </span>
-                      {c.resolved_by_name && (
-                        <span style={{ fontSize: 11.5, color: "#5a6e64" }}>
-                          Updated by {c.resolved_by_name}
-                          {c.resolved_at
-                            ? ` on ${new Date(c.resolved_at).toLocaleDateString(
-                                "en-GB",
-                                {
-                                  day: "numeric",
-                                  month: "short",
-                                  hour: "2-digit",
-                                  minute: "2-digit",
-                                }
-                              )}`
-                            : ""}
-                        </span>
-                      )}
-                    </div>
-                    <p className="complaint-resolution-notes">
-                      {c.resolution_notes}
-                    </p>
-                  </div>
-                )}
-
-                <div className="complaint-card-actions">
-                  <button
-                    className="family-button secondary"
-                    onClick={() => openResolutionModal(c)}
-                  >
-                    <MessageSquare size={14} />
-                    {isResolved ? "Update Resolution" : "Respond & Resolve"}
-                  </button>
-                </div>
-              </article>
-            );
-          })}
-        </div>
-      )}
-
-      {/* Resolution Modal */}
-      {activeComplaint && (
-        <div
-          className="complaints-modal-scrim"
-          onClick={(e) => {
-            if (e.target === e.currentTarget) setActiveComplaint(null);
-          }}
-        >
-          <div
-            className="complaints-modal-card"
-            role="dialog"
-            aria-modal="true"
-            aria-labelledby="resolution-title"
-          >
-            <div className="complaints-modal-head">
-              <div>
-                <h2 id="resolution-title">
-                  Respond to Ticket #{activeComplaint.ticket_number}
-                </h2>
-                <span style={{ fontSize: 12, color: "#6a7f74" }}>
-                  Guardian: {activeComplaint.parent_name} (
-                  {activeComplaint.parent_email})
-                </span>
               </div>
-              <button
-                type="button"
-                className="family-modal-close"
-                onClick={() => setActiveComplaint(null)}
-                aria-label="Close"
-              >
-                <X size={18} />
-              </button>
-            </div>
 
-            <form onSubmit={handleSaveResolution}>
-              <div className="complaints-modal-body">
-                {modalError && (
-                  <div className="family-alert" role="alert">
-                    <AlertCircle size={15} />
-                    <p>{modalError}</p>
+              <div className="profile-grid">
+                <div className="profile-field">
+                  <span>Category</span>
+                  <strong>{categoryLabel(selectedComplaint.category)}</strong>
+                </div>
+                <div className="profile-field">
+                  <span>Student / Learner</span>
+                  <strong>
+                    {selectedComplaint.student_name || "General Family Concern"}
+                  </strong>
+                </div>
+                <div className="profile-field">
+                  <span>Parent Email</span>
+                  <strong style={{ wordBreak: "break-all" }}>
+                    {selectedComplaint.parent_email}
+                  </strong>
+                </div>
+              </div>
+
+              <div style={{ padding: "20px" }}>
+                <div style={{ marginBottom: "14px" }}>
+                  <span className="eyebrow">Subject</span>
+                  <h2
+                    style={{
+                      fontSize: "16px",
+                      fontWeight: 700,
+                      margin: "4px 0 0",
+                      color: "var(--pine-950)",
+                    }}
+                  >
+                    {selectedComplaint.subject}
+                  </h2>
+                </div>
+                <div>
+                  <span className="eyebrow">
+                    Parent Message &amp; Grievance Statement
+                  </span>
+                  <div
+                    style={{
+                      background: "#f9faf8",
+                      border: "1px solid var(--line)",
+                      borderRadius: "10px",
+                      padding: "16px",
+                      marginTop: "6px",
+                      fontSize: "13px",
+                      lineHeight: "1.6",
+                      color: "var(--ink)",
+                      whiteSpace: "pre-wrap",
+                    }}
+                  >
+                    {selectedComplaint.message}
                   </div>
-                )}
+                </div>
+              </div>
+            </section>
 
+            {/* Resolution Form Card */}
+            <section className="card section-card">
+              <SectionTitle
+                title="Resolution & Investigation Action"
+                detail="Update the case status, record investigative notes, and email the family."
+              />
+
+              {selectedComplaint.resolution_notes && (
                 <div
                   style={{
-                    padding: 12,
-                    background: "#f7faf8",
-                    borderRadius: 8,
-                    fontSize: 13,
-                    border: "1px solid #eef2ef",
+                    marginBottom: "16px",
+                    background: "#f0fdf4",
+                    border: "1px solid #bbf7d0",
+                    borderRadius: "10px",
+                    padding: "14px 16px",
                   }}
                 >
-                  <strong style={{ display: "block", color: "#0a2e22" }}>
-                    {activeComplaint.subject}
-                  </strong>
-                  <p
+                  <span
                     style={{
-                      margin: "4px 0 0",
-                      color: "#4a5d54",
-                      maxHeight: 80,
-                      overflowY: "auto",
-                      whiteSpace: "pre-line",
+                      fontSize: "10px",
+                      fontWeight: 700,
+                      color: "#166534",
+                      textTransform: "uppercase",
+                      letterSpacing: "0.5px",
                     }}
                   >
-                    {activeComplaint.message}
+                    Previous Resolution Notes{" "}
+                    {selectedComplaint.resolved_by_name
+                      ? `by ${selectedComplaint.resolved_by_name}`
+                      : ""}{" "}
+                    {selectedComplaint.resolved_at
+                      ? `on ${niceDate(selectedComplaint.resolved_at)}`
+                      : ""}
+                  </span>
+                  <p
+                    style={{
+                      margin: "6px 0 0",
+                      fontSize: "12px",
+                      color: "#14532d",
+                      lineHeight: 1.5,
+                      whiteSpace: "pre-wrap",
+                    }}
+                  >
+                    {selectedComplaint.resolution_notes}
                   </p>
                 </div>
+              )}
 
-                <div className="complaints-field">
-                  <label htmlFor="modal-status">Ticket Status *</label>
-                  <select
-                    id="modal-status"
-                    value={modalStatus}
-                    onChange={(e) =>
-                      setModalStatus(e.target.value as ComplaintStatus)
-                    }
+              <form onSubmit={handleSaveResolution}>
+                <div className="form-grid">
+                  <div className="field">
+                    <label htmlFor="complaint-status">Ticket Status *</label>
+                    <select
+                      id="complaint-status"
+                      value={actionStatus}
+                      onChange={(e) =>
+                        setActionStatus(e.target.value as ComplaintStatus)
+                      }
+                    >
+                      <option value="in_progress">
+                        Keep Under Investigation (In Progress)
+                      </option>
+                      <option value="resolved">
+                        Mark Fully Resolved (Close Ticket)
+                      </option>
+                      <option value="open">Re-open for Review</option>
+                    </select>
+                  </div>
+
+                  <div className="field">
+                    <label>Family Communication</label>
+                    <label
+                      className="check-field"
+                      style={{ marginTop: "10px" }}
+                    >
+                      <input
+                        type="checkbox"
+                        checked={notifyParent}
+                        onChange={(e) => setNotifyParent(e.target.checked)}
+                      />
+                      Send resolution email to {selectedComplaint.parent_email}
+                    </label>
+                  </div>
+
+                  <div className="field full">
+                    <label htmlFor="resolution-notes">
+                      Resolution / Investigation Notes (Included in parent notification) *
+                    </label>
+                    <textarea
+                      id="resolution-notes"
+                      rows={4}
+                      placeholder="Detail findings, actions agreed with teacher or admin, schedule adjustments made, or compensation provided…"
+                      value={actionNotes}
+                      onChange={(e) => setActionNotes(e.target.value)}
+                      required
+                    />
+                  </div>
+                </div>
+
+                {actionError && (
+                  <p
+                    role="alert"
+                    className="form-error"
+                    style={{ marginTop: "12px" }}
                   >
-                    <option value="in_progress">
-                      Under Review / In Progress
-                    </option>
-                    <option value="resolved">Mark as Resolved</option>
-                    <option value="open">Re-open Ticket</option>
-                  </select>
+                    {actionError}
+                  </p>
+                )}
+
+                <div className="modal-actions" style={{ marginTop: "16px" }}>
+                  <button
+                    type="submit"
+                    className="btn primary"
+                    disabled={actionBusy || !actionNotes.trim()}
+                  >
+                    <Check size={14} />
+                    {actionBusy
+                      ? "Saving…"
+                      : actionStatus === "resolved"
+                      ? "Confirm & Resolve Ticket"
+                      : "Save Investigation Update"}
+                  </button>
                 </div>
-
-                <div className="complaints-field">
-                  <label htmlFor="modal-notes">
-                    Resolution / Administrative Response *
-                  </label>
-                  <textarea
-                    id="modal-notes"
-                    required
-                    placeholder="Describe the actions taken, corrective measures, or findings. This note is shared with the guardian."
-                    value={modalNotes}
-                    onChange={(e) => setModalNotes(e.target.value)}
-                  />
-                  <small style={{ fontSize: 11, color: "#6a7f74" }}>
-                    Clear, empathetic communication maintains parent trust and
-                    upholds our quality standards.
-                  </small>
-                </div>
-
-                <label
-                  style={{
-                    display: "flex",
-                    alignItems: "center",
-                    gap: 8,
-                    fontSize: 13,
-                    color: "#24382e",
-                    cursor: "pointer",
-                  }}
-                >
-                  <input
-                    type="checkbox"
-                    checked={modalNotifyParent}
-                    onChange={(e) => setModalNotifyParent(e.target.checked)}
-                  />
-                  <span>
-                    Send resolution email update to {activeComplaint.parent_email}
-                  </span>
-                </label>
-              </div>
-
-              <div className="complaints-modal-foot">
-                <button
-                  type="button"
-                  className="family-button secondary"
-                  onClick={() => setActiveComplaint(null)}
-                  disabled={modalBusy}
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  className="family-button primary"
-                  disabled={modalBusy || modalNotes.trim().length < 3}
-                >
-                  {modalBusy ? (
-                    "Saving…"
-                  ) : (
-                    <>
-                      <Send size={14} /> Save & Update Ticket
-                    </>
-                  )}
-                </button>
-              </div>
-            </form>
+              </form>
+            </section>
           </div>
+        ) : (
+          <section className="card section-card">
+            <Empty
+              title="Select a ticket"
+              detail="Choose a complaint from the roster on the left to inspect student details, read the parent's message, and take resolution action."
+            />
+          </section>
+        )}
+      </div>
+
+      {/* Floating Notification Toast matching portal standard */}
+      {toast && (
+        <div role="status" aria-live="polite" className="toast">
+          {toast}
         </div>
       )}
-    </main>
+    </div>
   );
 }

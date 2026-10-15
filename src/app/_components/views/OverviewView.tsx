@@ -1,7 +1,8 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import {
+  AlertCircle,
   BookOpen,
   CalendarDays,
   Check,
@@ -15,6 +16,7 @@ import {
   Sparkles,
   Users,
 } from "lucide-react";
+import type { ComplaintRecord } from "@/lib/academy/complaints";
 import ProfileAvatar from "../ProfileAvatar";
 import BrandEmblem from "../BrandEmblem";
 import {
@@ -109,6 +111,29 @@ export default function OverviewView({
     }
   };
 
+  const [complaints, setComplaints] = useState<ComplaintRecord[]>([]);
+
+  useEffect(() => {
+    let isMounted = true;
+    fetch("/api/complaints")
+      .then((res) => res.json())
+      .then((resData) => {
+        if (
+          isMounted &&
+          resData.complaints &&
+          Array.isArray(resData.complaints)
+        ) {
+          setComplaints(resData.complaints);
+        }
+      })
+      .catch(() => {});
+    return () => {
+      isMounted = false;
+    };
+  }, []);
+
+  const openComplaints = complaints.filter((c) => c.status !== "resolved");
+
   const todays = visibleLessons.filter(
     (lesson) =>
       new Date(lesson.startsAt).toISOString().slice(0, 10) === todayKey()
@@ -131,12 +156,21 @@ export default function OverviewView({
       )
     : 0;
   const attention = [
+    ...openComplaints.map((c) => ({
+      title: `Resolve complaint: ${c.subject}`,
+      sub: `${c.parent_name} · ${c.urgency.toUpperCase()} urgency · ${
+        c.ticket_number
+      }`,
+      tone: "red" as const,
+      link: "/complaints",
+    })),
     ...data.leads
       .filter((lead) => lead.status === "new")
       .map((lead) => ({
         title: `Reply to ${lead.parentName}`,
         sub: `${lead.childName} · enquiry received ${niceDate(lead.arrivedAt)}`,
-        tone: "amber",
+        tone: "amber" as const,
+        link: undefined as string | undefined,
       })),
     ...data.payments
       .filter((payment) => payment.status === "receipt_uploaded")
@@ -146,16 +180,18 @@ export default function OverviewView({
           payment.amount,
           payment.currency
         )}`,
-        tone: "blue",
+        tone: "blue" as const,
+        link: undefined as string | undefined,
       })),
     ...data.students
       .filter((student) => !student.consent)
       .map((student) => ({
         title: `Consent check · ${student.name}`,
         sub: `${student.parentName} · family setting needs review`,
-        tone: "red",
+        tone: "red" as const,
+        link: undefined as string | undefined,
       })),
-  ].slice(0, 5);
+  ].slice(0, 6);
   const upcomingBirthdays = data.students
     .map((student) => ({
       student,
@@ -166,6 +202,72 @@ export default function OverviewView({
 
   return (
     <>
+      {openComplaints.length > 0 && (
+        <div
+          style={{
+            marginBottom: "18px",
+            background: "#fff1f2",
+            border: "1px solid #fecdd3",
+            borderRadius: "12px",
+            padding: "14px 18px",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between",
+            gap: "12px",
+            flexWrap: "wrap",
+          }}
+        >
+          <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
+            <div
+              style={{
+                width: "36px",
+                height: "36px",
+                borderRadius: "8px",
+                background: "#ffe4e6",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                color: "#e11d48",
+                flexShrink: 0,
+              }}
+            >
+              <AlertCircle size={20} />
+            </div>
+            <div>
+              <div
+                style={{ fontWeight: 600, color: "#9f1239", fontSize: "14px" }}
+              >
+                {openComplaints.length} Parent Complaint
+                {openComplaints.length > 1 ? "s" : ""} Awaiting Review &
+                Resolution
+              </div>
+              <div
+                style={{ fontSize: "12px", color: "#be123c", marginTop: "2px" }}
+              >
+                Latest: {openComplaints[0].parent_name} · &ldquo;
+                {openComplaints[0].subject}&rdquo; (
+                {openComplaints[0].urgency.toUpperCase()})
+              </div>
+            </div>
+          </div>
+          <a
+            href="/complaints"
+            className="btn small primary"
+            style={{
+              background: "#e11d48",
+              borderColor: "#e11d48",
+              color: "#ffffff",
+              textDecoration: "none",
+              fontWeight: 600,
+              display: "inline-flex",
+              alignItems: "center",
+              gap: "6px",
+            }}
+          >
+            Open Complaints Desk <ChevronRight size={14} />
+          </a>
+        </div>
+      )}
       <div className="stat-grid">
         <div className="card stat-card">
           <div className="stat-top">
@@ -607,25 +709,55 @@ export default function OverviewView({
               detail="The next right thing, before it becomes a missed handoff."
             />
             {attention.length ? (
-              attention.map((item, index) => (
-                <div className="follow-row" key={`${item.title}-${index}`}>
-                  <span
-                    className="follow-mark"
+              attention.map((item, index) =>
+                item.link ? (
+                  <a
+                    key={`${item.title}-${index}`}
+                    href={item.link}
                     style={{
-                      background:
-                        item.tone === "red"
-                          ? "#b55751"
-                          : item.tone === "blue"
-                          ? "#6a8a98"
-                          : undefined,
+                      textDecoration: "none",
+                      color: "inherit",
+                      display: "block",
                     }}
-                  />
-                  <div className="follow-copy">
-                    <strong>{item.title}</strong>
-                    <span>{item.sub}</span>
+                  >
+                    <div className="follow-row" style={{ cursor: "pointer" }}>
+                      <span
+                        className="follow-mark"
+                        style={{
+                          background:
+                            item.tone === "red"
+                              ? "#b55751"
+                              : item.tone === "blue"
+                              ? "#6a8a98"
+                              : undefined,
+                        }}
+                      />
+                      <div className="follow-copy">
+                        <strong>{item.title}</strong>
+                        <span>{item.sub}</span>
+                      </div>
+                    </div>
+                  </a>
+                ) : (
+                  <div className="follow-row" key={`${item.title}-${index}`}>
+                    <span
+                      className="follow-mark"
+                      style={{
+                        background:
+                          item.tone === "red"
+                            ? "#b55751"
+                            : item.tone === "blue"
+                            ? "#6a8a98"
+                            : undefined,
+                      }}
+                    />
+                    <div className="follow-copy">
+                      <strong>{item.title}</strong>
+                      <span>{item.sub}</span>
+                    </div>
                   </div>
-                </div>
-              ))
+                )
+              )
             ) : (
               <Empty
                 title="Nothing waiting"
@@ -666,6 +798,31 @@ export default function OverviewView({
                         "NGN"
                       )}
                     </strong>
+                  </div>
+                  <div className="metric-row">
+                    <span>Complaints desk</span>
+                    <a
+                      href="/complaints"
+                      style={{
+                        textDecoration: "none",
+                        color:
+                          openComplaints.length > 0 ? "#e11d48" : "inherit",
+                        fontWeight: 600,
+                        display: "inline-flex",
+                        alignItems: "center",
+                        gap: 6,
+                      }}
+                    >
+                      {openComplaints.length > 0 ? (
+                        <Pill tone="amber">
+                          {openComplaints.length} open · Review desk &rarr;
+                        </Pill>
+                      ) : (
+                        <span>
+                          {complaints.length} total · View desk &rarr;
+                        </span>
+                      )}
+                    </a>
                   </div>
                   <div className="metric-row">
                     <span>Profit visibility</span>
