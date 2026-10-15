@@ -33,7 +33,7 @@ export const senderAliases = Object.freeze({
   courses: "admin@prosperworkmusic.com",
   partnerships: "admin@prosperworkmusic.com",
   feedback: "admin@prosperworkmusic.com",
-  complaints: "admin@prosperworkmusic.com",
+  complaints: "complaints@prosperworkmusic.com",
   events: "admin@prosperworkmusic.com",
 
   // Leadership
@@ -55,7 +55,7 @@ export const replyToAliases = Object.freeze({
   admissions: "admissions@prosperworkmusic.com",
   registration: "registration@prosperworkmusic.com",
   students: "students@prosperworkmusic.com",
-  complaints: "admin@prosperworkmusic.com",
+  complaints: "complaints@prosperworkmusic.com",
   management: "management@prosperworkmusic.com",
   director: "director@prosperworkmusic.com",
   official: "official@prosperworkmusic.com",
