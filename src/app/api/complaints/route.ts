@@ -272,18 +272,26 @@ export async function POST(request: Request) {
       const prev = existingResult.data as ComplaintRecord;
       const isResolved = input.status === "resolved";
 
+      const updateData: Record<string, any> = {
+        status: input.status,
+        updated_at: new Date().toISOString(),
+      };
+      if (input.resolutionNotes !== undefined) {
+        updateData.resolution_notes = input.resolutionNotes;
+      }
+      if (isResolved) {
+        updateData.resolved_by = profile.id;
+        updateData.resolved_by_name = profile.name;
+        updateData.resolved_at = prev.resolved_at || new Date().toISOString();
+      } else if (input.status === "open") {
+        updateData.resolved_by = null;
+        updateData.resolved_by_name = null;
+        updateData.resolved_at = null;
+      }
+
       const updateResult = await adminClient
         .from("pw_complaints")
-        .update({
-          status: input.status,
-          resolution_notes: input.resolutionNotes,
-          resolved_by: profile.id,
-          resolved_by_name: profile.name,
-          resolved_at: isResolved
-            ? prev.resolved_at || new Date().toISOString()
-            : null,
-          updated_at: new Date().toISOString(),
-        })
+        .update(updateData)
         .eq("id", input.complaintId)
         .select()
         .single();
@@ -295,8 +303,8 @@ export async function POST(request: Request) {
 
       const updated = updateResult.data as ComplaintRecord;
 
-      // Notify parent via email if requested (guaranteed retry)
-      if (input.notifyParent !== false && updated.parent_email) {
+      // Notify parent via email if explicitly requested (guaranteed retry)
+      if (input.notifyParent === true && updated.parent_email) {
         void sendOrQueueEmail({
           recipientId: updated.parent_id,
           email: updated.parent_email,

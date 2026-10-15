@@ -97,7 +97,7 @@ export async function processQueuedComplaintEmails(appUrl: string): Promise<{
       ])
       .lte("scheduled_at", new Date().toISOString())
       .order("scheduled_at", { ascending: true })
-      .limit(3); // Process maximum 3 per pass to strictly avoid email bursts
+      .limit(3); // Strict batch limit of 3 to prevent email floods
 
     if (error || !pending || pending.length === 0) {
       return stats;

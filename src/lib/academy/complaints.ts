@@ -79,8 +79,8 @@ export const updateComplaintSchema = z
     action: z.enum(["update_status", "resolve"]),
     complaintId: z.string().uuid(),
     status: z.enum(["open", "in_progress", "resolved"]),
-    resolutionNotes: z.string().trim().min(3).max(5000),
-    notifyParent: z.boolean().default(true),
+    resolutionNotes: z.string().trim().max(5000).optional().nullable(),
+    notifyParent: z.boolean().default(false),
   })
   .strict();
 

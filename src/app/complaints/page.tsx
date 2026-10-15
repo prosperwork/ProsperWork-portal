@@ -44,15 +44,11 @@ export default function ComplaintsPage() {
   >("all");
   const [categoryFilter, setCategoryFilter] = useState<string>("all");
 
-  // Master-Detail selection & Resolution state
+  // Master-Detail selection & Status state
   const [selectedComplaintId, setSelectedComplaintId] = useState<string | null>(
     null
   );
-  const [actionStatus, setActionStatus] = useState<ComplaintStatus>("resolved");
-  const [actionNotes, setActionNotes] = useState("");
-  const [notifyParent, setNotifyParent] = useState(true);
-  const [actionBusy, setActionBusy] = useState(false);
-  const [actionError, setActionError] = useState("");
+  const [statusBusy, setStatusBusy] = useState(false);
 
   // Conversation Thread & Reply state
   const [replyText, setReplyText] = useState("");
@@ -154,16 +150,9 @@ export default function ComplaintsPage() {
     );
   }, [selectedComplaintId, filteredComplaints, complaints]);
 
-  // When selected complaint changes, prepopulate resolution form
+  // When selected complaint changes, reset reply box
   useEffect(() => {
     if (selectedComplaint) {
-      setActionStatus(
-        selectedComplaint.status === "open"
-          ? "in_progress"
-          : selectedComplaint.status
-      );
-      setActionNotes(selectedComplaint.resolution_notes || "");
-      setActionError("");
       setReplyText("");
       setReplyError("");
     }
@@ -228,19 +217,10 @@ export default function ComplaintsPage() {
     }
   };
 
-  const handleSaveResolution = async (e: FormEvent) => {
-    e.preventDefault();
-    if (!selectedComplaint) return;
-    if (actionNotes.trim().length < 3) {
-      setActionError(
-        "Please provide resolution or update notes for the parent."
-      );
-      return;
-    }
+  const handleUpdateStatus = async (newStatus: ComplaintStatus) => {
+    if (!selectedComplaint || selectedComplaint.status === newStatus || statusBusy) return;
 
-    setActionBusy(true);
-    setActionError("");
-
+    setStatusBusy(true);
     try {
       const response = await fetch("/api/complaints", {
         method: "POST",
@@ -249,15 +229,14 @@ export default function ComplaintsPage() {
         body: JSON.stringify({
           action: "update_status",
           complaintId: selectedComplaint.id,
-          status: actionStatus,
-          resolutionNotes: actionNotes.trim(),
-          notifyParent,
+          status: newStatus,
+          notifyParent: false,
         }),
       });
 
       const result = await response.json().catch(() => ({}));
       if (!response.ok) {
-        throw new Error(result.error || "Failed to update complaint.");
+        throw new Error(result.error || "Failed to update ticket status.");
       }
 
       const updated = result.complaint as ComplaintRecord;
@@ -265,17 +244,23 @@ export default function ComplaintsPage() {
         current.map((c) => (c.id === updated.id ? updated : c))
       );
 
+      const statusLabels: Record<ComplaintStatus, string> = {
+        open: "Open",
+        in_progress: "Under Investigation",
+        resolved: "Resolved",
+      };
+
       showToast(
-        `Ticket #${updated.ticket_number} marked as ${
-          updated.status === "resolved" ? "Resolved" : "Under Review"
-        }. ${notifyParent ? "Parent notified by email." : ""}`
+        `Ticket #${updated.ticket_number} status set to ${
+          statusLabels[updated.status] || updated.status
+        }.`
       );
     } catch (err) {
-      setActionError(
-        err instanceof Error ? err.message : "Failed to update ticket."
+      showToast(
+        err instanceof Error ? err.message : "Failed to update ticket status."
       );
     } finally {
-      setActionBusy(false);
+      setStatusBusy(false);
     }
   };
 
@@ -561,21 +546,41 @@ export default function ComplaintsPage() {
                     <h3 style={{ margin: 0 }}>
                       {selectedComplaint.parent_name}
                     </h3>
-                    <Pill
-                      tone={
-                        selectedComplaint.status === "resolved"
-                          ? "green"
-                          : selectedComplaint.status === "in_progress"
-                          ? "blue"
-                          : "amber"
-                      }
-                    >
-                      {selectedComplaint.status === "in_progress"
-                        ? "Under Investigation"
-                        : selectedComplaint.status === "resolved"
-                        ? "Resolved"
-                        : "Awaiting Review"}
-                    </Pill>
+                    <div style={{ display: "inline-flex", alignItems: "center" }}>
+                      <select
+                        aria-label="Ticket Status"
+                        value={selectedComplaint.status}
+                        onChange={(e) =>
+                          handleUpdateStatus(e.target.value as ComplaintStatus)
+                        }
+                        disabled={statusBusy}
+                        style={{
+                          fontWeight: 700,
+                          fontSize: "11px",
+                          borderRadius: "14px",
+                          padding: "3px 8px",
+                          border: "1px solid var(--line)",
+                          backgroundColor:
+                            selectedComplaint.status === "resolved"
+                              ? "#ecfdf5"
+                              : selectedComplaint.status === "in_progress"
+                              ? "#eff6ff"
+                              : "#fffbeb",
+                          color:
+                            selectedComplaint.status === "resolved"
+                              ? "#065f46"
+                              : selectedComplaint.status === "in_progress"
+                              ? "#1e40af"
+                              : "#92400e",
+                          cursor: "pointer",
+                          outline: "none",
+                        }}
+                      >
+                        <option value="open">Status: Open</option>
+                        <option value="in_progress">Status: Under Investigation</option>
+                        <option value="resolved">Status: Resolved</option>
+                      </select>
+                    </div>
                     <Pill
                       tone={
                         selectedComplaint.urgency === "urgent"
@@ -839,133 +844,6 @@ export default function ComplaintsPage() {
                   >
                     <Send size={14} />
                     {replyBusy ? "Sending…" : "Send Reply to Parent"}
-                  </button>
-                </div>
-              </form>
-            </section>
-
-            {/* Resolution Form Card */}
-            <section className="card section-card">
-              <SectionTitle
-                title="Resolution & Investigation Action"
-                detail="Update the case status, record investigative notes, and email the family."
-              />
-
-              {selectedComplaint.resolution_notes && (
-                <div
-                  style={{
-                    marginBottom: "16px",
-                    background: "#f0fdf4",
-                    border: "1px solid #bbf7d0",
-                    borderRadius: "10px",
-                    padding: "14px 16px",
-                  }}
-                >
-                  <span
-                    style={{
-                      fontSize: "10px",
-                      fontWeight: 700,
-                      color: "#166534",
-                      textTransform: "uppercase",
-                      letterSpacing: "0.5px",
-                    }}
-                  >
-                    Previous Resolution Notes{" "}
-                    {selectedComplaint.resolved_by_name
-                      ? `by ${selectedComplaint.resolved_by_name}`
-                      : ""}{" "}
-                    {selectedComplaint.resolved_at
-                      ? `on ${niceDate(selectedComplaint.resolved_at)}`
-                      : ""}
-                  </span>
-                  <p
-                    style={{
-                      margin: "6px 0 0",
-                      fontSize: "12px",
-                      color: "#14532d",
-                      lineHeight: 1.5,
-                      whiteSpace: "pre-wrap",
-                    }}
-                  >
-                    {selectedComplaint.resolution_notes}
-                  </p>
-                </div>
-              )}
-
-              <form onSubmit={handleSaveResolution}>
-                <div className="form-grid">
-                  <div className="field">
-                    <label htmlFor="complaint-status">Ticket Status *</label>
-                    <select
-                      id="complaint-status"
-                      value={actionStatus}
-                      onChange={(e) =>
-                        setActionStatus(e.target.value as ComplaintStatus)
-                      }
-                    >
-                      <option value="in_progress">
-                        Keep Under Investigation (In Progress)
-                      </option>
-                      <option value="resolved">
-                        Mark Fully Resolved (Close Ticket)
-                      </option>
-                      <option value="open">Re-open for Review</option>
-                    </select>
-                  </div>
-
-                  <div className="field">
-                    <label>Family Communication</label>
-                    <label
-                      className="check-field"
-                      style={{ marginTop: "10px" }}
-                    >
-                      <input
-                        type="checkbox"
-                        checked={notifyParent}
-                        onChange={(e) => setNotifyParent(e.target.checked)}
-                      />
-                      Send resolution email to {selectedComplaint.parent_email}
-                    </label>
-                  </div>
-
-                  <div className="field full">
-                    <label htmlFor="resolution-notes">
-                      Resolution / Investigation Notes (Included in parent
-                      notification) *
-                    </label>
-                    <textarea
-                      id="resolution-notes"
-                      rows={4}
-                      placeholder="Detail findings, actions agreed with teacher or admin, schedule adjustments made, or compensation provided…"
-                      value={actionNotes}
-                      onChange={(e) => setActionNotes(e.target.value)}
-                      required
-                    />
-                  </div>
-                </div>
-
-                {actionError && (
-                  <p
-                    role="alert"
-                    className="form-error"
-                    style={{ marginTop: "12px" }}
-                  >
-                    {actionError}
-                  </p>
-                )}
-
-                <div className="modal-actions" style={{ marginTop: "16px" }}>
-                  <button
-                    type="submit"
-                    className="btn primary"
-                    disabled={actionBusy || !actionNotes.trim()}
-                  >
-                    <Check size={14} />
-                    {actionBusy
-                      ? "Saving…"
-                      : actionStatus === "resolved"
-                      ? "Confirm & Resolve Ticket"
-                      : "Save Investigation Update"}
                   </button>
                 </div>
               </form>
