@@ -29,6 +29,7 @@ import {
 } from "lucide-react";
 import type { FamilyResponse } from "@/lib/academy/family";
 import type { LearningResponse } from "@/lib/academy/learning";
+import { readJson } from "@/lib/academy/web-client";
 import {
   FAMILY_CACHE_KEY,
   LEARNING_CACHE_KEY,
@@ -37,18 +38,10 @@ import {
 } from "@/lib/storage";
 import BrandEmblem from "@/app/_components/BrandEmblem";
 import ProfileAvatar from "@/app/_components/ProfileAvatar";
+import { useCatalogs } from "@/lib/academy/use-academy-config";
 type StudentForm = { password: string };
 type ActionResult = Record<string, unknown>;
 
-async function readJson(response: Response): Promise<ActionResult> {
-  const copy = response.clone();
-  try {
-    return (await response.json()) as ActionResult;
-  } catch {
-    const text = await copy.text().catch(() => "");
-    return text ? { error: text } : {};
-  }
-}
 function normalizedRole(role: string) {
   return role.toLowerCase().replace(/[\s-]+/g, "_");
 }
@@ -100,6 +93,34 @@ async function apiError(response: Response, result?: ActionResult) {
 }
 
 export default function FamilyPage() {
+  const { enabledByCatalog } = useCatalogs();
+  const instrumentOptions = useMemo(() => {
+    const rows = enabledByCatalog("instruments");
+    return rows.length > 0
+      ? rows.map((item) => ({ value: item.code, label: item.label }))
+      : [
+          { value: "Piano", label: "Piano" },
+          { value: "Voice", label: "Voice / Singing" },
+          { value: "Acoustic Guitar", label: "Acoustic Guitar" },
+          { value: "Violin", label: "Violin" },
+          { value: "Drums", label: "Drums" },
+          { value: "Saxophone", label: "Saxophone" },
+          { value: "Flute", label: "Flute" },
+          { value: "Bass Guitar", label: "Bass Guitar" },
+          { value: "Trumpet", label: "Trumpet" },
+          { value: "Music Theory", label: "Music Theory & Exam Prep" },
+        ];
+  }, [enabledByCatalog]);
+  const durationOptions = useMemo(() => {
+    const rows = enabledByCatalog("lesson_durations");
+    return rows.length > 0
+      ? rows.map((item) => ({ value: item.code, label: item.label }))
+      : [
+          { value: "1 hour (Standard)", label: "1 hour (Standard)" },
+          { value: "90 minutes", label: "90 minutes" },
+          { value: "2 hours", label: "2 hours" },
+        ];
+  }, [enabledByCatalog]);
   const [family, setFamily] = useState<FamilyResponse | null>(null);
   const [learning, setLearning] = useState<LearningResponse | null>(null);
   const [learningError, setLearningError] = useState("");
@@ -137,6 +158,15 @@ export default function FamilyPage() {
   const [newPassword, setNewPassword] = useState("");
   const [addBusy, setAddBusy] = useState(false);
   const [addError, setAddError] = useState("");
+
+  useEffect(() => {
+    if (!showAddModal) return;
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape" && !addBusy) setShowAddModal(false);
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [showAddModal, addBusy]);
 
   // Academy Support & Complaints State
 
@@ -1285,20 +1315,11 @@ export default function FamilyPage() {
                     value={newInstrument}
                     onChange={(e) => setNewInstrument(e.target.value)}
                   >
-                    <option value="Piano">Piano</option>
-                    <option value="Voice / Singing">Voice / Singing</option>
-                    <option value="Guitar">Guitar</option>
-                    <option value="Violin">Violin</option>
-                    <option value="Drums">Drums</option>
-                    <option value="Saxophone">Saxophone</option>
-                    <option value="Flute">Flute</option>
-                    <option value="Clarinet">Clarinet</option>
-                    <option value="Bass Guitar">Bass Guitar</option>
-                    <option value="Cello">Cello</option>
-                    <option value="Trumpet">Trumpet</option>
-                    <option value="Ukulele">Ukulele</option>
-                    <option value="Music Theory">Music Theory</option>
-                    <option value="Other">Other</option>
+                    {instrumentOptions.map((opt) => (
+                      <option key={opt.value} value={opt.value}>
+                        {opt.label}
+                      </option>
+                    ))}
                   </select>
                 </div>
               </div>
@@ -1388,15 +1409,11 @@ export default function FamilyPage() {
                     value={newLessonDuration}
                     onChange={(e) => setNewLessonDuration(e.target.value)}
                   >
-                    <option value="1 hour (Standard)">
-                      1 hour (Standard default)
-                    </option>
-                    <option value="1.5 hours (90 mins)">
-                      1.5 hours (90 mins - Extra time)
-                    </option>
-                    <option value="2 hours (120 mins)">
-                      2 hours (120 mins - Intensive)
-                    </option>
+                    {durationOptions.map((opt) => (
+                      <option key={opt.value} value={opt.value}>
+                        {opt.label}
+                      </option>
+                    ))}
                     <option value="Custom / Request extra time">
                       Custom / Request extra time
                     </option>

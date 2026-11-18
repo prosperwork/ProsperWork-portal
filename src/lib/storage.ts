@@ -46,6 +46,7 @@ export function clearAcademyCache() {
       localStorage.removeItem(FAMILY_CACHE_KEY);
       localStorage.removeItem(LEARNING_CACHE_KEY);
       localStorage.removeItem(WORKFLOWS_CACHE_KEY);
+      localStorage.removeItem("pw_portal_last_active");
     } catch {
       // ignore storage access errors
     }

@@ -12,13 +12,12 @@ import {
   UserRound,
   X,
   Eye,
-  ShieldAlert,
   ShieldCheck,
   ArrowLeft,
 } from "lucide-react";
 import type { Role } from "@/lib/types";
 import { clearAcademyCache, getCachedWorkspace } from "@/lib/storage";
-import { portalNavigation } from "../_lib/portal-navigation";
+import { hasWorkspaceAccess, portalNavigation } from "../_lib/portal-navigation";
 import WorkspacePageFrame from "./WorkspacePageFrame";
 import PortalAiChatBubble from "./PortalAiChatBubble";
 
@@ -26,6 +25,8 @@ type Profile = {
   id: string;
   name: string;
   role: Role;
+  roleLabel?: string;
+  permissions?: string[];
   status?: string;
   email?: string;
   timezone?: string;
@@ -68,11 +69,14 @@ export default function PortalShell({
 }) {
   const pathname = usePathname();
   const [profile, setProfile] = useState<Profile | null>(null);
+  const [inactivityMinutes, setInactivityMinutes] = useState<number>(60);
   const [avatarUrl, setAvatarUrl] = useState<string | null>(null);
   const [sessionLoading, setSessionLoading] = useState(true);
   const [sessionError, setSessionError] = useState("");
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [accountMenuOpen, setAccountMenuOpen] = useState(false);
+  const [exitingViewAs, setExitingViewAs] = useState(false);
+  const lastActivityWriteRef = useRef<number>(0);
   const menuButton = useRef<HTMLButtonElement>(null);
   const closeButton = useRef<HTMLButtonElement>(null);
   const accountButton = useRef<HTMLButtonElement>(null);
@@ -85,6 +89,7 @@ export default function PortalShell({
         cache: "no-store",
       });
       if (response.status === 401) {
+        clearAcademyCache();
         window.location.assign("/login?reason=credentials_changed");
         return;
       }
@@ -99,8 +104,8 @@ export default function PortalShell({
     }
   }, []);
 
-  const loadSession = useCallback(async () => {
-    setSessionLoading(true);
+  const loadSession = useCallback(async (showLoading = true) => {
+    if (showLoading) setSessionLoading(true);
     setSessionError("");
     try {
       const response = await fetch("/api/session", {
@@ -123,6 +128,10 @@ export default function PortalShell({
           result?.error || "Your signed-in profile could not be confirmed."
         );
       setProfile(result.profile as Profile);
+      const cfgTimeout = Number(result?.academyConfig?.inactivityTimeoutMinutes);
+      if (Number.isFinite(cfgTimeout) && cfgTimeout >= 15 && cfgTimeout <= 480) {
+        setInactivityMinutes(Math.trunc(cfgTimeout));
+      }
       await refreshProfile();
     } catch (cause) {
       setProfile(null);
@@ -138,26 +147,38 @@ export default function PortalShell({
 
   useEffect(() => {
     const cached = getCachedWorkspace();
+    const hasCached = Boolean(cached?.profile);
     if (cached?.profile) {
       setProfile(cached.profile as unknown as Profile);
       setSessionLoading(false);
     }
-    void loadSession();
+    void loadSession(!hasCached);
   }, [loadSession]);
 
-  // Auto-logout after 1 hour of inactivity
+  // Auto-logout after configured inactivity period (from DB settings, default 60 min)
+  const profileId = profile?.id;
   useEffect(() => {
-    if (!profile) return;
-    const INACTIVITY_LIMIT_MS = 60 * 60 * 1000; // 1 hour (60 minutes)
+    if (!profileId) return;
+    const INACTIVITY_LIMIT_MS = inactivityMinutes * 60 * 1000;
+    const ACTIVITY_THROTTLE_MS = 5_000;
     const ACTIVITY_KEY = "pw_portal_last_active";
 
     const recordActivity = () => {
+      const now = Date.now();
+      if (now - lastActivityWriteRef.current < ACTIVITY_THROTTLE_MS) return;
+      lastActivityWriteRef.current = now;
       try {
-        localStorage.setItem(ACTIVITY_KEY, Date.now().toString());
+        localStorage.setItem(ACTIVITY_KEY, now.toString());
       } catch {}
     };
 
-    recordActivity();
+    try {
+      if (!localStorage.getItem(ACTIVITY_KEY)) {
+        const now = Date.now();
+        lastActivityWriteRef.current = now;
+        localStorage.setItem(ACTIVITY_KEY, now.toString());
+      }
+    } catch {}
 
     const activityEvents = [
       "mousedown",
@@ -177,7 +198,7 @@ export default function PortalShell({
           ? parseInt(lastActiveStr, 10)
           : Date.now();
         if (Date.now() - lastActive >= INACTIVITY_LIMIT_MS) {
-          localStorage.removeItem(ACTIVITY_KEY);
+          clearAcademyCache();
           try {
             await fetch("/api/auth", {
               method: "POST",
@@ -197,7 +218,7 @@ export default function PortalShell({
       });
       window.clearInterval(checkInterval);
     };
-  }, [profile]);
+  }, [profileId, inactivityMinutes]);
 
   useEffect(() => {
     const onProfileUpdated = (event: Event) => {
@@ -265,9 +286,7 @@ export default function PortalShell({
 
   const visibleNav = useMemo(() => {
     if (!profile) return [];
-    let nav = portalNavigation.filter((item) =>
-      item.roles.includes(profile.role)
-    );
+    let nav = portalNavigation.filter((item) => hasWorkspaceAccess(item, profile));
     if (profile.role !== "parent" && profile.role !== "student") {
       const overviewItem = nav.find((i) => i.href === "/");
       if (overviewItem) {
@@ -280,6 +299,7 @@ export default function PortalShell({
           href: "/onboarding",
           label: "Onboarding",
           icon: ShieldCheck,
+          permission: "workspace.onboarding",
           roles: [profile.role],
         },
         ...nav,
@@ -313,6 +333,9 @@ export default function PortalShell({
   }
 
   async function exitViewAs() {
+    if (exitingViewAs) return;
+    setExitingViewAs(true);
+    setSessionError("");
     try {
       const res = await fetch("/api/accounts", {
         method: "POST",
@@ -320,11 +343,19 @@ export default function PortalShell({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ action: "exit_view_as" }),
       });
-      if (res.ok) {
-        window.location.assign("/accounts");
+      if (!res.ok) {
+        const body = (await res.json().catch(() => ({}))) as { error?: string };
+        throw new Error(body?.error || "Could not exit user preview. Please try again.");
       }
-    } catch {
-      window.location.reload();
+      clearAcademyCache();
+      window.location.assign("/accounts");
+    } catch (cause) {
+      setSessionError(
+        cause instanceof Error
+          ? cause.message
+          : "Could not exit user preview. Please try again."
+      );
+      setExitingViewAs(false);
     }
   }
 
@@ -448,11 +479,12 @@ export default function PortalShell({
               <span>
                 <strong>Owner Preview Active:</strong> You are viewing the live
                 portal as <strong>{profile.name}</strong> (
-                {roleTitle(profile.role)}).
+                {profile.roleLabel || roleTitle(profile.role)}).
               </span>
             </div>
             <button
               type="button"
+              disabled={exitingViewAs}
               onClick={() => void exitViewAs()}
               style={{
                 background: "#b45309",
@@ -462,14 +494,15 @@ export default function PortalShell({
                 borderRadius: "6px",
                 fontSize: "12px",
                 fontWeight: 600,
-                cursor: "pointer",
+                cursor: exitingViewAs ? "wait" : "pointer",
+                opacity: exitingViewAs ? 0.7 : 1,
                 display: "flex",
                 alignItems: "center",
                 gap: "4px",
               }}
             >
               <ArrowLeft size={13} />
-              <span>Exit Preview &amp; Return to Owner</span>
+              <span>{exitingViewAs ? "Returning..." : "Exit Preview & Return to Owner"}</span>
             </button>
           </div>
         )}
@@ -526,7 +559,7 @@ export default function PortalShell({
                 <span className="portal-account-trigger-identity">
                   <strong>{profile.name}</strong>
                   <small>
-                    {roleTitle(profile.role)}{" "}
+                    {profile.roleLabel || roleTitle(profile.role)}{" "}
                     {profile.impersonated ? "(Preview)" : ""}
                   </small>
                 </span>
@@ -563,10 +596,11 @@ export default function PortalShell({
                   <button
                     type="button"
                     data-account-item
+                    disabled={exitingViewAs}
                     onClick={() => void exitViewAs()}
                   >
                     <ArrowLeft size={15} aria-hidden="true" />
-                    Exit user view
+                    {exitingViewAs ? "Returning..." : "Exit user view"}
                   </button>
                 ) : (
                   <Link

@@ -81,14 +81,30 @@ export const makeId = (prefix: string) =>
 export const niceDate = (
   date: string,
   options: Intl.DateTimeFormatOptions = { month: "short", day: "numeric" }
-) => new Intl.DateTimeFormat("en", options).format(new Date(date));
+) => {
+  if (!date) return "Date unavailable";
+  const parsed = new Date(date);
+  if (!Number.isFinite(parsed.getTime())) return date;
+  try {
+    return new Intl.DateTimeFormat("en", options).format(parsed);
+  } catch {
+    return parsed.toLocaleDateString("en");
+  }
+};
 
-export const fullDate = (date: string) =>
-  new Intl.DateTimeFormat("en", {
-    weekday: "long",
-    month: "long",
-    day: "numeric",
-  }).format(date ? new Date(date) : new Date());
+export const fullDate = (date: string) => {
+  const parsed = date ? new Date(date) : new Date();
+  if (!Number.isFinite(parsed.getTime())) return date || "Date unavailable";
+  try {
+    return new Intl.DateTimeFormat("en", {
+      weekday: "long",
+      month: "long",
+      day: "numeric",
+    }).format(parsed);
+  } catch {
+    return parsed.toLocaleDateString("en");
+  }
+};
 
 export const formatMoney = (amount: number, currency: Currency) =>
   Number.isFinite(amount)

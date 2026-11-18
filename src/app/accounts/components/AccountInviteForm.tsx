@@ -1,7 +1,8 @@
 "use client";
 
-import { useState, type FormEvent } from "react";
+import { useEffect, useState, type FormEvent } from "react";
 import type { Role } from "@/lib/types";
+import { useCatalogs, useRoles } from "@/lib/academy/use-academy-config";
 import { invitationRoles, labelFor } from "../accounts-types";
 import { AccountIcon } from "./AccountIcon";
 
@@ -25,10 +26,21 @@ export default function AccountInviteForm({
   successMessage,
   onInvite,
 }: AccountInviteFormProps) {
+  const { invitableRoles } = useRoles();
+  const { config } = useCatalogs();
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [role, setRole] = useState<Exclude<Role, "super_admin">>("parent");
-  const [timezone, setTimezone] = useState("Africa/Lagos");
+  const [timezone, setTimezone] = useState(config.defaultTimezone);
+
+  useEffect(() => {
+    setTimezone((current) => (current === "Africa/Lagos" ? config.defaultTimezone : current));
+  }, [config.defaultTimezone]);
+
+  const roleOptions =
+    invitableRoles.length > 0
+      ? invitableRoles.map((r) => ({ code: r.code, label: r.label }))
+      : invitationRoles.map((code) => ({ code, label: labelFor(code) }));
 
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -46,7 +58,7 @@ export default function AccountInviteForm({
       setName("");
       setEmail("");
       setRole("parent");
-      setTimezone("Africa/Lagos");
+      setTimezone(config.defaultTimezone);
     }
   };
 
@@ -111,9 +123,9 @@ export default function AccountInviteForm({
                 setRole(event.target.value as Exclude<Role, "super_admin">)
               }
             >
-              {invitationRoles.map((item) => (
-                <option value={item} key={item}>
-                  {labelFor(item)}
+              {roleOptions.map((item) => (
+                <option value={item.code} key={item.code}>
+                  {item.label}
                 </option>
               ))}
             </select>

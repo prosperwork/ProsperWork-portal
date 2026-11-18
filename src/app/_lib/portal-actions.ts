@@ -121,8 +121,12 @@ export function handleActionModalSubmit({
   }
 
   if (modal === "lesson") {
+    const startDate = new Date(values.startsAt);
+    if (!Number.isFinite(startDate.getTime())) return null;
     const targetStudent = data.students.find((s) => s.id === values.studentId);
     const customDuration = values.durationMinutes ? Number(values.durationMinutes) : undefined;
+    const classroomProvider: Lesson["classroomProvider"] =
+      values.classroomProvider === "google_meet" ? "google_meet" : "inbuilt";
     const lesson: Lesson = {
       id: makeId("les"),
       studentId: values.studentId,
@@ -130,10 +134,11 @@ export function handleActionModalSubmit({
       teacherName: data.staff.find((s) => s.id === values.teacherName || s.name === values.teacherName)?.name || values.teacherName || "Assigned Teacher",
       adminName: data.staff.find((s) => s.id === values.adminName || s.name === values.adminName)?.name || values.adminName || "",
       title: values.title?.trim() || "Music Lesson",
-      startsAt: new Date(values.startsAt).toISOString(),
+      startsAt: startDate.toISOString(),
       studentTimezone: targetStudent ? targetStudent.timezone : "Africa/Lagos",
       instrument: targetStudent ? targetStudent.instrument : "Piano",
       kind: (values.kind as Lesson["kind"]) || "standard",
+      classroomProvider,
       status: "scheduled",
       notes: values.notes || "",
       nextTopics: "",
@@ -161,10 +166,19 @@ export function handleActionModalSubmit({
   }
 
   if (modal === "payment") {
+    const studentKey = values.studentId || values.studentName;
+    const matchedStudent =
+      (data.billingStudents || []).find(
+        (s) => s.id === studentKey || s.name === studentKey
+      ) ||
+      data.students.find((s) => s.id === studentKey || s.name === studentKey);
+    const resolvedStudentName = matchedStudent?.name || values.studentName;
+    const resolvedParentName =
+      values.parentName?.trim() || matchedStudent?.parentName || "";
     const payment: Payment = {
       id: makeId("pay"),
-      parentName: values.parentName,
-      studentName: values.studentName,
+      parentName: resolvedParentName,
+      studentName: resolvedStudentName,
       amount: Number(values.amount),
       currency: (values.currency as Currency) || "NGN",
       dueDate: values.dueDate,
@@ -283,9 +297,14 @@ export function handleActionModalSubmit({
   }
 
   if (modal === "payroll") {
+    const staffKey = values.staffId || values.staffName;
+    const matchedStaff = data.staff.find(
+      (s) => s.id === staffKey || s.name === staffKey
+    );
+    const resolvedStaffName = matchedStaff?.name || values.staffName;
     const item: PayrollItem = {
       id: makeId("payr"),
-      staffName: values.staffName,
+      staffName: resolvedStaffName,
       role: values.role as Role,
       period: todayKey.slice(0, 7),
       currency: (values.currency as Currency) || "NGN",

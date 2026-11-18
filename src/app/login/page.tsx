@@ -70,6 +70,26 @@ function FeedbackMessage({ feedback }: { feedback: Feedback }) {
   );
 }
 
+function sanitizeSameOriginPath(value: unknown): string | null {
+  if (typeof value !== "string") return null;
+  const trimmed = value.trim();
+  if (
+    !trimmed ||
+    !trimmed.startsWith("/") ||
+    trimmed.startsWith("//") ||
+    trimmed.includes("\\")
+  ) {
+    return null;
+  }
+  try {
+    const parsed = new URL(trimmed, window.location.origin);
+    if (parsed.origin !== window.location.origin) return null;
+    return `${parsed.pathname}${parsed.search}${parsed.hash}`;
+  } catch {
+    return null;
+  }
+}
+
 export default function LoginPage() {
   const [mode, setMode] = useState<Mode>("login");
   const [name, setName] = useState("");
@@ -91,7 +111,7 @@ export default function LoginPage() {
       if (reason === "inactivity") {
         setFeedback({
           kind: "info",
-          text: "For your security, you were signed out after 1 hour of inactivity. Please sign in to continue.",
+          text: "For your security, you were signed out due to inactivity. Please sign in to continue.",
         });
       } else if (reason === "password_changed") {
         setFeedback({
@@ -137,8 +157,9 @@ export default function LoginPage() {
     }
   }, []);
 
+  const hasResetCooldown = resetCooldown > 0;
   useEffect(() => {
-    if (resetCooldown <= 0) {
+    if (!hasResetCooldown) {
       try {
         localStorage.removeItem("pw_reset_cooldown_until");
       } catch {}
@@ -148,7 +169,7 @@ export default function LoginPage() {
       setResetCooldown((val) => (val > 1 ? val - 1 : 0));
     }, 1000);
     return () => clearInterval(interval);
-  }, [resetCooldown]);
+  }, [hasResetCooldown]);
 
   function switchMode(nextMode: Mode) {
     setMode(nextMode);
@@ -208,21 +229,30 @@ export default function LoginPage() {
       });
       const result = await response.json().catch(() => ({}));
       if (response.status === 429 || result.rateLimited) {
-        const cooldown =
-          typeof result.retryAfter === "number" ? result.retryAfter : 120;
-        setResetCooldown(cooldown);
-        try {
-          localStorage.setItem(
-            "pw_reset_cooldown_until",
-            (Date.now() + cooldown * 1000).toString()
-          );
-        } catch {}
-        setFeedback({
-          kind: result.maxAttemptsReached ? "error" : "info",
-          text:
-            result.error ||
-            "A reset link was recently sent. For security, please wait before requesting another.",
-        });
+        if (mode === "forgot") {
+          const cooldown =
+            typeof result.retryAfter === "number" ? result.retryAfter : 120;
+          setResetCooldown(cooldown);
+          try {
+            localStorage.setItem(
+              "pw_reset_cooldown_until",
+              (Date.now() + cooldown * 1000).toString()
+            );
+          } catch {}
+          setFeedback({
+            kind: result.maxAttemptsReached ? "error" : "info",
+            text:
+              result.error ||
+              "A reset link was recently sent. For security, please wait before requesting another.",
+          });
+        } else {
+          setFeedback({
+            kind: "error",
+            text:
+              result.error ||
+              "Too many attempts right now. Please wait a moment and try again.",
+          });
+        }
         return;
       }
       if (!response.ok || result.error)
@@ -233,20 +263,18 @@ export default function LoginPage() {
         const nextParam = new URLSearchParams(window.location.search).get(
           "next"
         );
-        const safeNext =
-          nextParam && nextParam.startsWith("/") && !nextParam.startsWith("//")
-            ? nextParam
-            : null;
+        const safeNext = sanitizeSameOriginPath(nextParam);
         let destination =
-          typeof result.redirect === "string" &&
-          result.redirect.startsWith("/") &&
-          !result.redirect.startsWith("//")
-            ? result.redirect
-            : "/welcome";
+          sanitizeSameOriginPath(result.redirect) || "/welcome";
         if (safeNext && destination === "/welcome") {
           destination = `/welcome?next=${encodeURIComponent(safeNext)}`;
         }
         clearAcademyCache();
+        try {
+          localStorage.setItem("pw_portal_last_active", Date.now().toString());
+        } catch {
+          // ignore storage access errors
+        }
         window.location.assign(destination);
       } else if (mode === "register") {
         setRegisteredEmail(email);
@@ -297,7 +325,7 @@ export default function LoginPage() {
       ? validEmail && resetCooldown === 0
       : name.trim().length >= 2 &&
         validEmail &&
-        password.length >= 12 &&
+        password.length >= 8 &&
         confirm === password &&
         legalAccepted;
   const panelHeading =
@@ -345,7 +373,7 @@ export default function LoginPage() {
               <div className="auth-success-state">
                 <div className="auth-panel-heading">
                   <div className="auth-overline">One more step</div>
-                  <h2>Confirm your email</h2>
+                  <h1>Confirm your email</h1>
                   <p>
                     We’ve sent account confirmation instructions to{" "}
                     <strong className="auth-pending-email">
@@ -377,7 +405,7 @@ export default function LoginPage() {
                       ? "For parents and guardians"
                       : "Account recovery"}
                   </div>
-                  <h2>{panelHeading[0]}</h2>
+                  <h1>{panelHeading[0]}</h1>
                   <p>{panelHeading[1]}</p>
                 </header>
 

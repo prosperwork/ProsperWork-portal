@@ -35,6 +35,7 @@ import {
   type ComplaintRecord,
   type ComplaintUrgency,
 } from "@/lib/academy/complaints";
+import { useCatalogs } from "@/lib/academy/use-academy-config";
 
 interface Profile {
   id: string;
@@ -101,7 +102,28 @@ function roleSuggestionChips(role: Role): string[] {
   }
 }
 
-// Inline Markdown Parser: turns links into clickable Next.js links, handles bold, italics, code
+function isSafePortalHref(rawHref: string): { safe: boolean; external: boolean } {
+  const href = rawHref.trim();
+  if (!href) return { safe: false, external: false };
+  if (href.startsWith("/") && !href.startsWith("//") && !href.includes("\\")) {
+    return { safe: true, external: false };
+  }
+  try {
+    const parsed = new URL(href);
+    if (
+      parsed.protocol === "https:" &&
+      (parsed.hostname === "www.prosperworkmusic.com" ||
+        parsed.hostname === "portal.prosperworkmusic.com")
+    ) {
+      return { safe: true, external: true };
+    }
+  } catch {
+    // invalid URL
+  }
+  return { safe: false, external: false };
+}
+
+// Inline Markdown Parser: turns safe links into clickable links, handles bold, italics, code
 function renderInlineMarkdown(text: string): React.ReactNode[] {
   const regex = /(\[[^\]]+\]\([^)]+\)|\*\*[^*]+\*\*|\*[^*]+\*|`[^`]+`)/g;
   const parts = text.split(regex);
@@ -110,7 +132,30 @@ function renderInlineMarkdown(text: string): React.ReactNode[] {
     if (part.startsWith("[") && part.includes("](") && part.endsWith(")")) {
       const match = part.match(/^\[([^\]]+)\]\(([^)]+)\)$/);
       if (match) {
-        const [, linkText, href] = match;
+        const [, linkText, rawHref] = match;
+        const href = rawHref.trim();
+        const check = isSafePortalHref(href);
+        if (!check.safe) {
+          return linkText;
+        }
+        if (check.external) {
+          return (
+            <a
+              key={i}
+              href={href}
+              target="_blank"
+              rel="noopener noreferrer"
+              style={{
+                color: "#135B45",
+                fontWeight: 600,
+                textDecoration: "underline",
+                textUnderlineOffset: "2px",
+              }}
+            >
+              {linkText}
+            </a>
+          );
+        }
         return (
           <Link
             key={i}
@@ -331,6 +376,14 @@ export default function PortalAiChatBubble({
 }) {
   const [open, setOpen] = useState(false);
   const [activeTab, setActiveTab] = useState<"ai" | "complaints">("ai");
+  const { enabledByCatalog, allByCatalog } = useCatalogs(Boolean(profile));
+  const complaintCategoryItems = allByCatalog("complaint_categories");
+  const complaintCategoryOptions = (() => {
+    const enabled = enabledByCatalog("complaint_categories");
+    return enabled.length > 0
+      ? enabled.map((item) => ({ value: item.code, label: item.label }))
+      : COMPLAINT_CATEGORIES.map((c) => ({ value: c.value, label: c.label }));
+  })();
 
   // AI Chat State
   const [messages, setMessages] = useState<ChatMessage[]>([]);
@@ -585,6 +638,18 @@ export default function PortalAiChatBubble({
       void loadComplaints(true);
     }
   }, [open, activeTab, loadComplaints]);
+
+  // Close AI drawer on Escape key
+  useEffect(() => {
+    if (!open) return;
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        setOpen(false);
+      }
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [open]);
 
   // Listen for global open event
   useEffect(() => {
@@ -1590,7 +1655,7 @@ export default function PortalAiChatBubble({
                           background: "#ffffff",
                         }}
                       >
-                        {COMPLAINT_CATEGORIES.map((cat) => (
+                        {complaintCategoryOptions.map((cat) => (
                           <option key={cat.value} value={cat.value}>
                             {cat.label}
                           </option>
@@ -2339,7 +2404,15 @@ export default function PortalAiChatBubble({
                         <div
                           key={c.id}
                           className="complaint-card-item"
+                          role="button"
+                          tabIndex={0}
                           onClick={() => setSelectedComplaintId(c.id)}
+                          onKeyDown={(e) => {
+                            if (e.key === "Enter" || e.key === " ") {
+                              e.preventDefault();
+                              setSelectedComplaintId(c.id);
+                            }
+                          }}
                           style={{
                             padding: "10px 12px",
                             borderRadius: "10px",
@@ -2427,7 +2500,7 @@ export default function PortalAiChatBubble({
                               marginTop: "2px",
                             }}
                           >
-                            <span>{categoryLabel(c.category)}</span>
+                            <span>{categoryLabel(c.category, complaintCategoryItems)}</span>
                             <span
                               style={{
                                 display: "flex",

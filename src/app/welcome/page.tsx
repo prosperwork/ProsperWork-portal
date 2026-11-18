@@ -30,10 +30,22 @@ export default function WelcomePage() {
 
         const params = new URLSearchParams(window.location.search);
         const nextParam = params.get("next");
-        const safeNextParam =
-          nextParam && nextParam.startsWith("/") && !nextParam.startsWith("//")
-            ? nextParam
-            : null;
+        let safeNextParam: string | null = null;
+        if (
+          nextParam &&
+          nextParam.startsWith("/") &&
+          !nextParam.startsWith("//") &&
+          !nextParam.includes("\\")
+        ) {
+          try {
+            const parsed = new URL(nextParam, window.location.origin);
+            if (parsed.origin === window.location.origin) {
+              safeNextParam = `${parsed.pathname}${parsed.search}${parsed.hash}`;
+            }
+          } catch {
+            safeNextParam = null;
+          }
+        }
 
         let next = "/";
         if (result.profile.status === "policy_required") {

@@ -9,24 +9,73 @@ import type { Role } from "@/lib/types";
 export default function ManualPage() {
   const [query, setQuery] = useState("");
   const [role, setRole] = useState("");
+  const [sessionLoaded, setSessionLoaded] = useState(false);
 
   useEffect(() => {
     let active = true;
     void fetch("/api/session", { credentials: "include", cache: "no-store" })
-      .then(response => response.ok ? response.json() : null)
-      .then(result => { if (active && result?.profile?.role) setRole(result.profile.role); })
-      .catch(() => undefined);
-    return () => { active = false; };
+      .then((response) => (response.ok ? response.json() : null))
+      .then((result) => {
+        if (active && result?.profile?.role) setRole(result.profile.role);
+      })
+      .catch(() => undefined)
+      .finally(() => {
+        if (active) setSessionLoaded(true);
+      });
+    return () => {
+      active = false;
+    };
   }, []);
 
   const filtered = useMemo(() => {
+    if (!role) return [];
     const needle = query.trim().toLowerCase();
-    return manualSections.filter(section => {
-      const visibleToRole = !role || !section.roles?.length || section.roles.includes(role as Role);
-      const searchable = [section.title, section.summary, ...section.steps.flatMap(step => [step.title, step.text])].join(" ").toLowerCase();
+    return manualSections.filter((section) => {
+      const visibleToRole =
+        !section.roles?.length || section.roles.includes(role as Role);
+      const searchable = [
+        section.title,
+        section.summary,
+        ...section.steps.flatMap((step) => [step.title, step.text]),
+      ]
+        .join(" ")
+        .toLowerCase();
       return visibleToRole && (!needle || searchable.includes(needle));
     });
   }, [query, role]);
+
+  if (!sessionLoaded) {
+    return (
+      <div className="portal-manual">
+        <header className="portal-manual-head">
+          <div>
+            <h1>Manual usage</h1>
+          </div>
+        </header>
+        <div className="manual-empty" role="status">
+          Confirming your academy session…
+        </div>
+      </div>
+    );
+  }
+
+  if (!role) {
+    return (
+      <div className="portal-manual">
+        <header className="portal-manual-head">
+          <div>
+            <h1>Manual usage</h1>
+          </div>
+        </header>
+        <div className="manual-empty" role="alert">
+          <p>Sign in with your ProsperWork account to view guidance for your role.</p>
+          <Link className="manual-related" href="/login?next=/manual">
+            Sign in to continue <ArrowUpRight size={13} />
+          </Link>
+        </div>
+      </div>
+    );
+  }
 
   return <div className="portal-manual">
     <header className="portal-manual-head">

@@ -1,8 +1,9 @@
 import {z} from "zod";
 const id=z.string().uuid(),note=z.string().trim().min(5).max(2000);
 export const hiringRoles=["teacher","admin","head_admin","qc","hr","finance","sales_marketing","social_media"] as const;
+export const hiringRoleSchema = z.string().trim().toLowerCase().regex(/^[a-z][a-z0-9_]{1,40}$/, "Invalid role code.");
 export const hiringAction=z.discriminatedUnion("action",[
- z.object({action:z.literal("create"),name:z.string().trim().min(2).max(120),email:z.string().email().max(254),role:z.enum(hiringRoles),reviewerId:id,notes:note}).strict(),
+ z.object({action:z.literal("create"),name:z.string().trim().min(2).max(120),email:z.string().email().max(254),role:hiringRoleSchema,reviewerId:id,notes:note}).strict(),
  z.object({action:z.literal("schedule"),id,at:z.string().datetime({offset:true}),notes:note}).strict(),
  z.object({action:z.literal("review"),id,kind:z.enum(["hr_interview","department_interview","audition","training"]),score:z.number().int().min(0).max(100),passed:z.boolean(),notes:note}).strict(),
  z.object({action:z.literal("select"),id,notes:note}).strict(),

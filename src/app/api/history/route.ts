@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { identity } from "@/lib/supabase/identity";
 import { historyCollections } from "@/lib/academy/history-collections";
+import { hasPermission } from "@/lib/academy/roles";
 export const dynamic = "force-dynamic";
 const params = z.object({
   collection: z.string().refine(value => Object.hasOwn(historyCollections, value)),
@@ -18,8 +19,14 @@ export async function GET(request: Request) {
     const parsed = params.safeParse(Object.fromEntries(new URL(request.url).searchParams));
     if (!parsed.success) return NextResponse.json({ error: "Choose a valid record type, date range and page." }, { status: 400 });
     const p = parsed.data, definition = historyCollections[p.collection];
-    if (p.collection.startsWith("salary_") && ["parent", "student", "general_manager"].includes(profile.role)) return NextResponse.json({ error: "Staff salary access is required." }, { status: 403 });
-    let query = client.from(`pw_${p.collection}`).select("*", { count: "exact" }).order(definition.date, { ascending: false }).order("id", { ascending: false });
+    if (p.collection.startsWith("salary_")) {
+      const canViewPayroll = profile.role === "super_admin" || await hasPermission(client, profile, "payroll.view", { allowOnLeave: true });
+      if (!canViewPayroll) return NextResponse.json({ error: "Staff salary access is required." }, { status: 403 });
+    }
+    const selectColumns = p.collection === "salary_batches"
+      ? "id,pay_date,status,revision,prepared_by,submitted_by,submitted_at,approved_by,approved_at,approval_mode,policy_revision,created_at"
+      : "*";
+    let query = client.from(`pw_${p.collection}`).select(selectColumns, { count: "exact" }).order(definition.date, { ascending: false }).order("id", { ascending: false });
     if (p.from) query = query.gte(definition.date, `${p.from}T00:00:00Z`);
     if (p.to) {
       const end = new Date(`${p.to}T00:00:00Z`); end.setUTCDate(end.getUTCDate() + 1);

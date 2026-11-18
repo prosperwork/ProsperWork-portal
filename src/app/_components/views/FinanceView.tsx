@@ -10,6 +10,7 @@ import {
   LockKeyhole,
   Plus,
 } from "lucide-react";
+import { useConfirmModal } from "../ConfirmModal";
 import {
   Empty,
   formatMoney,
@@ -45,11 +46,26 @@ export default function FinanceView({
   fx: Record<Currency, number>;
   currencyCatalog: { code: Currency; name: string }[];
   headerActions: (label: string, kind: FormKind, icon?: ReactNode) => ReactNode;
-  setPaymentStatus: (payment: Payment, status: Payment["status"]) => void;
+  setPaymentStatus: (
+    payment: Payment,
+    status: Payment["status"]
+  ) => Promise<void>;
   notify: (msg: string) => void;
 }) {
-  const statusButton = (label: string, onClick: () => void, tone = "ghost") => (
-    <button className={`btn small ${tone}`} onClick={onClick}>
+  const { confirm, ConfirmDialog, busy } = useConfirmModal();
+
+  const statusButton = (
+    label: string,
+    onClick: () => void,
+    tone = "ghost",
+    disabled = false
+  ) => (
+    <button
+      type="button"
+      className={`btn small ${tone}`}
+      disabled={disabled}
+      onClick={onClick}
+    >
       {label}
     </button>
   );
@@ -140,27 +156,29 @@ export default function FinanceView({
             detail="Source-currency totals are recorded amounts. Foreign-currency conversions require configured rates."
           />
           <div className="split-cards">
-            {allCurrencies.map((currency) => (
-              <div className="metric-row" key={currency}>
-                <span>{currency} outstanding</span>
-                <strong>
-                  {formatMoney(
-                    due
-                      .filter((payment) => payment.currency === currency)
-                      .reduce(
-                        (sum, payment) =>
-                          sum + payment.amount - payment.referralDiscount,
-                        0
-                      ),
-                    currency
-                  )}{" "}
-                  ·{" "}
-                  {currency === "NGN"
-                    ? "Native currency"
-                    : "NGN rate not configured"}
-                </strong>
-              </div>
-            ))}
+            {allCurrencies.map((currency) => {
+              const subtotal = due
+                .filter((payment) => payment.currency === currency)
+                .reduce(
+                  (sum, payment) =>
+                    sum + payment.amount - payment.referralDiscount,
+                  0
+                );
+              const rate = fx[currency];
+              return (
+                <div className="metric-row" key={currency}>
+                  <span>{currency} outstanding</span>
+                  <strong>
+                    {formatMoney(subtotal, currency)} ·{" "}
+                    {currency === "NGN"
+                      ? "Native currency"
+                      : Number.isFinite(rate)
+                      ? `${formatMoney(subtotal * rate, "NGN")} eq.`
+                      : "NGN rate not configured"}
+                  </strong>
+                </div>
+              );
+            })}
           </div>
           <div className="locked" style={{ marginTop: 10 }}>
             <LockKeyhole size={15} /> Profit and margin remain available only to
@@ -240,8 +258,16 @@ export default function FinanceView({
                         financeAccess &&
                         statusButton(
                           "Verify receipt",
-                          () => setPaymentStatus(payment, "paid"),
-                          "secondary"
+                          () =>
+                            confirm({
+                              title: "Verify payment receipt?",
+                              message: `Confirm that the receipt for ${payment.parentName} (${payment.studentName}, ${formatMoney(payment.amount, payment.currency)}) has been verified and mark this billing entry as paid.`,
+                              confirmLabel: "Verify & mark paid",
+                              tone: "primary",
+                              onConfirm: () => setPaymentStatus(payment, "paid"),
+                            }),
+                          "secondary",
+                          busy
                         )}
                       {financeAccess && payment.status === "paid" && (
                         <span className="table-small">Verified</span>
@@ -310,6 +336,7 @@ export default function FinanceView({
           </div>
         </section>
       )}
+      <ConfirmDialog />
     </>
   );
 }

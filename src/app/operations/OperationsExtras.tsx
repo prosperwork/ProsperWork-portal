@@ -1,5 +1,5 @@
 "use client";
-import { useState, useMemo, type FormEvent } from "react";
+import { useState, useMemo, useEffect, useRef, type FormEvent } from "react";
 import { operationsAction } from "@/lib/academy/operations";
 type Rules = {
   tax_percent?: number;
@@ -44,6 +44,19 @@ export default function OperationsExtras({
     [safe, setSafe] = useState(false),
     [url, setUrl] = useState(""),
     [downloadProgress, setDownloadProgress] = useState("");
+  const downloadTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const mountedRef = useRef(true);
+
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+      if (downloadTimerRef.current) {
+        clearTimeout(downloadTimerRef.current);
+        downloadTimerRef.current = null;
+      }
+    };
+  }, []);
   const rules = Array.isArray(data.settings) ? data.settings[0] : data.settings;
   const [percent, setPercent] = useState(String(rules?.referral_percent ?? 0));
   const r = data.profile.role,
@@ -115,9 +128,15 @@ export default function OperationsExtras({
       document.body.removeChild(link);
       // Brief pause between browser download requests to prevent browser throttling
       await new Promise((resolve) => setTimeout(resolve, 800));
+      if (!mountedRef.current) return;
     }
+    if (!mountedRef.current) return;
     setDownloadProgress(`Completed ${approvedMedia.length} file downloads.`);
-    setTimeout(() => setDownloadProgress(""), 4000);
+    if (downloadTimerRef.current) clearTimeout(downloadTimerRef.current);
+    downloadTimerRef.current = setTimeout(() => {
+      if (mountedRef.current) setDownloadProgress("");
+      downloadTimerRef.current = null;
+    }, 4000);
   }
 
   return (

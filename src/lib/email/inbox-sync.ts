@@ -1,6 +1,8 @@
 import { ImapFlow } from "imapflow";
 import { simpleParser } from "mailparser";
 import { provisioningClient } from "@/lib/supabase/server";
+import { fetchRoleCodesWithPermission } from "@/lib/academy/roles";
+import { fetchPublicAcademyConfig } from "@/lib/academy/catalogs";
 
 export interface SyncResult {
   scanned: number;
@@ -8,10 +10,6 @@ export interface SyncResult {
   errors: string[];
 }
 
-/**
- * Strips out quoted email headers, signatures, and previous replies
- * so only the fresh parent reply appears in the portal chat thread.
- */
 export function extractCleanEmailReply(text: string): string {
   if (!text) return "";
 
@@ -33,16 +31,12 @@ export function extractCleanEmailReply(text: string): string {
     }
   }
 
-  // Filter out any lines starting with '>' (traditional email quote markers)
   const lines = cleaned.split(/\r?\n/).filter((line) => !line.trim().startsWith(">"));
   cleaned = lines.join("\n").trim();
 
   return cleaned || text.trim();
 }
 
-/**
- * Extracts ticket number (e.g. CMP-20261015-DA6905) from email subject or body
- */
 export function extractTicketNumber(subject: string, body?: string): string | null {
   const ticketRegex = /CMP-\d{8}-[A-F0-9]+/i;
   const matchSub = subject.match(ticketRegex);
@@ -56,9 +50,18 @@ export function extractTicketNumber(subject: string, body?: string): string | nu
   return null;
 }
 
+function authResultsFailed(parsed: Awaited<ReturnType<typeof simpleParser>>): boolean {
+  const authLines = (parsed.headerLines || [])
+    .filter((h) => h.key.toLowerCase() === "authentication-results")
+    .map((h) => h.line.toLowerCase());
+  if (authLines.length === 0) return false;
+  return authLines.some((line) => /\b(dmarc|dkim|spf)=fail\b/.test(line));
+}
+
 /**
- * Connects to Spacemail via IMAP, inspects incoming replies to complaint tickets,
- * and ingests new parent responses directly into the complaint chat thread.
+ * Connects to Spacemail via IMAP, inspects UNSEEN incoming replies to complaint tickets,
+ * strictly verifies sender identity against the ticket parent or active academy staff,
+ * and ingests verified replies into the complaint chat thread.
  */
 export async function syncComplaintEmailReplies(): Promise<SyncResult> {
   const result: SyncResult = {
@@ -85,14 +88,26 @@ export async function syncComplaintEmailReplies(): Promise<SyncResult> {
   });
 
   const adminClient = provisioningClient();
+  const [allowedStaffRoleList, academyConfig] = await Promise.all([
+    fetchRoleCodesWithPermission(adminClient, "complaints.manage"),
+    fetchPublicAcademyConfig(adminClient),
+  ]);
+  const allowedStaffRoles = new Set(allowedStaffRoleList);
+  const complaintsInbox = academyConfig.emails.complaints.trim().toLowerCase();
+  const academyDomain = complaintsInbox.includes("@") ? `@${complaintsInbox.split("@")[1]}` : "@prosperworkmusic.com";
+  let connected = false;
 
   try {
     await client.connect();
+    connected = true;
     const lock = await client.getMailboxLock("INBOX");
 
     try {
-      // Search for messages with "CMP-" in the subject
+      // Only scan unseen messages from the last 14 days to prevent unbounded inbox DoS
+      const since = new Date(Date.now() - 14 * 24 * 60 * 60 * 1000);
       const searchCriteria = {
+        seen: false,
+        since,
         or: [
           { subject: "CMP-" },
           { body: "CMP-" },
@@ -116,16 +131,12 @@ export async function syncComplaintEmailReplies(): Promise<SyncResult> {
           const parsed = await simpleParser(rawSource);
           const subject = parsed.subject || "";
           const ticketNumber = extractTicketNumber(subject, parsed.text);
-
-          if (!ticketNumber) {
-            continue; // Not a complaint ticket email
-          }
+          if (!ticketNumber) continue;
 
           const messageId =
             parsed.messageId ||
             `imap-${msg.uid}-${ticketNumber}-${parsed.date?.getTime() || Date.now()}`;
 
-          // Check if this email message was already processed
           const { data: existingMsg } = await adminClient
             .from("pw_complaint_messages")
             .select("id")
@@ -133,125 +144,128 @@ export async function syncComplaintEmailReplies(): Promise<SyncResult> {
             .maybeSingle();
 
           if (existingMsg) {
-            continue; // Already ingested
+            await client.messageFlagsAdd({ uid: msg.uid }, ["\\Seen"]).catch(() => undefined);
+            continue;
           }
 
-          // Locate the complaint ticket in database
           const { data: complaint, error: compErr } = await adminClient
             .from("pw_complaints")
             .select("id, parent_id, parent_name, parent_email, status")
             .eq("ticket_number", ticketNumber)
             .maybeSingle();
 
-          if (compErr || !complaint) {
-            continue; // Ticket not found or error
-          }
+          if (compErr || !complaint) continue;
 
-          // Clean the message text
           const cleanedText = extractCleanEmailReply(parsed.text || "");
-          if (!cleanedText || cleanedText.length < 1) {
-            continue;
-          }
+          if (!cleanedText || cleanedText.length < 1) continue;
 
-          // Check if sender matches parent or administration
-          const senderEmail = parsed.from?.value?.[0]?.address?.toLowerCase() || "";
+          const senderEmail = parsed.from?.value?.[0]?.address?.trim().toLowerCase() || "";
           const subjectLower = subject.toLowerCase().trim();
 
-          // Strictly ignore system-generated alerts sent to the complaints desk
+          // Ignore our own automated outbound alerts
           const isSystemGenerated =
-            senderEmail.includes("complaints@prosperworkmusic.com") &&
+            senderEmail === complaintsInbox &&
             !subjectLower.startsWith("re:") &&
             !subjectLower.startsWith("fwd:") &&
             !parsed.inReplyTo;
 
-          if (isSystemGenerated) {
-            continue;
-          }
-
-          // Also ignore if the text is our own system notification template
           if (
+            isSystemGenerated ||
             cleanedText.includes("Attention Academy Administration") ||
             cleanedText.includes("A new parent complaint") ||
             cleanedText.includes("Official Ticket Receipt") ||
             cleanedText.includes("Review and resolve this ticket")
           ) {
+            await client.messageFlagsAdd({ uid: msg.uid }, ["\\Seen"]).catch(() => undefined);
             continue;
           }
 
-          const isFromParent =
-            senderEmail === complaint.parent_email.toLowerCase() ||
-            !senderEmail.includes("prosperworkmusic.com");
-
-          // Once issue is resolved, parent cannot chat or reopen ticket via email
-          if (isFromParent && complaint.status === "resolved") {
-            try {
-              await client.messageFlagsAdd({ uid: msg.uid }, ["\\Seen"]);
-            } catch {}
+          // Reject spoofed mail failing SPF/DKIM/DMARC authentication checks
+          if (authResultsFailed(parsed)) {
+            await client.messageFlagsAdd({ uid: msg.uid }, ["\\Seen"]).catch(() => undefined);
             continue;
           }
 
-          const senderRole = isFromParent ? "parent" : "admin";
-          const senderName = isFromParent
-            ? parsed.from?.value?.[0]?.name || complaint.parent_name
-            : "Academy Administration";
+          // Never reopen resolved tickets via inbound email regardless of sender
+          if (complaint.status === "resolved") {
+            await client.messageFlagsAdd({ uid: msg.uid }, ["\\Seen"]).catch(() => undefined);
+            continue;
+          }
 
-          // Insert reply into ticket conversation thread
+          let senderId: string | null = null;
+          let senderRole: string | null = null;
+          let senderName = "";
+
+          if (senderEmail === complaint.parent_email.trim().toLowerCase()) {
+            // Exact match to ticket parent
+            senderId = complaint.parent_id;
+            senderRole = "parent";
+            senderName = complaint.parent_name;
+          } else if (senderEmail.endsWith(academyDomain)) {
+            // Exact official domain match + verify against an active authorized staff profile
+            const { data: staffProfile } = await adminClient
+              .from("pw_profiles")
+              .select("id, name, role, status")
+              .ilike("email", senderEmail)
+              .eq("status", "active")
+              .maybeSingle();
+
+            if (staffProfile && allowedStaffRoles.has(staffProfile.role)) {
+              senderId = staffProfile.id;
+              senderRole = staffProfile.role;
+              senderName = staffProfile.name || "Academy Administration";
+            }
+          }
+
+          // Reject any third-party or unverified sender
+          if (!senderId || !senderRole) {
+            await client.messageFlagsAdd({ uid: msg.uid }, ["\\Seen"]).catch(() => undefined);
+            continue;
+          }
+
           const { error: insertErr } = await adminClient
             .from("pw_complaint_messages")
             .insert({
               complaint_id: complaint.id,
-              sender_id: complaint.parent_id,
+              sender_id: senderId,
               sender_name: senderName,
               sender_role: senderRole,
-              message: cleanedText,
+              message: cleanedText.slice(0, 5000),
               email_message_id: messageId,
             });
 
           if (insertErr) {
-            result.errors.push(
-              `Failed inserting reply for #${ticketNumber}: ${insertErr.message}`
-            );
+            result.errors.push(`Failed inserting reply for #${ticketNumber}`);
             continue;
           }
 
-          // Mark ticket as in_progress and update timestamp
           await adminClient
             .from("pw_complaints")
             .update({
               status: "in_progress",
               updated_at: new Date().toISOString(),
             })
-            .eq("id", complaint.id);
+            .eq("id", complaint.id)
+            .neq("status", "resolved");
 
-          // Mark email as Seen on the mail server
-          try {
-            await client.messageFlagsAdd({ uid: msg.uid }, ["\\Seen"]);
-          } catch {
-            // Non-critical if flag update fails
-          }
-
+          await client.messageFlagsAdd({ uid: msg.uid }, ["\\Seen"]).catch(() => undefined);
           result.imported++;
         } catch (msgErr) {
-          result.errors.push(
-            `Error processing message UID ${msg.uid}: ${
-              msgErr instanceof Error ? msgErr.message : String(msgErr)
-            }`
-          );
+          console.error("Complaint email message sync error:", msgErr);
+          result.errors.push(`Error processing message UID ${msg.uid}`);
         }
       }
     } finally {
       lock.release();
     }
-
-    await client.logout();
   } catch (connErr) {
-    result.errors.push(
-      `IMAP connection error: ${
-        connErr instanceof Error ? connErr.message : String(connErr)
-      }`
-    );
+    console.error("IMAP connection error:", connErr);
+    result.errors.push("IMAP connection error.");
+  } finally {
+    if (connected) {
+      await client.logout().catch(() => undefined);
+    }
   }
 
   return result;
 }
-

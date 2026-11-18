@@ -1,16 +1,19 @@
 import {NextResponse} from "next/server";
 import{publicAppUrl}from"@/lib/supabase/app-url.mjs";
 import {identity} from "@/lib/supabase/identity";
-import {provisioningClient,sameOrigin} from "@/lib/supabase/server";
+import {impersonationBlocked,provisioningClient,sameOrigin} from "@/lib/supabase/server";
 import {hiringAction,hiringRoles} from "@/lib/academy/hiring";
 import {loadAllRecords} from "@/lib/academy/paged-records";
 import {deliverEmail} from "@/lib/email/transport.mjs";
+import {getRoleLabel,hasPermission} from "@/lib/academy/roles";
 export const dynamic="force-dynamic";
 const reply=(data:unknown,status=200)=>NextResponse.json(data,{status,headers:{"Cache-Control":"private, no-store"}});
 export async function GET(){
  try{
   const {profile,client}=await identity();
-  if(!profile||!["active","on_leave","applicant"].includes(profile.status)||!["super_admin",...hiringRoles].includes(profile.role))return reply({error:"Hiring access required."},403);
+  const canStaffHiring = profile && ["active","on_leave"].includes(profile.status) && (profile.role === "super_admin" || await hasPermission(client, profile, "workspace.hiring", { allowOnLeave: true }));
+  const isApplicant = profile && profile.status === "applicant";
+  if(!profile || (!canStaffHiring && !isApplicant)) return reply({error:"Hiring access required."},403);
   const [cases,reviews,events,directory,files,handoffs]=await Promise.all([
    loadAllRecords(client,"pw_hiring_cases"),
    loadAllRecords(client,"pw_hiring_reviews","*",{ascending:true}),
@@ -26,11 +29,16 @@ export async function POST(request:Request){
  if(!sameOrigin(request))return reply({error:"Cross-origin changes are not allowed."},403);
  try{
   const {profile,client}=await identity();
-  if(!profile||!["active","applicant"].includes(profile.status)||!["super_admin",...hiringRoles].includes(profile.role))return reply({error:"Hiring access required."},403);
+  const canStaffHiring = profile && profile.status === "active" && (profile.role === "super_admin" || await hasPermission(client, profile, "workspace.hiring"));
+  const isApplicant = profile && profile.status === "applicant";
+  if(!profile || (!canStaffHiring && !isApplicant)) return reply({error:"Hiring access required."},403);
+  const blocked=impersonationBlocked(profile);
+  if(blocked)return blocked;
   const p=hiringAction.safeParse(await request.json().catch(()=>null));if(!p.success)return reply({error:"Check applicant details, evidence and dates."},400);
   const d=p.data;
   if(d.action==="invite"){
-   if(!["super_admin","general_manager","hr"].includes(profile.role)||profile.status!=="active")return reply({error:"Owner or HR access required to invite staff accounts."},403);
+   const canInvite = await hasPermission(client, profile, "hiring.invite");
+   if(!canInvite)return reply({error:"Owner or HR access required to invite staff accounts."},403);
    try{new Intl.DateTimeFormat("en",{timeZone:d.timezone}).format();}catch{return reply({error:"Choose a valid timezone."},400);}
    const row=await client.from("pw_hiring_cases").select("id,name,email,desired_role,staff_id,stage").eq("id",d.id).single();
    if(row.error||!row.data||row.data.stage!=="selected"||row.data.staff_id)return reply({error:"Select an unlinked applicant after the joint interview."},409);
@@ -54,14 +62,17 @@ export async function POST(request:Request){
      userId = invited.data.user.id;
    }
 
-   const prepared=await admin.rpc("pw_set_account",{actor:profile.id,target:userId,new_status:"applicant",new_role:row.data.desired_role,new_timezone:d.timezone});
-   if(prepared.error)return reply({error:"Invitation was sent, but staff provisioning failed. The account remains unprivileged; review it in Accounts."},503);
+   const prepared=await admin.rpc("pw_provision_applicant",{actor:profile.id,target:userId,new_role:row.data.desired_role,new_timezone:d.timezone});
+   if(prepared.error){
+    await admin.auth.admin.deleteUser(userId).catch(()=>undefined);
+    return reply({error:"Applicant provisioning could not be completed. Review the desired role and try again."},503);
+   }
    const linked=await client.rpc("pw_hiring_action",{p_action:"bind",p_id:d.id,p_data:{staffId:userId,notes:`${profile.name} invited and linked the applicant account`}});
    if(linked.error)return reply({error:"Applicant invitation was sent, but linking failed. Link the applicant account after reloading. It has not been activated."},409);
 
    if (inviteLink) {
      try {
-       const roleTitle = row.data.desired_role.replace(/_/g, " ").replace(/\b\w/g, (l: string) => l.toUpperCase());
+       const roleTitle = await getRoleLabel(admin, row.data.desired_role);
        await deliverEmail({
          id: `hire-invite-${Date.now()}`,
          category: "admissions",

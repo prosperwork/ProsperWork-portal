@@ -12,6 +12,8 @@ interface ClassroomDroneProps {
 
 const NOTES = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"];
 
+const DEFAULT_DRONE_VOLUME = 0.4;
+
 export default function ClassroomDrone({
   onClose,
   tunerOpen = false,
@@ -22,9 +24,9 @@ export default function ClassroomDrone({
   const [standardFreq, setStandardFreq] = useState(440); // 440 Hz or 432 Hz
   const [isPlaying, setIsPlaying] = useState(false);
   const [includeFifth, setIncludeFifth] = useState(true); // Root + Fifth drone
-  const [volume, setVolume] = useState(0.4);
   const [syncToRoom, setSyncToRoom] = useState(true);
 
+  const isPlayingRef = useRef(false);
   const audioCtxRef = useRef<AudioContext | null>(null);
   const rootOscRef = useRef<OscillatorNode | null>(null);
   const fifthOscRef = useRef<OscillatorNode | null>(null);
@@ -40,7 +42,7 @@ export default function ClassroomDrone({
         setOctave(data.octave);
         setStandardFreq(data.standardFreq);
         setIncludeFifth(Boolean(data.includeFifth));
-        if (!isPlaying)
+        if (!isPlayingRef.current)
           startDroneAudio(
             data.note,
             data.octave,
@@ -79,7 +81,10 @@ export default function ClassroomDrone({
 
       const masterGain = ctx.createGain();
       masterGain.gain.setValueAtTime(0.001, ctx.currentTime);
-      masterGain.gain.linearRampToValueAtTime(volume, ctx.currentTime + 0.1);
+      masterGain.gain.linearRampToValueAtTime(
+        DEFAULT_DRONE_VOLUME,
+        ctx.currentTime + 0.1
+      );
       masterGain.connect(ctx.destination);
       masterGainRef.current = masterGain;
 
@@ -117,6 +122,7 @@ export default function ClassroomDrone({
         fifthOscRef.current = fifthOsc;
       }
 
+      isPlayingRef.current = true;
       setIsPlaying(true);
     } catch {
       // ignore
@@ -124,30 +130,47 @@ export default function ClassroomDrone({
   };
 
   const stopDroneAudio = () => {
-    if (audioCtxRef.current && masterGainRef.current) {
+    const ctx = audioCtxRef.current;
+    const root = rootOscRef.current;
+    const fifth = fifthOscRef.current;
+    const gain = masterGainRef.current;
+
+    audioCtxRef.current = null;
+    rootOscRef.current = null;
+    fifthOscRef.current = null;
+    masterGainRef.current = null;
+
+    if (ctx && gain) {
       try {
-        const ctx = audioCtxRef.current;
-        masterGainRef.current.gain.cancelScheduledValues(ctx.currentTime);
-        masterGainRef.current.gain.setValueAtTime(
-          masterGainRef.current.gain.value,
-          ctx.currentTime
-        );
-        masterGainRef.current.gain.exponentialRampToValueAtTime(
-          0.0001,
-          ctx.currentTime + 0.12
-        );
-        setTimeout(() => {
-          rootOscRef.current?.stop();
-          fifthOscRef.current?.stop();
-          void audioCtxRef.current?.close();
-          rootOscRef.current = null;
-          fifthOscRef.current = null;
-          audioCtxRef.current = null;
+        gain.gain.cancelScheduledValues(ctx.currentTime);
+        gain.gain.setValueAtTime(Math.max(gain.gain.value, 0.0001), ctx.currentTime);
+        gain.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + 0.12);
+        window.setTimeout(() => {
+          try {
+            root?.stop();
+          } catch {}
+          try {
+            fifth?.stop();
+          } catch {}
+          if (ctx.state !== "closed") {
+            void ctx.close().catch(() => {});
+          }
         }, 130);
       } catch {
-        // ignore
+        try {
+          root?.stop();
+        } catch {}
+        try {
+          fifth?.stop();
+        } catch {}
+        if (ctx.state !== "closed") {
+          void ctx.close().catch(() => {});
+        }
       }
+    } else if (ctx && ctx.state !== "closed") {
+      void ctx.close().catch(() => {});
     }
+    isPlayingRef.current = false;
     setIsPlaying(false);
   };
 
@@ -172,17 +195,6 @@ export default function ClassroomDrone({
     if (sendDrone && syncToRoom) {
       const payload = JSON.stringify({ type: "stop" });
       sendDrone(new TextEncoder().encode(payload), { reliable: true });
-    }
-  };
-
-  // Adjust volume live
-  const handleVolumeChange = (newVol: number) => {
-    setVolume(newVol);
-    if (masterGainRef.current && audioCtxRef.current) {
-      masterGainRef.current.gain.setValueAtTime(
-        newVol,
-        audioCtxRef.current.currentTime
-      );
     }
   };
 
@@ -253,11 +265,12 @@ export default function ClassroomDrone({
         </div>
         <button
           type="button"
+          aria-label="Close drone"
           onClick={onClose}
           style={{
             background: "transparent",
             border: "none",
-            color: "#aaa",
+            color: "#a7b8ae",
             cursor: "pointer",
             padding: 2,
           }}
@@ -512,7 +525,7 @@ export default function ClassroomDrone({
           <span
             style={{
               fontSize: 10,
-              color: syncToRoom ? "#a55eea" : "#666",
+              color: syncToRoom ? "#a55eea" : "#a7b8ae",
             }}
           >
             {syncToRoom ? "● Synchronized" : "Local only"}

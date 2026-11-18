@@ -5,14 +5,10 @@ import { useCallback, useEffect, useMemo, useState, type FormEvent } from "react
 import { AlertCircle, ArrowRight, BookOpen, CalendarDays, FileText, KeyRound, LoaderCircle, LockKeyhole, Music2, RefreshCw, ShieldCheck } from "lucide-react";
 import type { FamilyResponse } from "@/lib/academy/family";
 import type { LearningResponse } from "@/lib/academy/learning";
+import { readJson } from "@/lib/academy/web-client";
 
 type JsonResult = Record<string, unknown>;
 type KidFamilyResponse = FamilyResponse & { policyRequired?: boolean };
-async function readJson(response: Response): Promise<JsonResult> {
-  const copy = response.clone();
-  try { return await response.json() as JsonResult; }
-  catch { const text = await copy.text().catch(() => ""); return text ? { error: text } : {}; }
-}
 function roleKey(role: string) { return role.toLowerCase().replace(/[\s-]+/g, "_"); }
 function sameOriginPath(value: unknown, path: string) {
   if (typeof value !== "string") return null;

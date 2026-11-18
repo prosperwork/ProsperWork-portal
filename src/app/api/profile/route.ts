@@ -1,6 +1,6 @@
 import{NextResponse}from"next/server";
 import{identity}from"@/lib/supabase/identity";
-import{sameOrigin}from"@/lib/supabase/server";
+import{impersonationBlocked,sameOrigin}from"@/lib/supabase/server";
 import{z}from"zod";
 
 const profileChanges=z.object({
@@ -36,6 +36,8 @@ export async function PATCH(request:Request){
   if(!parsed.success)return reply({error:"Enter a name between 2 and 100 characters and a valid time zone. Only these details can be changed."},400);
   const{client,profile}=await identity();
   if(!profile||!["active","on_leave"].includes(profile.status))return reply({error:"Active account required."},403);
+  const blocked=impersonationBlocked(profile);
+  if(blocked)return blocked;
   // Use the authenticated client and fixed identity: native column grants and RLS remain in force.
   const result=await client.from("pw_profiles").update(parsed.data).eq("id",profile.id)
    .select("id,name,email,role,status,timezone,username").single();

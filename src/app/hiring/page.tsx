@@ -11,6 +11,7 @@ import {
   ShieldCheck,
 } from "lucide-react";
 import { hiringAction, type HiringCase } from "@/lib/academy/hiring";
+import { readJson } from "@/lib/academy/web-client";
 import ProfileAvatar from "@/app/_components/ProfileAvatar";
 import {
   expectedSupervisor,
@@ -28,16 +29,6 @@ import {
 import HiringCandidateForm from "./components/HiringCandidateForm";
 import HiringReviewForm from "./components/HiringReviewForm";
 import HiringCaseDetail from "./components/HiringCaseDetail";
-
-async function readJson(response: Response): Promise<JsonResult> {
-  const copy = response.clone();
-  try {
-    return (await response.json()) as JsonResult;
-  } catch {
-    const text = await copy.text().catch(() => "");
-    return text ? { error: text } : {};
-  }
-}
 
 function messageFrom(result: JsonResult, status: number) {
   if (typeof result.error === "string") return result.error;
@@ -1265,6 +1256,7 @@ export default function HiringPage() {
                       <div className="hire-card-body">
                         {!isApplicant && maySeeReviewDetails && (
                           <HiringReviewForm
+                            key={selectedCase.id}
                             selectedCase={selectedCase}
                             reviewsForCase={reviewsForCase}
                             reviewWhen={reviewWhen}
@@ -1288,6 +1280,7 @@ export default function HiringPage() {
                         )}
 
                         <HiringCaseDetail
+                          key={selectedCase.id}
                           selectedCase={selectedCase}
                           data={data}
                           isApplicant={isApplicant}

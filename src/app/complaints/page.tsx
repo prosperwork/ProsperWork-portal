@@ -4,6 +4,7 @@ import {
   useCallback,
   useEffect,
   useMemo,
+  useRef,
   useState,
   type FormEvent,
 } from "react";
@@ -31,13 +32,32 @@ import {
   type ComplaintCategory,
   type ComplaintStatus,
 } from "@/lib/academy/complaints";
+import { useCatalogs } from "@/lib/academy/use-academy-config";
 
 export default function ComplaintsPage() {
+  const { enabledByCatalog, allByCatalog } = useCatalogs();
+  const complaintCategoryItems = allByCatalog("complaint_categories");
+  const complaintCategoryOptions = useMemo(() => {
+    const enabled = enabledByCatalog("complaint_categories");
+    return enabled.length > 0
+      ? enabled.map((item) => ({ value: item.code, label: item.label }))
+      : COMPLAINT_CATEGORIES.map((c) => ({ value: c.value, label: c.label }));
+  }, [enabledByCatalog]);
   const [complaints, setComplaints] = useState<ComplaintRecord[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState("");
   const [toast, setToast] = useState("");
+  const toastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    return () => {
+      if (toastTimerRef.current) {
+        clearTimeout(toastTimerRef.current);
+        toastTimerRef.current = null;
+      }
+    };
+  }, []);
 
   const [searchQuery, setSearchQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState<
@@ -143,7 +163,7 @@ export default function ComplaintsPage() {
           c.student_name || "",
           c.subject,
           c.message,
-          categoryLabel(c.category),
+          categoryLabel(c.category, complaintCategoryItems),
         ]
           .join(" ")
           .toLowerCase();
@@ -151,7 +171,7 @@ export default function ComplaintsPage() {
       }
       return true;
     });
-  }, [complaints, statusFilter, categoryFilter, searchQuery]);
+  }, [complaints, statusFilter, categoryFilter, searchQuery, complaintCategoryItems]);
 
   const selectedComplaint = useMemo(() => {
     if (!selectedComplaintId) return filteredComplaints[0] || null;
@@ -173,12 +193,16 @@ export default function ComplaintsPage() {
 
   const showToast = (message: string) => {
     setToast(message);
-    setTimeout(() => setToast(""), 4500);
+    if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
+    toastTimerRef.current = setTimeout(() => {
+      setToast("");
+      toastTimerRef.current = null;
+    }, 4500);
   };
 
   const handleSendReply = async (e: FormEvent) => {
     e.preventDefault();
-    if (!selectedComplaint || !replyText.trim()) return;
+    if (replyBusy || !selectedComplaint || !replyText.trim()) return;
 
     setReplyBusy(true);
     setReplyError("");
@@ -407,7 +431,7 @@ export default function ComplaintsPage() {
           aria-label="Filter by category"
         >
           <option value="all">All Categories</option>
-          {COMPLAINT_CATEGORIES.map((cat) => (
+          {complaintCategoryOptions.map((cat) => (
             <option key={cat.value} value={cat.value}>
               {cat.label}
             </option>
@@ -487,7 +511,7 @@ export default function ComplaintsPage() {
                     </small>
                     <small>
                       {c.student_name ? `${c.student_name} · ` : ""}
-                      {categoryLabel(c.category)} · {niceDate(c.created_at)}
+                      {categoryLabel(c.category, complaintCategoryItems)} · {niceDate(c.created_at)}
                     </small>
                   </span>
                   <div
@@ -625,7 +649,7 @@ export default function ComplaintsPage() {
               <div className="profile-grid">
                 <div className="profile-field">
                   <span>Category</span>
-                  <strong>{categoryLabel(selectedComplaint.category)}</strong>
+                  <strong>{categoryLabel(selectedComplaint.category, complaintCategoryItems)}</strong>
                 </div>
                 <div className="profile-field">
                   <span>Student / Learner</span>

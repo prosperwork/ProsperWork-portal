@@ -1,6 +1,21 @@
 import type { Metadata, Viewport } from "next";
+import { DM_Sans, Manrope } from "next/font/google";
 import "./globals.css";
 import PortalRouteShell from "./_components/PortalRouteShell";
+
+const dmSans = DM_Sans({
+  subsets: ["latin"],
+  weight: ["400", "500", "600", "700"],
+  variable: "--font-dm-sans",
+  display: "swap",
+});
+
+const manrope = Manrope({
+  subsets: ["latin"],
+  weight: ["400", "500", "600", "700", "800"],
+  variable: "--font-manrope",
+  display: "swap",
+});
 
 export const viewport: Viewport = {
   themeColor: "#FF3C00",
@@ -85,10 +100,7 @@ export const metadata: Metadata = {
 
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
   return (
-    <html lang="en">
-      <head>
-        <link rel="canonical" href="https://portal.prosperworkmusic.com" />
-      </head>
+    <html lang="en" className={`${dmSans.variable} ${manrope.variable}`}>
       <body><PortalRouteShell>{children}</PortalRouteShell></body>
     </html>
   );

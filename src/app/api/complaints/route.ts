@@ -1,9 +1,7 @@
 import { NextResponse } from "next/server";
-import { randomUUID } from "node:crypto";
 import { identity } from "@/lib/supabase/identity";
-import { provisioningClient, sameOrigin } from "@/lib/supabase/server";
+import { impersonationBlocked, provisioningClient, sameOrigin } from "@/lib/supabase/server";
 import { publicAppUrl } from "@/lib/supabase/app-url.mjs";
-import { deliverEmail } from "@/lib/email/transport.mjs";
 import {
   sendOrQueueEmail,
   processQueuedComplaintEmails,
@@ -14,8 +12,12 @@ import {
   type ComplaintRecord,
   type ComplaintMessageRecord,
 } from "@/lib/academy/complaints";
+import { hasPermission } from "@/lib/academy/roles";
+import { fetchCatalogItems, fetchPublicAcademyConfig } from "@/lib/academy/catalogs";
 
 export const dynamic = "force-dynamic";
+
+let lastComplaintSyncAt = 0;
 
 const reply = (body: object, status = 200) =>
   NextResponse.json(body, {
@@ -30,12 +32,20 @@ export async function GET(request: Request) {
       return reply({ error: "Active academy session required." }, 403);
     }
 
+    const isStaff = await hasPermission(client, profile, "complaints.manage");
+    const isParent = !isStaff && (profile.role === "parent" || (await hasPermission(client, profile, "complaints.create")));
+    if (!isParent && !isStaff) {
+      return reply({ error: "You do not have access to view complaints." }, 403);
+    }
+
     const { searchParams } = new URL(request.url);
     const filterStatus = searchParams.get("status");
     const query = searchParams.get("q")?.trim().toLowerCase();
     const shouldSync = searchParams.get("sync") === "true";
 
-    if (shouldSync) {
+    // Only authorized staff (never parents/impersonated sessions) can trigger sync, with a 30s cooldown
+    if (shouldSync && isStaff && !profile.impersonated && Date.now() - lastComplaintSyncAt > 30_000) {
+      lastComplaintSyncAt = Date.now();
       try {
         const appUrl = publicAppUrl("/").origin;
         const { syncComplaintEmailReplies } = await import("@/lib/email/inbox-sync");
@@ -56,21 +66,8 @@ export async function GET(request: Request) {
       .order("created_at", { ascending: false });
 
     // Restrict parent to own complaints only
-    if (profile.role === "parent") {
+    if (isParent) {
       queryBuilder = queryBuilder.eq("parent_id", profile.id);
-    } else if (
-      ![
-        "super_admin",
-        "general_manager",
-        "head_admin",
-        "admin",
-        "qc",
-      ].includes(profile.role)
-    ) {
-      return reply(
-        { error: "You do not have access to view complaints." },
-        403
-      );
     }
 
     if (filterStatus && filterStatus !== "all") {
@@ -136,10 +133,12 @@ export async function POST(request: Request) {
   }
 
   try {
-    const { profile, user } = await identity();
+    const { client, profile, user } = await identity();
     if (!profile || profile.status !== "active" || !user) {
       return reply({ error: "Active academy account required." }, 403);
     }
+    const blocked = impersonationBlocked(profile);
+    if (blocked) return blocked;
 
     const raw = await request.json().catch(() => null);
     const parsed = complaintActionSchema.safeParse(raw);
@@ -156,22 +155,44 @@ export async function POST(request: Request) {
     const input = parsed.data;
     const adminClient = provisioningClient();
     const appUrl = publicAppUrl("/").origin;
+    const [canManageComplaints, canCreateComplaints, academyConfig] = await Promise.all([
+      hasPermission(client, profile, "complaints.manage"),
+      hasPermission(client, profile, "complaints.create"),
+      fetchPublicAcademyConfig(client),
+    ]);
 
     if (input.action === "create") {
+      if (!canCreateComplaints && !canManageComplaints) {
+        return reply({ error: "Only parents or authorized staff can file support complaints." }, 403);
+      }
+      const categoryItems = await fetchCatalogItems(client, "complaint_categories");
+      const enabledCategories = categoryItems.filter((c) => c.enabled);
+      if (enabledCategories.length > 0 && !enabledCategories.some((c) => c.code === input.category)) {
+        return reply({ error: "Selected complaint category is not currently enabled." }, 400);
+      }
+      const resolvedCategoryLabel = categoryLabel(input.category, categoryItems);
       const parentName = profile.name || "Guardian";
       const parentEmail =
-        profile.email || user.email || "support@prosperworkmusic.com";
+        profile.email || user.email || academyConfig.emails.support;
 
+      let finalStudentId: string | null = null;
       let finalStudentName: string | null = input.studentName || null;
 
-      if (input.studentId && !finalStudentName) {
-        const studentRow = await adminClient
+      if (input.studentId) {
+        // Query with RLS-bound client (and explicit parent_id match for parents) to prevent cross-family IDOR
+        let studentQuery = client
           .from("pw_students")
-          .select("id,payload")
-          .eq("id", input.studentId)
-          .maybeSingle();
-
-        if (studentRow.data?.payload) {
+          .select("id,parent_id,payload")
+          .eq("id", input.studentId);
+        if (profile.role === "parent") {
+          studentQuery = studentQuery.eq("parent_id", profile.id);
+        }
+        const studentRow = await studentQuery.maybeSingle();
+        if (!studentRow.data) {
+          return reply({ error: "Selected student is not linked to your account." }, 403);
+        }
+        finalStudentId = studentRow.data.id;
+        if (!finalStudentName && studentRow.data.payload) {
           finalStudentName =
             (studentRow.data.payload as any).name ||
             (studentRow.data.payload as any).childName ||
@@ -185,7 +206,7 @@ export async function POST(request: Request) {
           parent_id: profile.id,
           parent_name: parentName,
           parent_email: parentEmail,
-          student_id: input.studentId || null,
+          student_id: finalStudentId,
           student_name: finalStudentName,
           category: input.category,
           urgency: input.urgency,
@@ -207,7 +228,7 @@ export async function POST(request: Request) {
       await Promise.allSettled([
         sendOrQueueEmail({
           recipientId: profile.id,
-          email: "complaints@prosperworkmusic.com",
+          email: academyConfig.emails.complaints,
           subject: `[Complaint ${complaint.ticket_number}] ${complaint.urgency.toUpperCase()}: ${complaint.subject}`,
           template: "parent_complaint_alert",
           payload: {
@@ -216,7 +237,7 @@ export async function POST(request: Request) {
             parentEmail: complaint.parent_email,
             studentName: complaint.student_name,
             category: complaint.category,
-            categoryLabel: categoryLabel(complaint.category),
+            categoryLabel: resolvedCategoryLabel,
             urgency: complaint.urgency,
             subject: complaint.subject,
             message: complaint.message,
@@ -233,7 +254,7 @@ export async function POST(request: Request) {
             parentName: complaint.parent_name,
             studentName: complaint.student_name,
             category: complaint.category,
-            categoryLabel: categoryLabel(complaint.category),
+            categoryLabel: resolvedCategoryLabel,
             urgency: complaint.urgency,
             subject: complaint.subject,
             message: complaint.message,
@@ -250,14 +271,7 @@ export async function POST(request: Request) {
     }
 
     if (input.action === "update_status" || input.action === "resolve") {
-      const allowedRoles = [
-        "super_admin",
-        "general_manager",
-        "head_admin",
-        "admin",
-        "qc",
-      ];
-      if (!allowedRoles.includes(profile.role)) {
+      if (!canManageComplaints) {
         return reply(
           { error: "Administrative permission required to resolve complaints." },
           403
@@ -341,15 +355,7 @@ export async function POST(request: Request) {
     }
 
     if (input.action === "reply") {
-      const allowedRoles = [
-        "parent",
-        "super_admin",
-        "general_manager",
-        "head_admin",
-        "admin",
-        "qc",
-      ];
-      if (!allowedRoles.includes(profile.role)) {
+      if (!canManageComplaints && !canCreateComplaints) {
         return reply(
           { error: "You are not authorized to post replies on complaints." },
           403
@@ -368,14 +374,14 @@ export async function POST(request: Request) {
 
       const complaint = existingResult.data as ComplaintRecord;
 
-      if (profile.role === "parent" && complaint.parent_id !== profile.id) {
+      if (!canManageComplaints && complaint.parent_id !== profile.id) {
         return reply(
           { error: "You can only reply to your own inquiries." },
           403
         );
       }
 
-      if (profile.role === "parent" && complaint.status === "resolved") {
+      if (!canManageComplaints && complaint.status === "resolved") {
         return reply(
           {
             error:
@@ -387,7 +393,7 @@ export async function POST(request: Request) {
 
       const senderName =
         profile.name ||
-        (profile.role === "parent" ? "Parent" : "Academy Administration");
+        (!canManageComplaints ? "Parent" : "Academy Administration");
       const senderRole = profile.role;
 
       const insertMsgResult = await adminClient
@@ -414,7 +420,7 @@ export async function POST(request: Request) {
 
       // Update complaint status and updated_at
       let nextStatus = complaint.status;
-      if (profile.role !== "parent" && complaint.status === "open") {
+      if (canManageComplaints && complaint.status === "open") {
         nextStatus = "in_progress";
       }
 
@@ -427,10 +433,10 @@ export async function POST(request: Request) {
         .eq("id", complaint.id);
 
       // Deliver reply email alert to the opposite party
-      const isStaff = profile.role !== "parent";
+      const isStaff = canManageComplaints;
       const recipientEmail = isStaff
         ? complaint.parent_email
-        : "complaints@prosperworkmusic.com";
+        : academyConfig.emails.complaints;
       const recipientName = isStaff
         ? complaint.parent_name
         : "Academy Administration";

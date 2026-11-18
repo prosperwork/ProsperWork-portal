@@ -1,8 +1,10 @@
 import { NextResponse } from "next/server";
 import { identity } from "@/lib/supabase/identity";
-import { sameOrigin } from "@/lib/supabase/server";
+import { impersonationBlocked, sameOrigin } from "@/lib/supabase/server";
 import { nextPayDate, payrollActionSchema, payrollDateSchema } from "@/lib/academy/payroll";
-import {loadAllRecords} from "@/lib/academy/paged-records";
+import { currencyCode } from "@/lib/academy/currency";
+import { loadAllRecords } from "@/lib/academy/paged-records";
+import { hasPermission } from "@/lib/academy/roles";
 
 const headers = { "Cache-Control": "private, no-store" };
 const reply = (data: unknown, status=200) => NextResponse.json(data,{status,headers});
@@ -17,15 +19,17 @@ function failure(error: {code?: string; message?: string}) {
 export async function GET(request: Request) {
   try {
     const {client,profile}=await identity();
-    if (!profile || !["active","on_leave"].includes(profile.status) || ["parent","student","general_manager"].includes(profile.role))
+    const canViewPayroll = await hasPermission(client, profile, "payroll.view", { allowOnLeave: true });
+    if (!profile || !canViewPayroll)
       return reply({error:"Staff salary access is required."},403);
     const url=new URL(request.url);
     const bankStaff=url.searchParams.get("bankStaffId");
     if(bankStaff) {
       if(!/^[0-9a-f-]{36}$/i.test(bankStaff)) return reply({error:"Invalid staff identifier."},400);
       const currency=url.searchParams.get("currency");
-      if(!currency||!["GBP","USD","EUR","CAD","NGN"].includes(currency)) return reply({error:"Choose the bank instruction currency."},400);
-      if(bankStaff!==profile.id && !["super_admin","finance"].includes(profile.role)) return reply({error:"Private bank access is restricted."},403);
+      if(!currency||!currencyCode.safeParse(currency).success) return reply({error:"Choose the bank instruction currency."},400);
+      const canManagePayroll = profile.role === "super_admin" || await hasPermission(client, profile, "workspace.payroll");
+      if(bankStaff!==profile.id && !canManagePayroll) return reply({error:"Private bank access is restricted."},403);
       const {data,error}=await client.from("pw_salary_banks").select("staff_id,bank_name,account_name,account_number,routing_code,currency").eq("staff_id",bankStaff).eq("currency",currency).maybeSingle();
       if(error) return failure(error);
       return reply({bank:data});
@@ -50,12 +54,16 @@ export async function POST(request:Request) {
   if(!sameOrigin(request)) return reply({error:"Invalid request origin."},403);
   try {
     const {client,profile}=await identity();
-    if(!profile||profile.status!=="active"||["parent","student","general_manager"].includes(profile.role)) return reply({error:"Active staff access is required."},403);
+    const canViewPayroll = await hasPermission(client, profile, "payroll.view");
+    if(!profile||!canViewPayroll) return reply({error:"Active staff access is required."},403);
+    const blocked=impersonationBlocked(profile);
+    if(blocked) return blocked;
     const parsed=payrollActionSchema.safeParse(await request.json().catch(()=>null));
     if(!parsed.success) return reply({error:"Check the required salary fields and written reasons."},400);
     const p=parsed.data;
     let result: any;
     switch(p.action) {
+      case "salary_end": result=await client.rpc("pw_set_salary_end",{p_staff:p.staffId,p_end:p.endDate,p_reason:p.reason});break;
       case "propose_rate": result=await client.rpc("pw_propose_salary_rate",{p_staff:p.staffId,p_date:p.effectiveFrom,p_reason:p.reason,
         p_terms:{monthlyStudentRate:p.monthlyStudentRate,trialRate:p.trialRate,coverRate:p.coverRate,baseSalary:p.baseSalary,adminExtraParentRate:p.adminExtraParentRate,
         adminQuota:p.adminQuota,advanceEligible:p.advanceEligible,currency:p.currency,managementFirstPeriod:p.managementFirstPeriod}});break;
@@ -69,7 +77,7 @@ export async function POST(request:Request) {
       case "batch": result=await client.rpc("pw_salary_transition",{p_id:p.id,p_decision:p.decision,p_reason:p.reason});break;
       case "paid": result=await client.rpc("pw_mark_salary_paid",{p_statement:p.statementId,p_reference:p.transferReference,p_confirmed:p.confirmed});break;
     }
-    if(result.error)return failure(result.error);
-    return reply({ok:true,...(typeof result.data==="string"?{id:result.data}:{})});
+    if(result?.error)return failure(result.error);
+    return reply({ok:true,...(typeof result?.data==="string"?{id:result.data}:typeof result?.data==="object"&&result.data!==null?result.data:{})});
   }catch{return reply({error:"The salary operation could not be completed."},503);}
 }

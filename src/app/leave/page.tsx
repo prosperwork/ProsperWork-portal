@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState, type FormEvent } from "react";
 import { AlertCircle, CalendarClock, Check, CheckCircle2, Clock3, Forward, LoaderCircle, RefreshCw, ShieldCheck, Users } from "lucide-react";
 import { leaveAction, type LeaveData, type StaffLeave } from "@/lib/academy/leave";
+import { readJson } from "@/lib/academy/web-client";
 import ProfileAvatar from "@/app/_components/ProfileAvatar";
 
 type JsonResult = Record<string, unknown>;
@@ -11,19 +12,17 @@ type RouteChoice = "hr" | "head_admin";
 type LeaveKind = "leave" | "exam_break" | "sick_leave";
 type PlanSelection = Record<string, string>;
 
-const eligibleRoles = new Set(["teacher", "admin", "qc", "quality_control", "hr", "head", "head_admin", "finance", "sales", "sales_marketing", "social", "social_media", "owner", "super_admin"]);
+function isStaffRole(role: string): boolean {
+  const normalized = role.toLowerCase().trim().replace(/[\s-]+/g, "_");
+  return !["parent", "student"].includes(normalized) && normalized !== "";
+}
 const staffLabels: Record<string, string> = {
   teacher: "Teacher", admin: "Admin", qc: "QC", quality_control: "QC",
   hr: "HR", head: "Head", head_admin: "Head Admin", finance: "Finance",
   sales: "Sales", sales_marketing: "Sales", social: "Social", social_media: "Social",
-  owner: "Owner", super_admin: "Owner",
+  general_manager: "General Manager", owner: "Owner", super_admin: "Owner",
 };
 
-async function readJson(response: Response): Promise<JsonResult> {
-  const copy = response.clone();
-  try { return await response.json() as JsonResult; }
-  catch { const text = await copy.text().catch(() => ""); return text ? { error: text } : {}; }
-}
 function roleKey(value: string) { return value.toLowerCase().trim().replace(/[\s-]+/g, "_"); }
 function errorText(result: JsonResult, status: number) {
   if (typeof result.error === "string") return result.error;
@@ -97,7 +96,7 @@ export default function LeavePage() {
   const isOwner = role === "owner" || role === "super_admin";
   const isHeadOwner = isHead || isOwner;
   const isManager = isHR || isHeadOwner;
-  const canRequestOwn = Boolean(isActive && eligibleRoles.has(role));
+  const canRequestOwn = Boolean(isActive && isStaffRole(role));
   const canRequestForOthers = Boolean(isActive && isManager);
   const deviceTimezone = typeof Intl !== "undefined" ? Intl.DateTimeFormat().resolvedOptions().timeZone || "device local time" : "device local time";
   const serverNow = useMemo(() => {
@@ -114,7 +113,7 @@ export default function LeavePage() {
   const targetStaff = targetStaffId === data?.profile.id ? data?.profile : staffById.get(targetStaffId);
   const targetZone = targetStaff?.timezone || data?.profile.timezone || "UTC";
   const targetRole = roleKey(targetStaff?.role ?? "");
-  const requestTargets = (data?.directory ?? []).filter(person => eligibleRoles.has(roleKey(person.role)) && person.status.trim().toLowerCase() === "active");
+  const requestTargets = (data?.directory ?? []).filter(person => isStaffRole(person.role) && person.status.trim().toLowerCase() === "active");
   const visibleLeaves = useMemo(() => {
     if (!data) return [];
     const own = data.leaves.filter(leave => leave.staff_id === data.profile.id);
@@ -144,7 +143,7 @@ export default function LeavePage() {
     event.preventDefault();
     if (!canRequestOwn || !data) return;
     const selectedRole = targetRole;
-    if (!eligibleRoles.has(selectedRole) || targetStaff?.status.trim().toLowerCase() !== "active") {
+    if (!isStaffRole(selectedRole) || targetStaff?.status.trim().toLowerCase() !== "active") {
       setActionError("Choose an active staff record from the private directory.");
       return;
     }

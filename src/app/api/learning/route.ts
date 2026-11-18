@@ -1,14 +1,19 @@
 import { NextResponse } from "next/server";
 import { identity } from "@/lib/supabase/identity";
-import { sameOrigin } from "@/lib/supabase/server";
+import { impersonationBlocked, sameOrigin } from "@/lib/supabase/server";
 import { learningAction } from "@/lib/academy/learning";
-import {loadAllRecords} from "@/lib/academy/paged-records";
+import { loadAllRecords } from "@/lib/academy/paged-records";
+import { hasAnyPermission } from "@/lib/academy/roles";
 export const dynamic="force-dynamic";
 const reply=(data:unknown,status=200)=>NextResponse.json(data,{status,headers:{"Cache-Control":"private, no-store"}});
 export async function GET() {
  try {
   const {client,profile}=await identity();
-  if(!profile||!["active","on_leave"].includes(profile.status)||!["super_admin","head_admin","admin","qc","teacher","parent","student"].includes(profile.role))return reply({error:"Learning access is restricted."},403);
+  const canAccess = profile && ["active","on_leave"].includes(profile.status) && (
+    ["parent","student","super_admin"].includes(profile.role) ||
+    await hasAnyPermission(client, profile, ["workspace.learning", "workspace.curriculum", "workspace.students"], { allowOnLeave: true })
+  );
+  if(!canAccess)return reply({error:"Learning access is restricted."},403);
   const [lessons,boards,resources,recordings]=await Promise.all([
    loadAllRecords(client,"pw_lessons","id,payload,teacher_id,created_at"),
    loadAllRecords(client,"pw_lesson_boards","*",{cursor:"lesson_id",sort:"updated_at"}),
@@ -30,6 +35,7 @@ export async function POST(request:Request) {
  try{
   const {client,profile}=await identity();
   if(!profile||profile.status!=="active")return reply({error:"Active account required."},403);
+  const blocked=impersonationBlocked(profile);if(blocked)return blocked;
   const parsed=learningAction.safeParse(await request.json());
   if(!parsed.success)return reply({error:"Check required fields and text limits."},400);
   const p=parsed.data;

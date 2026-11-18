@@ -32,7 +32,11 @@ export async function academyTick({client,roomService,appUrl,deliverEmail,safeEm
   const claimed=await client.rpc("pw_claim_emails");if(claimed.error)throw Error("EMAIL_QUEUE_UNAVAILABLE");
   await Promise.all((claimed.data||[]).map(async job=>{
    let failure=null;const current=await client.rpc("pw_email_current",{p_job:job.id});if(current.error||!current.data)failure="SOURCE_NO_LONGER_CURRENT";
-   if(!failure)try{await deliverEmail(job,appUrl);}catch(e){failure=safeEmailError(e);}
+   if(!failure)try{
+    const isComplaint=["parent_complaint_acknowledgement","parent_complaint_alert","complaint_reply_alert","parent_complaint_resolved"].includes(job.template);
+    const targetEmail=typeof job.payload?.targetEmail==="string"&&job.payload.targetEmail.trim()?job.payload.targetEmail.trim():job.email;
+    await deliverEmail({...job,email:targetEmail,category:isComplaint?"complaints":job.category},appUrl);
+   }catch(e){failure=safeEmailError(e);}
    const result=await client.rpc("pw_finish_email",{p_id:job.id,p_lease:job.lease_id,p_success:!failure,p_error:failure});
    if(result.error)throw Error("EMAIL_RESULT_UNAVAILABLE");
   }));

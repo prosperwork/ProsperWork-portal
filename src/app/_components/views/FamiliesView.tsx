@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, type ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import {
   AlertCircle,
   CalendarDays,
@@ -38,6 +38,7 @@ export default function FamiliesView({
   updateConsent,
   openEmailComposer,
   notify,
+  onRefresh,
   qcAssignmentError,
   qcAssignmentLoading,
 }: {
@@ -61,6 +62,7 @@ export default function FamiliesView({
     name: string
   ) => void;
   notify: (msg: string) => void;
+  onRefresh: () => Promise<void>;
   qcAssignmentError?: string;
   qcAssignmentLoading?: boolean;
 }) {
@@ -70,6 +72,17 @@ export default function FamiliesView({
   const [assignTeacherName, setAssignTeacherName] = useState("");
   const [approvalBusy, setApprovalBusy] = useState(false);
   const [approvalError, setApprovalError] = useState("");
+
+  useEffect(() => {
+    if (!approvingStudent) return;
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape" && !approvalBusy) {
+        setApprovingStudent(null);
+      }
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [approvingStudent, approvalBusy]);
 
   const activeTeachers = data.staff.filter(
     (s) => s.role === "teacher" && s.status === "active"
@@ -110,12 +123,12 @@ export default function FamiliesView({
         setApprovalError(json.error || "Failed to confirm admission.");
         return;
       }
-      approvingStudent.status = "active";
-      approvingStudent.admissionStatus = "approved";
-      approvingStudent.teacherName = teacherName;
+      const approvedName = approvingStudent.name;
+      const approvedParent = approvingStudent.parentName;
+      await onRefresh();
       setApprovingStudent(null);
       notify(
-        `Admission confirmed for ${approvingStudent.name}! Notification email sent to ${approvingStudent.parentName}.`
+        `Admission confirmed for ${approvedName}! Notification email sent to ${approvedParent}.`
       );
     } catch {
       setApprovalError("Network error. Try again.");
@@ -272,16 +285,29 @@ export default function FamiliesView({
                   <div className="profile-field">
                     <span>Age · date of birth</span>
                     <strong>
-                      {Math.floor(
-                        (Date.now() - new Date(selected.dob).getTime()) /
-                          31557600000
-                      )}{" "}
-                      ·{" "}
-                      {niceDate(selected.dob, {
-                        year: "numeric",
-                        month: "short",
-                        day: "numeric",
-                      })}
+                      {(() => {
+                        const dobMs = selected.dob
+                          ? Date.parse(selected.dob)
+                          : Number.NaN;
+                        const age = Number.isFinite(dobMs)
+                          ? Math.max(
+                              0,
+                              Math.floor((Date.now() - dobMs) / 31557600000)
+                            )
+                          : null;
+                        return (
+                          <>
+                            {age !== null ? `${age} · ` : ""}
+                            {selected.dob
+                              ? niceDate(selected.dob, {
+                                  year: "numeric",
+                                  month: "short",
+                                  day: "numeric",
+                                })
+                              : "Not recorded"}
+                          </>
+                        );
+                      })()}
                     </strong>
                   </div>
                   <div className="profile-field">
@@ -506,6 +532,9 @@ export default function FamiliesView({
         >
           <div
             className="modal-box card"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="confirm-admission-title"
             onClick={(e) => e.stopPropagation()}
             style={{
               maxWidth: 480,
@@ -526,11 +555,15 @@ export default function FamiliesView({
                 paddingBottom: 12,
               }}
             >
-              <h3 style={{ margin: 0, fontSize: 18, color: "#0a2e22" }}>
+              <h3
+                id="confirm-admission-title"
+                style={{ margin: 0, fontSize: 18, color: "#0a2e22" }}
+              >
                 Confirm Student Admission
               </h3>
               <button
                 type="button"
+                aria-label="Close"
                 className="btn ghost small"
                 onClick={() => setApprovingStudent(null)}
                 disabled={approvalBusy}

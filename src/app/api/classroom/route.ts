@@ -2,9 +2,26 @@ import { NextResponse } from "next/server";
 import { AccessToken } from "livekit-server-sdk";
 import { z } from "zod";
 import { identity } from "@/lib/supabase/identity";
-import { sameOrigin } from "@/lib/supabase/server";
+import { impersonationBlocked, sameOrigin } from "@/lib/supabase/server";
+import { fetchRoleRecord } from "@/lib/academy/roles";
 
 const idSchema = z.string().regex(/^[a-zA-Z0-9_-]{1,100}$/);
+const permissionKeySchema = z.enum(["piano", "whiteboard", "metronome", "tuner", "drone", "chat", "reactions"]);
+const studentPermissionsPatchSchema = z.object({
+  lessonId: idSchema,
+  studentPermissions: z.object({
+    piano: z.boolean().optional(),
+    whiteboard: z.boolean().optional(),
+    metronome: z.boolean().optional(),
+    tuner: z.boolean().optional(),
+    drone: z.boolean().optional(),
+    chat: z.boolean().optional(),
+    reactions: z.boolean().optional(),
+  }).strict().optional(),
+  feature: permissionKeySchema.optional(),
+  enabled: z.boolean().optional(),
+  studentFeaturesEnabled: z.boolean().optional(),
+}).strict();
 export const runtime = "nodejs";
 const headers = { "Cache-Control": "private, no-store", "Referrer-Policy": "no-referrer" };
 
@@ -46,14 +63,16 @@ export async function GET(request: Request) {
     const payload = (lessonRow?.payload || {}) as Record<string, unknown>;
 
     const asStudent = urlObj.searchParams.get("as") === "student" || urlObj.searchParams.get("role") === "student";
-    const staffRoles = ["super_admin", "admin", "head_admin", "general_manager", "teacher", "qc"];
-    const isStaff = staffRoles.includes(String(profile.role || "").toLowerCase());
+    const roleRecord = await fetchRoleRecord(client, profile.role);
+    const isStaff = profile.role === "super_admin" || Boolean(roleRecord?.enabled && roleRecord.is_staff);
+    const hasGrantPerm =
+      profile.role === "super_admin" ||
+      Boolean(roleRecord?.enabled && roleRecord.permissions.includes("classroom.grant_tools"));
 
-    // Permission check: Only super_admin, head_admin, or the admin assigned to this student can grant features
+    // Permission check: Roles with classroom.grant_tools (scoped to assigned admin for regular admin)
     const canGrantAccess = !asStudent && (
       profile.role === "super_admin" ||
-      (profile.role === "admin" && profile.id === lessonRow?.admin_id) ||
-      profile.role === "head_admin"
+      (profile.role === "admin" ? hasGrantPerm && profile.id === lessonRow?.admin_id : hasGrantPerm)
     );
 
     const isRestrictedRole = asStudent || !isStaff || ["student", "parent"].includes(String(profile.role || "").toLowerCase()) || profile.id === lessonRow?.student_id;
@@ -80,6 +99,8 @@ export async function POST(request: Request) {
   try {
     const { client, profile } = await identity();
     if (!profile || profile.status !== "active") return NextResponse.json({ error: "Active academy access is required." }, { status: 403 });
+    const blocked = impersonationBlocked(profile);
+    if (blocked) return blocked;
     const bodyJson = await request.json().catch(() => ({}));
     const input = z.object({ lessonId: idSchema, asRole: z.string().optional() }).safeParse(bodyJson);
     if (!input.success) return NextResponse.json({ error: "Choose a valid class." }, { status: 400 });
@@ -94,16 +115,18 @@ export async function POST(request: Request) {
     if (ttl < 1) return NextResponse.json({ error: "This classroom has closed." }, { status: 409 });
     const requestUrl = new URL(request.url);
     const asStudent = requestUrl.searchParams.get("as") === "student" || requestUrl.searchParams.get("role") === "student" || input.data.asRole === "student";
-    const staffRoles = ["super_admin", "admin", "head_admin", "general_manager", "teacher", "qc"];
-    const isStaff = !asStudent && staffRoles.includes(String(profile.role || "").toLowerCase());
+    const roleRecord = await fetchRoleRecord(client, profile.role);
+    const isStaff = !asStudent && (profile.role === "super_admin" || Boolean(roleRecord?.enabled && roleRecord.is_staff));
 
     const { data: lessonRow } = await client.from("pw_lessons").select("admin_id, student_id, payload").eq("id", input.data.lessonId).single();
     const payload = (lessonRow?.payload || {}) as Record<string, unknown>;
 
+    const hasGrantPerm =
+      profile.role === "super_admin" ||
+      Boolean(roleRecord?.enabled && roleRecord.permissions.includes("classroom.grant_tools"));
     const canGrantAccess = !asStudent && (
       profile.role === "super_admin" ||
-      (profile.role === "admin" && profile.id === lessonRow?.admin_id) ||
-      profile.role === "head_admin"
+      (profile.role === "admin" ? hasGrantPerm && profile.id === lessonRow?.admin_id : hasGrantPerm)
     );
 
     const isRestrictedRole = asStudent || !isStaff || ["student", "parent"].includes(String(profile.role || "").toLowerCase()) || profile.id === lessonRow?.student_id;
@@ -123,7 +146,9 @@ export async function POST(request: Request) {
       },
       ttl,
     });
-    const canRecord = ["super_admin", "admin", "head_admin", "qc", "teacher"].includes(profile.role);
+    const canRecord =
+      profile.role === "super_admin" ||
+      Boolean(roleRecord?.enabled && roleRecord.permissions.includes("classroom.record"));
     access.addGrant({
       roomJoin: true, room: data.roomName, roomAdmin: Boolean(data.host),
       canPublish: true, canSubscribe: true, canPublishData: true,
@@ -151,12 +176,15 @@ export async function PATCH(request: Request) {
   try {
     const { client, profile } = await identity();
     if (!profile || profile.status !== "active") return NextResponse.json({ error: "Active academy access required." }, { status: 403 });
+    const blocked = impersonationBlocked(profile);
+    if (blocked) return blocked;
 
-    const body = await request.json().catch(() => ({}));
-    const { lessonId, studentPermissions, feature, enabled, studentFeaturesEnabled } = body;
-    if (!lessonId) {
+    const rawBody = await request.json().catch(() => null);
+    const parsed = studentPermissionsPatchSchema.safeParse(rawBody);
+    if (!parsed.success) {
       return NextResponse.json({ error: "Invalid parameters." }, { status: 400 });
     }
+    const { lessonId, studentPermissions, feature, enabled, studentFeaturesEnabled } = parsed.data;
 
     const { data: lessonRow, error: fetchErr } = await client
       .from("pw_lessons")
@@ -168,11 +196,13 @@ export async function PATCH(request: Request) {
       return NextResponse.json({ error: "Lesson not found." }, { status: 404 });
     }
 
-    // Strict role check: Only super_admin, head_admin, or the assigned admin for this lesson can grant student access
+    const roleRecord = await fetchRoleRecord(client, profile.role);
+    const hasGrantPerm =
+      profile.role === "super_admin" ||
+      Boolean(roleRecord?.enabled && roleRecord.permissions.includes("classroom.grant_tools"));
     const canGrantAccess =
       profile.role === "super_admin" ||
-      (profile.role === "admin" && profile.id === lessonRow.admin_id) ||
-      profile.role === "head_admin";
+      (profile.role === "admin" ? hasGrantPerm && profile.id === lessonRow.admin_id : hasGrantPerm);
 
     if (!canGrantAccess) {
       return NextResponse.json(
@@ -186,12 +216,15 @@ export async function PATCH(request: Request) {
 
     let nextPerms: StudentPermissions = { ...currentPerms };
 
-    if (studentPermissions && typeof studentPermissions === "object") {
-      nextPerms = { ...nextPerms, ...studentPermissions };
-    } else if (typeof feature === "string" && typeof enabled === "boolean" && feature in nextPerms) {
-      nextPerms[feature as keyof StudentPermissions] = enabled;
+    if (studentPermissions) {
+      for (const k of Object.keys(nextPerms) as (keyof StudentPermissions)[]) {
+        if (typeof studentPermissions[k] === "boolean") {
+          nextPerms[k] = studentPermissions[k]!;
+        }
+      }
+    } else if (feature && typeof enabled === "boolean") {
+      nextPerms[feature] = enabled;
     } else if (typeof studentFeaturesEnabled === "boolean") {
-      // Toggle all at once
       for (const k of Object.keys(nextPerms) as (keyof StudentPermissions)[]) {
         nextPerms[k] = studentFeaturesEnabled;
       }
@@ -220,8 +253,9 @@ export async function PATCH(request: Request) {
       ok: true,
       studentPermissions: nextPerms,
       studentFeaturesEnabled: hasAnyEnabled,
-    });
-  } catch (cause: any) {
-    return NextResponse.json({ error: cause?.message || "Could not update access." }, { status: 500 });
+    }, { headers });
+  } catch (cause) {
+    console.error("PATCH /api/classroom error:", cause);
+    return NextResponse.json({ error: "Could not update access." }, { status: 500 });
   }
 }

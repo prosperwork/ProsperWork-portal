@@ -8,19 +8,19 @@ const date = z.string().regex(/^\d{4}-\d{2}-\d{2}$/).refine((value) => {
   const parsed = new Date(`${value}T00:00:00Z`);
   return !Number.isNaN(parsed.getTime()) && parsed.toISOString().slice(0, 10) === value;
 });
-const amount = z.number().finite().nonnegative().max(1_000_000_000);
+const amount = z.number().finite().nonnegative().max(1_000_000_000).multipleOf(0.01);
 const currency = currencyCode;
 const zone = z.string().max(100).refine((value) => {
   try { new Intl.DateTimeFormat("en", { timeZone: value }); return true; } catch { return false; }
 }, "Enter a valid timezone, such as Europe/London.");
-const role = z.enum(["super_admin", "general_manager", "head_admin", "admin", "hr", "qc", "teacher", "parent", "student", "finance", "sales_marketing", "social_media"]);
+const role = z.string().trim().toLowerCase().regex(/^[a-z][a-z0-9_]{1,40}$/, "Select a valid academy role.");
 
 export const recordSchemas = {
   students: z.object({
     id, name, dob: date.refine((value) => value <= new Date().toISOString().slice(0, 10), "Date of birth cannot be in the future."),
     parentName: name, parentEmail: z.string().email().max(254), instrument: name,
     teacherName: text, adminName: text, timezone: zone, consent: z.boolean(),
-    rank: z.enum(["Novice", "Beginner", "Amateur", "Master"]), songsDone: z.array(name).max(500), songsToDo: z.array(name).max(500),
+    rank: z.string().trim().min(1).max(80), songsDone: z.array(name).max(500), songsToDo: z.array(name).max(500),
     status: z.enum(["active", "paused", "inactive"]), monthlyLessons: z.number().int().min(1).max(60), lessonsTaken: z.number().int().nonnegative(),
     admissionStatus: z.enum(["pending_review", "approved", "rejected"]).optional(),
     lessonDuration: z.string().max(80).optional(),
@@ -38,11 +38,23 @@ export const recordSchemas = {
     title: name, instrument: name, startsAt: z.string().datetime({ offset: true }), studentTimezone: zone,
     status: z.enum(["scheduled", "teacher_done", "completed", "missed", "cancelled", "rescheduled"]), kind: z.enum(["standard", "trial", "cover"]),
     classroomProvider: z.enum(["inbuilt", "google_meet"]).optional(),
-    meetUrl: z.string().url().max(500).optional(),
+    meetUrl: z.string().url().refine((u) => u.startsWith("https://"), "Use an HTTPS meeting link.").max(500).optional(),
     notes: text, nextTopics: text, requestedSlots: z.array(text).max(10).optional(),
-    durationMinutes: z.number().int().min(45).max(180).optional(), durationReason: z.string().trim().max(2000).optional(),
+    durationMinutes: z.number().int().min(1).max(180).optional(), durationReason: z.string().trim().max(2000).optional(),
     leaveOriginalKind:z.enum(["standard","trial","cover"]).optional(),
     verification: z.object({ teacher: text, admin: text, at: z.string() }).strict().optional(),
+    studentPermissions: z.object({
+      piano: z.boolean(),
+      whiteboard: z.boolean(),
+      metronome: z.boolean(),
+      tuner: z.boolean(),
+      drone: z.boolean(),
+      chat: z.boolean(),
+      reactions: z.boolean(),
+    }).strict().optional(),
+    studentFeaturesEnabled: z.boolean().optional(),
+    studentFeaturesUpdatedBy: text.optional(),
+    studentFeaturesUpdatedAt: z.string().max(80).optional(),
   }).strict(),
 
   leads: z.object({

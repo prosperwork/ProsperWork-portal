@@ -1015,3 +1015,103 @@
     flex-wrap: wrap;
   }
 }
+
+/* Dynamic Roles, Permissions & Catalogs Admin Controls */
+.ps-catalog-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+  margin-bottom: 4px;
+}
+.ps-role-flags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 14px 22px;
+  padding: 10px 12px;
+  border: 1px solid var(--ps-line);
+  border-radius: 10px;
+  background: #f5f9f6;
+}
+.ps-perm-section {
+  border: 1px solid var(--ps-line);
+  border-radius: 11px;
+  background: #fffefa;
+  padding: 12px 14px;
+}
+.ps-perm-section-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 10px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid #edf1ed;
+}
+.ps-perm-section-head > strong {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font: 800 11px var(--display, sans-serif);
+  color: var(--ps-pine);
+}
+.ps-perm-bulk {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+.ps-perm-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 8px 12px;
+}
+.ps-perm-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 7px 9px;
+  border: 1px solid #e9f0eb;
+  border-radius: 8px;
+  background: #fafdfb;
+  cursor: pointer;
+}
+.ps-perm-item input {
+  width: 14px;
+  height: 14px;
+  flex: none;
+  margin-top: 2px;
+  accent-color: var(--ps-green);
+}
+.ps-perm-item > span {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+.ps-perm-item b {
+  font-size: 10px;
+  font-weight: 700;
+  color: var(--ps-pine);
+}
+.ps-perm-item small {
+  font-size: 8.5px;
+  line-height: 1.35;
+  color: var(--ps-muted);
+}
+.ps-danger-outline {
+  color: #9e4844;
+  border-color: #e9cfc9;
+}
+.ps-danger-outline:hover:not(:disabled) {
+  background: #fdf1ef;
+}
+.ps-routing-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px 14px;
+  padding-top: 10px;
+  border-top: 1px solid #edf1ed;
+}
+@media (max-width: 620px) {
+  .ps-routing-grid {
+    grid-template-columns: 1fr;
+  }
+}

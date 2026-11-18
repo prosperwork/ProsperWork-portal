@@ -1,7 +1,7 @@
 import { z } from "zod";
 const id=z.string().uuid(),reason=z.string().trim().min(5).max(2000);
 export const leaveAction=z.discriminatedUnion("action",[
- z.object({action:z.literal("request"),staffId:id.optional(),route:z.enum(["hr","head_admin"]),kind:z.enum(["leave","exam_break","sick_leave"]),startsAt:z.iso.datetime({offset:true}),endsAt:z.iso.datetime({offset:true}),reason}).strict(),
+ z.object({action:z.literal("request"),staffId:id.optional(),route:z.string().trim().toLowerCase().regex(/^[a-z][a-z0-9_]{1,40}$/),kind:z.enum(["leave","exam_break","sick_leave"]),startsAt:z.iso.datetime({offset:true}),endsAt:z.iso.datetime({offset:true}),reason}).strict(),
  z.object({action:z.enum(["forward","finalize"]),id}).strict(),
  z.object({action:z.enum(["hr_approve","reject","cancel"]),id,reason}).strict(),
  z.object({action:z.literal("plan"),id,studentId:z.string().min(1).max(100),coverId:id}).strict()

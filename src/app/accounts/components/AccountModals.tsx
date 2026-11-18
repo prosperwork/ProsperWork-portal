@@ -1,6 +1,5 @@
 "use client";
 
-import { useEffect, useState } from "react";
 import { labelFor, type Account, type AccountStatus } from "../accounts-types";
 import { AccountIcon } from "./AccountIcon";
 

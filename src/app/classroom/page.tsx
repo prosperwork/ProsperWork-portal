@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   LiveKitRoom,
   PreJoin,
@@ -105,7 +105,7 @@ export default function ClassroomPage() {
   const [remaining, setRemaining] = useState("");
   const [roomEnded, setRoomEnded] = useState(false);
   const [serverOffset, setServerOffset] = useState(0);
-  const [clockNow, setClockNow] = useState(Date.now());
+  const [clockNow, setClockNow] = useState(0);
   const [isFullscreen, setIsFullscreen] = useState(false);
 
   useEffect(() => {
@@ -183,16 +183,37 @@ export default function ClassroomPage() {
     if (lessonId) void load();
   }, [lessonId, load]);
   useEffect(() => {
+    if (ticket) return;
+    setClockNow(Date.now() + serverOffset);
     const timer = window.setInterval(
       () => setClockNow(Date.now() + serverOffset),
       1000
     );
     return () => window.clearInterval(timer);
-  }, [serverOffset]);
+  }, [serverOffset, ticket]);
   const effectiveJoinOpen =
     !!data?.joinEligible &&
+    clockNow > 0 &&
     clockNow >= new Date(data.opensAt).getTime() &&
     clockNow < new Date(data.closesAt).getTime();
+
+  const liveKitOptions = useMemo(
+    () => ({
+      audioCaptureDefaults: {
+        deviceId: devices?.audioDeviceId || undefined,
+        echoCancellation: false,
+        noiseSuppression: false,
+        autoGainControl: false,
+      },
+      videoCaptureDefaults: {
+        deviceId: devices?.videoDeviceId || undefined,
+      },
+      publishDefaults: {
+        audioPreset: AudioPresets.musicHighQualityStereo,
+      },
+    }),
+    [devices?.audioDeviceId, devices?.videoDeviceId]
+  );
 
   useEffect(() => {
     if (!ticket) return;
@@ -293,14 +314,6 @@ export default function ClassroomPage() {
       setRequesting(false);
     }
   }
-  function leaveRoom() {
-    setTicket(null);
-    setDevices(null);
-    setPermissionReady(false);
-    setPreviewOpen(false);
-    setRoomEnded(false);
-    setNotice("You have left the lesson room. Your device preview is off.");
-  }
   function onDisconnect() {
     setTicket(null);
     setDevices(null);
@@ -310,12 +323,13 @@ export default function ClassroomPage() {
       setNotice("The room connection ended. Your device preview is off.");
   }
 
-  const minutesToOpen = data
-    ? Math.max(
-        0,
-        Math.ceil((new Date(data.opensAt).getTime() - clockNow) / 60000)
-      )
-    : 0;
+  const minutesToOpen =
+    data && clockNow > 0
+      ? Math.max(
+          0,
+          Math.ceil((new Date(data.opensAt).getTime() - clockNow) / 60000)
+        )
+      : 0;
   return (
     <main className={`pw-classroom ${ticket ? "in-call" : ""}`}>
       {!ticket && <div className="pc-topline" />}
@@ -417,20 +431,7 @@ export default function ClassroomPage() {
                     connect
                     audio={devices?.audioEnabled ?? true}
                     video={devices?.videoEnabled ?? true}
-                    options={{
-                      audioCaptureDefaults: {
-                        deviceId: devices?.audioDeviceId || undefined,
-                        echoCancellation: false,
-                        noiseSuppression: false,
-                        autoGainControl: false,
-                      },
-                      videoCaptureDefaults: {
-                        deviceId: devices?.videoDeviceId || undefined,
-                      },
-                      publishDefaults: {
-                        audioPreset: AudioPresets.musicHighQualityStereo,
-                      },
-                    }}
+                    options={liveKitOptions}
                     onDisconnected={onDisconnect}
                     onError={(cause) =>
                       setJoinError(

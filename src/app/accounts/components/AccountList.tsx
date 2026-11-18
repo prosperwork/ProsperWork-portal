@@ -1,6 +1,7 @@
 "use client";
 
 import ProfileAvatar from "@/app/_components/ProfileAvatar";
+import { useRoles } from "@/lib/academy/use-academy-config";
 import {
   accountStatuses,
   labelFor,
@@ -39,6 +40,7 @@ export default function AccountList({
   onResendInvite,
   onSelectStatusChange,
 }: AccountListProps) {
+  const { roleLabel } = useRoles();
   return (
     <section
       className="pw-directory-card pw-record-ledger"
@@ -162,7 +164,7 @@ export default function AccountList({
                   <div className="pw-account-email">{account.email}</div>
                   <div className="pw-account-meta">
                     <span className="pw-role-chip">
-                      {labelFor(account.role)}
+                      {roleLabel(account.role)}
                     </span>
                     {account.username && (
                       <span className="pw-username">@{account.username}</span>

@@ -32,10 +32,7 @@ export default function OperationsPage() {
   const { confirm, ConfirmDialog } = useConfirmModal();
   const { currencies: currencyRows } = useCurrencies();
   const currencies = useMemo(
-    () =>
-      currencyRows.length
-        ? currencyRows.map((c) => c.code)
-        : ["NGN", "USD", "GBP", "EUR", "CAD"],
+    () => currencyRows.map((c) => c.code),
     [currencyRows]
   );
 

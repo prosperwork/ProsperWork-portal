@@ -13,6 +13,7 @@ import {
   ShieldCheck,
 } from "lucide-react";
 import type { PolicyVersion } from "@/lib/academy/family";
+import { readJson } from "@/lib/academy/web-client";
 
 type OnboardingResponse = {
   profile: { id: string; name: string; role: string; status: string };
@@ -22,15 +23,6 @@ type OnboardingResponse = {
   missingKeys: string[];
 };
 type JsonResult = Record<string, unknown>;
-async function readJson(response: Response): Promise<JsonResult> {
-  const copy = response.clone();
-  try {
-    return (await response.json()) as JsonResult;
-  } catch {
-    const text = await copy.text().catch(() => "");
-    return text ? { error: text } : {};
-  }
-}
 function messageFor(result: JsonResult, status: number) {
   if (typeof result.error === "string") return result.error;
   if (typeof result.message === "string") return result.message;
@@ -127,7 +119,7 @@ export default function OnboardingPage() {
   }, [load]);
 
   const acceptCurrent = async () => {
-    if (!canAccept || stale || !allChecked || currentIds.length === 0) return;
+    if (busy || !canAccept || stale || !allChecked || currentIds.length === 0) return;
     setBusy(true);
     setError("");
     setMessage("");

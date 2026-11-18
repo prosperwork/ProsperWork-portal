@@ -31,7 +31,7 @@ export type HiringData = {
   serverNow: string;
 };
 
-export type HiringRole = typeof hiringRoles[number];
+export type HiringRole = string;
 export type ReviewKind = "hr_interview" | "department_interview" | "audition" | "training";
 export type JsonResult = Record<string, unknown>;
 export type PendingUpload = { beforeIds: string[]; fileName: string; fileId?: string };

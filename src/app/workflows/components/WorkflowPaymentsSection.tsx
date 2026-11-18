@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, type FormEvent } from "react";
+import { useEffect, useState, type FormEvent } from "react";
 import {
   bytesLabel,
   dateLabel,
@@ -16,6 +16,7 @@ export interface WorkflowPaymentsSectionProps {
   data: WorkflowData;
   isFamily: boolean;
   isHomeworkRoute: boolean;
+  initialPaymentId?: string;
   busy: string;
   filesFor: (
     category: "receipt" | "homework",
@@ -24,7 +25,7 @@ export interface WorkflowPaymentsSectionProps {
   submitReceipt: (
     event: FormEvent<HTMLFormElement>,
     id: string
-  ) => Promise<void>;
+  ) => Promise<boolean>;
   setActionError: (msg: string) => void;
 }
 
@@ -32,12 +33,25 @@ export default function WorkflowPaymentsSection({
   data,
   isFamily,
   isHomeworkRoute,
+  initialPaymentId = "",
   busy,
   filesFor,
   submitReceipt,
   setActionError,
 }: WorkflowPaymentsSectionProps) {
-  const [paymentId, setPaymentId] = useState("");
+  const [paymentId, setPaymentId] = useState(initialPaymentId);
+
+  useEffect(() => {
+    if (!initialPaymentId) return;
+    if (
+      data.payments.some(
+        (payment) =>
+          payment.id === initialPaymentId && payment.status === "due"
+      )
+    ) {
+      setPaymentId(initialPaymentId);
+    }
+  }, [initialPaymentId, data.payments]);
 
   if (isHomeworkRoute || !receiptRoles.includes(data.profile.role)) {
     return null;
@@ -122,9 +136,10 @@ export default function WorkflowPaymentsSection({
                     payment.status === "due" && (
                       <form
                         className="wf-form"
-                        onSubmit={(event) =>
-                          void submitReceipt(event, payment.id)
-                        }
+                        onSubmit={async (event) => {
+                          const ok = await submitReceipt(event, payment.id);
+                          if (ok) setPaymentId("");
+                        }}
                       >
                         <div className="wf-form-grid">
                           <div className="wf-field full">

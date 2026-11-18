@@ -1,14 +1,31 @@
 import { NextResponse } from "next/server";
 import { identity } from "@/lib/supabase/identity";
-import { sameOrigin } from "@/lib/supabase/server";
-import { uploadLessonRecordingToDrive } from "@/lib/calendar/recordings";
+import { impersonationBlocked, sameOrigin } from "@/lib/supabase/server";
+import { hasPermission } from "@/lib/academy/roles";
 
-export const maxDuration = 300; // Allow sufficient time for larger full-length video uploads
+export const maxDuration = 300;
 export const dynamic = "force-dynamic";
+
+const MAX_RECORDING_BYTES = 50 * 1024 * 1024; // 50 MiB private storage cap
+const ALLOWED_VIDEO_MIMES = new Set(["video/webm", "video/mp4"]);
+
+function matchesVideoMagic(bytes: Uint8Array, mime: string): boolean {
+  if (bytes.length < 12) return false;
+  const hex = (start: number, count: number) =>
+    Buffer.from(bytes.slice(start, start + count)).toString("hex");
+  if (mime === "video/webm") return hex(0, 4) === "1a45dfa3";
+  if (mime === "video/mp4") return hex(4, 4) === "66747970";
+  return false;
+}
 
 export async function POST(request: Request) {
   if (!sameOrigin(request)) {
     return NextResponse.json({ error: "Invalid request origin." }, { status: 403 });
+  }
+
+  const contentLength = Number(request.headers.get("content-length") || 0);
+  if (contentLength > MAX_RECORDING_BYTES + 2 * 1024 * 1024) {
+    return NextResponse.json({ error: "Recording exceeds the 50 MiB upload limit." }, { status: 413 });
   }
 
   try {
@@ -16,10 +33,11 @@ export async function POST(request: Request) {
     if (!profile || profile.status !== "active") {
       return NextResponse.json({ error: "Active academy access is required." }, { status: 403 });
     }
+    const blocked = impersonationBlocked(profile);
+    if (blocked) return blocked;
 
-    // Role check: Only educators, admins, and QC can upload lesson recordings
-    const allowedRoles = ["super_admin", "admin", "head_admin", "qc", "teacher"];
-    if (!allowedRoles.includes(profile.role)) {
+    const canRecord = await hasPermission(client, profile, "classroom.record");
+    if (!canRecord) {
       return NextResponse.json({ error: "Only educators and administrators can upload lesson recordings." }, { status: 403 });
     }
 
@@ -35,77 +53,64 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "No video recording file provided." }, { status: 400 });
     }
 
-    // Verify user has access to this lesson
-    const { data: lesson, error: lessonError } = await client
-      .from("pw_lessons")
-      .select("id, student_id, teacher_id, admin_id, payload")
-      .eq("id", lessonId)
-      .single();
-
-    if (lessonError || !lesson) {
-      return NextResponse.json({ error: "Lesson not found or inaccessible." }, { status: 404 });
+    if (file.size > MAX_RECORDING_BYTES) {
+      return NextResponse.json({ error: "Recording exceeds the 50 MiB upload limit." }, { status: 413 });
     }
 
-    const fileName = `lesson_${lessonId}_${new Date().toISOString().slice(0, 10)}.webm`;
-    const arrayBuffer = await file.arrayBuffer();
-    const buffer = Buffer.from(arrayBuffer);
+    const mime = (file.type || "").split(";")[0].trim().toLowerCase();
+    if (!ALLOWED_VIDEO_MIMES.has(mime)) {
+      return NextResponse.json({ error: "Only WebM and MP4 video recordings are accepted." }, { status: 400 });
+    }
 
-    // Upload directly to Google Drive
-    const uploadResult = await uploadLessonRecordingToDrive({
-      lessonId,
-      buffer,
-      fileName,
-      mimeType: file.type || "video/webm"
+    // Verify caller has authorized classroom access to this lesson
+    const access = await client.rpc("pw_classroom_access", { p_lesson: lessonId, p_join: false });
+    if (access.error || !access.data) {
+      return NextResponse.json({ error: "Lesson not found or inaccessible." }, { status: 403 });
+    }
+
+    const bytes = new Uint8Array(await file.arrayBuffer());
+    if (!matchesVideoMagic(bytes, mime)) {
+      return NextResponse.json({ error: "Recording file contents do not match its declared video format." }, { status: 400 });
+    }
+
+    const ext = mime === "video/mp4" ? "mp4" : "webm";
+    const fileName = `lesson_${lessonId}_${new Date().toISOString().slice(0, 10)}.${ext}`;
+
+    // Store strictly inside private Supabase storage (pw-private) with RLS + signed URL access
+    const reservation = await client.rpc("pw_reserve_file", {
+      p_category: "lesson_recording",
+      p_target: lessonId,
+      p_name: fileName.slice(0, 200),
+      p_mime: mime,
+      p_bytes: file.size,
     });
-
-    if (!uploadResult.success || !uploadResult.webViewLink) {
-      return NextResponse.json({ error: uploadResult.error || "Failed to upload to Google Drive." }, { status: 502 });
+    if (reservation.error || !reservation.data) {
+      return NextResponse.json({ error: "You cannot attach a recording to this lesson." }, { status: 403 });
     }
 
-    // Update lesson payload with the Google Drive recording link
-    const currentPayload = (lesson.payload || {}) as Record<string, unknown>;
-    const updatedPayload = {
-      ...currentPayload,
-      recordingUrl: uploadResult.webViewLink,
-      recordingDriveFileId: uploadResult.fileId,
-      recordingUploadedAt: new Date().toISOString(),
-      recordingUploadedBy: profile.name
-    };
+    const { id: fileId, path } = reservation.data as { id: string; path: string };
+    const upload = await client.storage.from("pw-private").upload(path, bytes, {
+      contentType: mime,
+      upsert: false,
+    });
+    const finished = upload.error
+      ? null
+      : await client.rpc("pw_finish_recording_file", { p_id: fileId });
 
-    const { error: updateError } = await client
-      .from("pw_lessons")
-      .update({ payload: updatedPayload, updated_at: new Date().toISOString() })
-      .eq("id", lessonId);
-
-    if (updateError) {
-      console.warn("Could not attach recording link to lesson payload:", updateError);
-    }
-
-    // Also record file entry in pw_files for QC queue visibility
-    try {
-      await client.from("pw_files").insert({
-        category: "lesson_recording",
-        target_id: lessonId,
-        uploader_id: profile.id,
-        original_name: fileName,
-        mime: file.type || "video/webm",
-        bytes: file.size,
-        path: uploadResult.webViewLink, // Store the Google Drive streaming link
-        complete: true
-      });
-    } catch (pwFilesErr) {
-      console.warn("Could not insert into pw_files:", pwFilesErr);
+    if (upload.error || finished?.error) {
+      await client.storage.from("pw-private").remove([path]).catch(() => undefined);
+      await client.rpc("pw_abort_file", { p_id: fileId });
+      return NextResponse.json({ error: "Recording upload could not be finalized. Please retry." }, { status: 409 });
     }
 
     return NextResponse.json({
       ok: true,
-      message: "Lesson recording uploaded to Google Drive successfully.",
-      recordingUrl: uploadResult.webViewLink,
-      fileId: uploadResult.fileId
-    });
-  } catch (err: any) {
+      message: "Lesson recording saved securely to private academy storage.",
+      fileId,
+      recordingUrl: `/api/files?id=${encodeURIComponent(fileId)}`,
+    }, { headers: { "Cache-Control": "private, no-store" } });
+  } catch (err) {
     console.error("Recording upload failed:", err);
-    return NextResponse.json({ error: err?.message || "Internal server error." }, { status: 500 });
+    return NextResponse.json({ error: "Recording upload failed. Please try again." }, { status: 500 });
   }
 }
-

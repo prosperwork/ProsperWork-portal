@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { LockKeyhole, X } from "lucide-react";
 
 export default function KidPinDialog({
@@ -11,8 +11,21 @@ export default function KidPinDialog({
   onSubmit: (pin: string) => void;
 }) {
   const [pin, setPin] = useState("");
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") onCancel();
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [onCancel]);
+
   return (
-    <div className="overlay">
+    <div
+      className="overlay"
+      onMouseDown={(event) => {
+        if (event.target === event.currentTarget) onCancel();
+      }}
+    >
       <section
         className="modal pin-dialog"
         role="dialog"
@@ -24,7 +37,12 @@ export default function KidPinDialog({
             <h2 id="pin-title">Parent check</h2>
             <p>Enter the family PIN to open Kid Mode.</p>
           </div>
-          <button className="close-btn" aria-label="Cancel" onClick={onCancel}>
+          <button
+            type="button"
+            className="close-btn"
+            aria-label="Cancel"
+            onClick={onCancel}
+          >
             <X size={16} />
           </button>
         </div>

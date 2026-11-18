@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import {
   AlertCircle,
   BookOpen,
@@ -27,7 +27,6 @@ import {
   Pill,
   SectionTitle,
   timeAt,
-  todayKey,
 } from "../../_lib/portal-formatters";
 import type {
   AcademyData,
@@ -71,6 +70,16 @@ export default function OverviewView({
     null
   );
   const [copiedBirthdayId, setCopiedBirthdayId] = useState<string | null>(null);
+  const copiedTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    return () => {
+      if (copiedTimerRef.current) {
+        clearTimeout(copiedTimerRef.current);
+        copiedTimerRef.current = null;
+      }
+    };
+  }, []);
 
   const generateOverviewTribute = async (studentId: string) => {
     setActiveBirthdayStudentId(studentId);
@@ -105,18 +114,37 @@ export default function OverviewView({
     try {
       await navigator.clipboard.writeText(text);
       setCopiedBirthdayId(studentId);
-      setTimeout(() => setCopiedBirthdayId(null), 3000);
+      if (copiedTimerRef.current) clearTimeout(copiedTimerRef.current);
+      copiedTimerRef.current = setTimeout(() => {
+        setCopiedBirthdayId(null);
+        copiedTimerRef.current = null;
+      }, 3000);
     } catch {
       notify("Could not copy to clipboard.");
     }
   };
 
   const [complaints, setComplaints] = useState<ComplaintRecord[]>([]);
+  const canViewComplaints = [
+    "super_admin",
+    "general_manager",
+    "head_admin",
+    "admin",
+    "qc",
+  ].includes(role);
 
   useEffect(() => {
+    if (!canViewComplaints) {
+      setComplaints([]);
+      return;
+    }
     let isMounted = true;
     fetch("/api/complaints")
-      .then((res) => res.json())
+      .then((res) =>
+        res.ok
+          ? (res.json() as Promise<{ complaints?: ComplaintRecord[] }>)
+          : ({} as { complaints?: ComplaintRecord[] })
+      )
       .then((resData) => {
         if (
           isMounted &&
@@ -130,13 +158,28 @@ export default function OverviewView({
     return () => {
       isMounted = false;
     };
-  }, []);
+  }, [canViewComplaints]);
 
   const openComplaints = complaints.filter((c) => c.status !== "resolved");
 
+  const dayKeyInOwnTz = (value: string | Date) => {
+    const parsed = new Date(value);
+    if (!Number.isFinite(parsed.getTime())) return "";
+    try {
+      return new Intl.DateTimeFormat("en-CA", {
+        timeZone: ownTimezone || "Africa/Lagos",
+        year: "numeric",
+        month: "2-digit",
+        day: "2-digit",
+      }).format(parsed);
+    } catch {
+      return parsed.toISOString().slice(0, 10);
+    }
+  };
+  const ownTodayKey = dayKeyInOwnTz(new Date());
+
   const todays = visibleLessons.filter(
-    (lesson) =>
-      new Date(lesson.startsAt).toISOString().slice(0, 10) === todayKey()
+    (lesson) => dayKeyInOwnTz(lesson.startsAt) === ownTodayKey
   );
   const due = data.payments.filter(
     (payment) => payment.status === "due"
@@ -608,16 +651,9 @@ export default function OverviewView({
                                       fontSize: 11,
                                     }}
                                     onClick={() => {
-                                      const cleanPhone = (
-                                        student.parentEmail || ""
-                                      ).replace(/\D/g, "");
-                                      const targetUrl = cleanPhone
-                                        ? `https://wa.me/${cleanPhone}?text=${encodeURIComponent(
-                                            tribute
-                                          )}`
-                                        : `https://wa.me/?text=${encodeURIComponent(
-                                            tribute
-                                          )}`;
+                                      const targetUrl = `https://wa.me/?text=${encodeURIComponent(
+                                        tribute
+                                      )}`;
                                       window.open(
                                         targetUrl,
                                         "_blank",
@@ -780,7 +816,10 @@ export default function OverviewView({
                         data.payments
                           .filter((p) => p.status !== "paid")
                           .reduce(
-                            (sum, p) => sum + p.amount * fx[p.currency],
+                            (sum, p) =>
+                              sum +
+                              (p.amount - (p.referralDiscount || 0)) *
+                                fx[p.currency],
                             0
                           ),
                         "NGN"

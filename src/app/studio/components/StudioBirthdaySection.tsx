@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback } from "react";
+import { useState, useCallback, useEffect, useRef } from "react";
 import {
   CalendarDays,
   Check,
@@ -29,6 +29,16 @@ export default function StudioBirthdaySection({
     null
   );
   const [copiedTributeId, setCopiedTributeId] = useState<string | null>(null);
+  const copyTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    return () => {
+      if (copyTimerRef.current) {
+        clearTimeout(copyTimerRef.current);
+        copyTimerRef.current = null;
+      }
+    };
+  }, []);
 
   const generateAiTribute = useCallback(
     async (studentId: string) => {
@@ -59,7 +69,11 @@ export default function StudioBirthdaySection({
     try {
       await navigator.clipboard.writeText(text);
       setCopiedTributeId(studentId);
-      setTimeout(() => setCopiedTributeId(null), 3000);
+      if (copyTimerRef.current) clearTimeout(copyTimerRef.current);
+      copyTimerRef.current = setTimeout(() => {
+        setCopiedTributeId(null);
+        copyTimerRef.current = null;
+      }, 3000);
     } catch {
       // Fallback
     }

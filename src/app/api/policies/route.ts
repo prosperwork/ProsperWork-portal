@@ -1,24 +1,27 @@
 import {NextResponse} from "next/server";
 import {identity} from "@/lib/supabase/identity";
-import {sameOrigin} from "@/lib/supabase/server";
-import {policyAction} from "@/lib/academy/family";
-import {loadAllRecords} from "@/lib/academy/paged-records";
+import {impersonationBlocked,sameOrigin} from "@/lib/supabase/server";
+import { policyAction } from "@/lib/academy/family";
+import { loadAllRecords } from "@/lib/academy/paged-records";
+import { hasPermission } from "@/lib/academy/roles";
 export const dynamic="force-dynamic";
 const reply=(body:object,status=200)=>NextResponse.json(body,{status,headers:{"Cache-Control":"private, no-store"}});
 export async function GET(){
  try{
   const {client,profile}=await identity({allowPolicy:true});
-  if(!profile||profile.status!=="active"||!["parent","student","super_admin"].includes(profile.role))return reply({error:"Active guardian or owner access required."},403);
+  const canAccess = profile && (["parent","student","super_admin"].includes(profile.role) || await hasPermission(client, profile, "workspace.policies"));
+  if(!profile||profile.status!=="active"||!canAccess)return reply({error:"Active guardian or authorized staff access required."},403);
   const result=await loadAllRecords(client,"pw_policy_versions","*",{sort:"version"});
   if(result.error||!result.data)throw Error();
   const acceptance=await client.from("pw_policy_acceptances").select("policy_id").eq("parent_id",profile.id);
   if(acceptance.error)throw Error();
   const all=result.data;
-  const applicable=profile.role==="super_admin"?null:await client.rpc("pw_current_policies");
+  const isManager = profile.role === "super_admin" || await hasPermission(client, profile, "workspace.policies");
+  const applicable=isManager?null:await client.rpc("pw_current_policies");
   if(applicable?.error)throw Error();
-  const current=profile.role==="super_admin"?all.filter(p=>p.audience_parent_id===null&&p.published_at&&!all.some(n=>n.audience_parent_id===null&&n.key===p.key&&n.version>p.version&&n.published_at)):(applicable?.data||[]);
+  const current=isManager?all.filter(p=>p.audience_parent_id===null&&p.published_at&&!all.some(n=>n.audience_parent_id===null&&n.key===p.key&&n.version>p.version&&n.published_at)):(applicable?.data||[]);
   const missingKeys=["parent_agreement","terms_of_service","reschedule_policy"].filter(key=>!current.some((p:{key:string})=>p.key===key));
-  return reply({profile,versions:profile.role==="super_admin"?all:current,acceptedIds:acceptance.data.map(a=>a.policy_id),setupRequired:missingKeys.length>0,missingKeys});
+  return reply({profile,versions:isManager?all:current,acceptedIds:acceptance.data.map(a=>a.policy_id),setupRequired:missingKeys.length>0,missingKeys});
  }catch{return reply({error:"Policy documents could not be loaded."},503);}
 }
 export async function POST(request:Request){
@@ -28,6 +31,7 @@ export async function POST(request:Request){
  try{
   const {client,profile}=await identity({allowPolicy:true});
   if(!profile||profile.status!=="active")return reply({error:"Active account required."},403);
+  const blocked=impersonationBlocked(profile);if(blocked)return blocked;
   const d=parsed.data;
   const args=d.action==="draft"?{p_key:d.key,p_title:d.title,p_parent:d.audienceParentId||null}:d.action==="publish"?{p_action:"publish",p_id:d.id}:{p_action:"accept",p_ids:d.ids};
   const result=await client.rpc(d.action==="draft"?"pw_policy_draft":"pw_policy_change",args);

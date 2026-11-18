@@ -4,19 +4,26 @@ interface RateLimitEntry {
 }
 
 const rateLimitMap = new Map<string, RateLimitEntry>();
+const MAX_ENTRIES = 10_000;
 
-// Clean up expired keys every 5 minutes
+// Clean up expired keys every 5 minutes (or immediately if cap exceeded)
 const CLEANUP_INTERVAL_MS = 5 * 60 * 1000;
 let lastCleanup = Date.now();
 
 function cleanup() {
   const now = Date.now();
-  if (now - lastCleanup < CLEANUP_INTERVAL_MS) return;
+  if (now - lastCleanup < CLEANUP_INTERVAL_MS && rateLimitMap.size < MAX_ENTRIES) return;
   lastCleanup = now;
   for (const [key, entry] of rateLimitMap.entries()) {
     if (now > entry.resetAt) {
       rateLimitMap.delete(key);
     }
+  }
+  // Evict oldest keys if still above cap to prevent unbounded memory growth
+  while (rateLimitMap.size >= MAX_ENTRIES) {
+    const oldestKey = rateLimitMap.keys().next().value;
+    if (!oldestKey) break;
+    rateLimitMap.delete(oldestKey);
   }
 }
 

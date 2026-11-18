@@ -165,8 +165,9 @@ export interface StudioThreadsSectionProps {
   busy: string;
   sendReply: (request: RequestRow) => Promise<void>;
   decideRequest: (
-    event: FormEvent<HTMLFormElement>,
-    request: RequestRow
+    request: RequestRow,
+    status: Exclude<RequestStatus, "open">,
+    note: string
   ) => Promise<void>;
   replyBodies: Record<string, string>;
   setReplyBodies: React.Dispatch<React.SetStateAction<Record<string, string>>>;
@@ -275,6 +276,10 @@ export function StudioThreadsSection({
                       className="studio-decision"
                       onSubmit={(event) => {
                         event.preventDefault();
+                        const formData = new FormData(event.currentTarget);
+                        const note = String(
+                          formData.get("decisionBody") ?? ""
+                        ).trim();
                         const status =
                           decisionStatuses[request.id] ?? "in_progress";
                         if (status === "rejected") {
@@ -284,11 +289,12 @@ export function StudioThreadsSection({
                               "Are you sure you want to mark this student request as Rejected? The student and family will see this status.",
                             confirmLabel: "Reject Request",
                             tone: "danger",
-                            onConfirm: () => void decideRequest(event, request),
+                            onConfirm: () =>
+                              decideRequest(request, status, note),
                           });
                           return;
                         }
-                        void decideRequest(event, request);
+                        void decideRequest(request, status, note);
                       }}
                     >
                       <div className="studio-field">

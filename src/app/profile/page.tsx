@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState, type FormEvent } from "react";
+import { useCallback, useEffect, useRef, useState, type FormEvent } from "react";
 import {
   AlertCircle,
   Check,
@@ -10,6 +10,7 @@ import {
   Save,
   UserRound,
 } from "lucide-react";
+import { clearAcademyCache } from "@/lib/storage";
 import ProfilePhotoControl from "../management/ProfilePhotoControl";
 
 type OwnProfile = {
@@ -60,6 +61,16 @@ export default function ProfilePage() {
   const [passwordSaving, setPasswordSaving] = useState(false);
   const [passwordError, setPasswordError] = useState("");
   const [passwordSuccess, setPasswordSuccess] = useState("");
+  const redirectTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    return () => {
+      if (redirectTimerRef.current) {
+        clearTimeout(redirectTimerRef.current);
+        redirectTimerRef.current = null;
+      }
+    };
+  }, []);
 
   const load = useCallback(async () => {
     setRefreshing(true);
@@ -200,7 +211,13 @@ export default function ProfilePage() {
       setCurrentPassword("");
       setNewPassword("");
       setConfirmPassword("");
-      setTimeout(() => {
+      clearAcademyCache();
+      if (redirectTimerRef.current) {
+        clearTimeout(redirectTimerRef.current);
+      }
+      redirectTimerRef.current = setTimeout(() => {
+        redirectTimerRef.current = null;
+        clearAcademyCache();
         window.location.assign(
           data.redirect || "/login?reason=password_changed"
         );

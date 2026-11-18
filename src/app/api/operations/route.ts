@@ -1,12 +1,16 @@
 import {NextRequest,NextResponse} from "next/server";
 import {operationsAction} from "@/lib/academy/operations";
 import {identity} from "@/lib/supabase/identity";
-import {sameOrigin} from "@/lib/supabase/server";
+import {impersonationBlocked,sameOrigin} from "@/lib/supabase/server";
 import {loadAllRecords} from "@/lib/academy/paged-records";
+import {hasPermission} from "@/lib/academy/roles";
 const reply=(body:unknown,status=200)=>NextResponse.json(body,{status,headers:{"Cache-Control":"private, no-store"}});
 export async function GET(){
  try{
-  const {client,profile}=await identity();if(!profile||!["active","on_leave"].includes(profile.status))return reply({error:"Sign in with an active account."},401);
+  const {client,profile}=await identity();
+  if(!profile||!["active","on_leave"].includes(profile.status))return reply({error:"Sign in with an active account."},401);
+  const canViewOps = await hasPermission(client, profile, "operations.view", { allowOnLeave: true });
+  if(!canViewOps)return reply({error:"Staff access is required for operations."},403);
   const tables=["pw_billing_contracts","pw_fx_rates","pw_finance_rules","pw_availability","pw_recurring_series","pw_student_pauses","pw_students","pw_profiles","pw_payments","pw_quality_observations","pw_leads","pw_operations_events","pw_referral_requests","pw_referral_credits","pw_media_reviews","pw_files"];
   const rows=await Promise.all(tables.map(t=>loadAllRecords(client,t,"*",{cursor:t==="pw_finance_rules"?"singleton":"id"})));if(rows.some(r=>r.error))return reply({error:"Operations records could not be loaded."},503);
   const financial=await client.rpc("pw_financial_summary"),quality=await client.rpc("pw_quality_snapshot");
@@ -54,6 +58,7 @@ export async function POST(request:NextRequest){
  if(!sameOrigin(request))return reply({error:"Invalid request origin."},403);
  try{
   const {client,profile}=await identity();if(!profile||profile.status!=="active")return reply({error:"Active account required."},403);
+  const blocked=impersonationBlocked(profile);if(blocked)return blocked;
   const parsed=operationsAction.safeParse(await request.json());if(!parsed.success)return reply({error:parsed.error.issues[0]?.message||"Check the form."},400);
   const action=parsed.data.action;const rpc=action.startsWith("media_")?"pw_media_action":["observe","lead_assign","trial","convert","referral"].includes(action)?"pw_quality_sales_action":"pw_operations_action";
   const result=await client.rpc(rpc,{p_action:action,p_data:parsed.data});

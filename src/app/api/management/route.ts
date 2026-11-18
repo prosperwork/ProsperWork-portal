@@ -1,12 +1,14 @@
-import{NextResponse}from"next/server";
-import{identity}from"@/lib/supabase/identity";
-import{sameOrigin}from"@/lib/supabase/server";
-import{managementAction}from"@/lib/academy/management";
+import { NextResponse } from "next/server";
+import { identity } from "@/lib/supabase/identity";
+import { impersonationBlocked, sameOrigin } from "@/lib/supabase/server";
+import { managementAction } from "@/lib/academy/management";
+import { hasPermission } from "@/lib/academy/roles";
 const reply=(value:unknown,status=200)=>NextResponse.json(value,{status,headers:{"Cache-Control":"private, no-store"}});
 export async function GET(){
  try{
   const{client,profile}=await identity();
-  if(!profile||profile.status!=="active")return reply({error:"Active academy access required."},403);
+  const canManage = await hasPermission(client, profile, "workspace.management");
+  if(!profile||profile.status!=="active"||!canManage)return reply({error:"Management access required."},403);
   const{data,error}=await client.rpc("pw_management_snapshot");
   if(error)return reply({error:"Management records are unavailable."},503);
   return reply({profile,...data});
@@ -18,7 +20,9 @@ export async function POST(request:Request){
  if(!parsed.success)return reply({error:"Check the required fields, dates and written reason."},400);
  try{
   const{client,profile}=await identity();
-  if(!profile||profile.status!=="active")return reply({error:"Active academy access required."},403);
+  const canManage = await hasPermission(client, profile, "workspace.management");
+  if(!profile||profile.status!=="active"||!canManage)return reply({error:"Management access required."},403);
+  const blocked=impersonationBlocked(profile);if(blocked)return blocked;
   const{action,...input}=parsed.data;
   const{data,error}=await client.rpc("pw_management_action",{p_action:action,p_data:input});
   if(error){

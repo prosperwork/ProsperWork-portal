@@ -15,5 +15,5 @@ export async function GET(request:NextRequest){
  const isDownload=request.nextUrl.searchParams.get("download")==="true";
  const signed=await admin.storage.from("pw-private").createSignedUrl(file.data.path,120,isDownload?{download:file.data.original_name||"student-media"}:undefined);
  if(signed.error)return NextResponse.json({error:"Storage is unavailable."},{status:503});
- return NextResponse.redirect(signed.data.signedUrl,{status:307,headers:{"Cache-Control":"private, no-store"}});
+ return NextResponse.redirect(signed.data.signedUrl,{status:307,headers:{"Cache-Control":"private, no-store","Referrer-Policy":"no-referrer"}});
 }

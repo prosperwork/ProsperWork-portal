@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { clearAcademyCache } from "@/lib/storage";
 import type { Role } from "@/lib/types";
 import { labelFor, type Account, type AccountStatus } from "./accounts-types";
 import { AccountIcon } from "./components/AccountIcon";
@@ -50,6 +51,7 @@ export default function AccountsPage() {
       });
       const data = await response.json().catch(() => ({}));
       if (!response.ok) throw new Error(data.error || "Unable to switch view.");
+      clearAcademyCache();
       if (target.status === "pending") {
         window.location.assign("/access-pending");
       } else if (["parent", "student"].includes(target.role)) {

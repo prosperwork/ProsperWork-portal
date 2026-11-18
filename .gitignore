@@ -70,4 +70,5 @@ Desktop.ini
 *.tmp
 *.temp
 *.sql
+!supabase/migrations/*.sql
 

@@ -1,8 +1,9 @@
 import {NextResponse} from "next/server";
 import {z} from "zod";
 import {identity} from "@/lib/supabase/identity";
-import {sameOrigin} from "@/lib/supabase/server";
-import {loadAllRecords} from "@/lib/academy/paged-records";
+import { impersonationBlocked, sameOrigin } from "@/lib/supabase/server";
+import { loadAllRecords } from "@/lib/academy/paged-records";
+import { hasAnyPermission } from "@/lib/academy/roles";
 const child=z.string().regex(/^[a-zA-Z0-9_-]{1,100}$/);
 const action=z.discriminatedUnion("action",[
  z.object({action:z.literal("practice"),operation:z.enum(["start","pause","resume","finish","quiz"]),childId:child.optional(),id:z.string().uuid().optional(),answers:z.array(z.number().int().min(0).max(100)).length(6).optional()}).strict(),
@@ -17,7 +18,11 @@ const reply=(body:object,status=200)=>NextResponse.json(body,{status,headers:{"C
 export async function GET(){
  try{
  const {client,profile}=await identity();
- if(!profile||profile.status!=="active"||!["super_admin","head_admin","admin","teacher","qc","parent","student"].includes(profile.role))return reply({error:"Active learning access required."},403);
+ const canAccess = profile && profile.status === "active" && (
+   ["parent","student","super_admin"].includes(profile.role) ||
+   await hasAnyPermission(client, profile, ["workspace.studio", "workspace.learning", "workspace.curriculum", "workspace.students"])
+ );
+ if(!canAccess)return reply({error:"Active learning access required."},403);
  const [students,practice,requests,replies,evaluations,lessons,files,repertoire]=await Promise.all([
   loadAllRecords(client,"pw_students","id,payload,created_at"),loadAllRecords(client,"pw_practice","*",{sort:"started_at"}),
   loadAllRecords(client,"pw_learning_requests"),
@@ -36,6 +41,7 @@ export async function POST(request:Request){
  if(!parsed.success)return reply({error:"Check the studio form."},400);
  try{
  const {client,profile}=await identity();if(!profile||profile.status!=="active")return reply({error:"Active learning account required."},403);
+ const blocked=impersonationBlocked(profile);if(blocked)return blocked;
  const d=parsed.data;
  const result=d.action==="repertoire"?await client.rpc("pw_repertoire",{p_student:d.childId,p_song:d.song,p_operation:d.operation})
   :d.action==="practice"?await client.rpc("pw_practice_action",{p_action:d.operation,p_student:d.childId||null,p_id:d.id||null,p_answers:d.answers||null})

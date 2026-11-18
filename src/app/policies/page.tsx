@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState, type FormEvent } from "react";
 import { AlertCircle, Check, FileText, LoaderCircle, Plus, RefreshCw, ShieldCheck, Upload } from "lucide-react";
 import type { PolicyVersion } from "@/lib/academy/family";
+import { readJson } from "@/lib/academy/web-client";
 
 type ScopedPolicyVersion = PolicyVersion & { audienceParentId?: string | null; audience_parent_id?: string | null };
 type PoliciesResponse = {
@@ -18,11 +19,6 @@ type DraftForm = { key: string; title: string };
 const requiredKeys = ["parent_agreement", "terms_of_service", "reschedule_policy"];
 const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
-async function readJson(response: Response): Promise<JsonResult> {
-  const copy = response.clone();
-  try { return await response.json() as JsonResult; }
-  catch { const text = await copy.text().catch(() => ""); return text ? { error: text } : {}; }
-}
 function roleKey(value: string) { return value.toLowerCase().replace(/[\s-]+/g, "_"); }
 function messageFor(result: JsonResult, status: number) {
   if (typeof result.error === "string") return result.error;

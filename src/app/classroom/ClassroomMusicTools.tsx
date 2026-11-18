@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
   useChat,
   useDataChannel,
@@ -102,6 +102,9 @@ export default function ClassroomMusicTools({
 
   const [permissionsMenuOpen, setPermissionsMenuOpen] = useState(false);
   const [updatingFeature, setUpdatingFeature] = useState<string | null>(null);
+  const [permissionError, setPermissionError] = useState("");
+  const committedPermissionsRef =
+    useRef<StudentPermissions>(studentPermissions);
 
   // Tool Modals / Panels
   const [metronomeOpen, setMetronomeOpen] = useState(false);
@@ -112,6 +115,7 @@ export default function ClassroomMusicTools({
 
   // Staff Private Chat State (Admin & Teacher backchannel)
   const [staffChatOpen, setStaffChatOpen] = useState(false);
+  const staffChatOpenRef = useRef(false);
   const [forceOpenStaffTab, setForceOpenStaffTab] = useState(false);
   const [staffMessages, setStaffMessages] = useState<StaffChatMessage[]>([]);
   const [unreadStaffCount, setUnreadStaffCount] = useState(0);
@@ -121,6 +125,15 @@ export default function ClassroomMusicTools({
     role: string;
     message: string;
   } | null>(null);
+
+  const handleStaffOpenChange = useCallback((isOpen: boolean) => {
+    staffChatOpenRef.current = isOpen;
+    setStaffChatOpen(isOpen);
+    if (isOpen) {
+      setUnreadStaffCount(0);
+      setStaffToast(null);
+    }
+  }, []);
 
   const openStaffChat = () => {
     setForceOpenStaffTab(true);
@@ -157,6 +170,32 @@ export default function ClassroomMusicTools({
   const timerWorkerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const lastTapRef = useRef<number>(0);
   const tapIntervalsRef = useRef<number[]>([]);
+  const timeoutsRef = useRef<Set<ReturnType<typeof setTimeout>>>(new Set());
+
+  const scheduleTimeout = (fn: () => void, ms: number) => {
+    const id = setTimeout(() => {
+      timeoutsRef.current.delete(id);
+      fn();
+    }, ms);
+    timeoutsRef.current.add(id);
+    return id;
+  };
+
+  useEffect(() => {
+    const timers = timeoutsRef.current;
+    return () => {
+      timers.forEach((id) => clearTimeout(id));
+      timers.clear();
+      if (timerWorkerRef.current) {
+        clearInterval(timerWorkerRef.current);
+        timerWorkerRef.current = null;
+      }
+      if (audioCtxRef.current && audioCtxRef.current.state !== "closed") {
+        void audioCtxRef.current.close().catch(() => {});
+      }
+      audioCtxRef.current = null;
+    };
+  }, []);
 
   // Check if a specific feature is locked for this user
   const isFeatureLocked = (feature: keyof StudentPermissions): boolean => {
@@ -167,6 +206,28 @@ export default function ClassroomMusicTools({
     // Teachers, Admins, SuperAdmins are not restricted
     return false;
   };
+
+  const chatLocked = isFeatureLocked("chat");
+
+  // Enforce chat lock on the LiveKit classroom wrapper for restricted participants
+  useEffect(() => {
+    const wrapper =
+      document.querySelector(".pw-classroom") ||
+      document.querySelector(".pc-live-wrap");
+    if (!wrapper) return;
+    wrapper.classList.toggle("pw-chat-locked", chatLocked);
+    if (chatLocked) {
+      const openChatToggle = wrapper.querySelector(
+        ".lk-chat-toggle[aria-pressed='true']"
+      ) as HTMLButtonElement | null;
+      if (openChatToggle) {
+        openChatToggle.click();
+      }
+    }
+    return () => {
+      wrapper.classList.remove("pw-chat-locked");
+    };
+  }, [chatLocked]);
 
   // Check and prompt if action is allowed
   const requireAccess = (
@@ -194,6 +255,7 @@ export default function ClassroomMusicTools({
 
         if (data.type === "student_permissions_changed" && data.permissions) {
           const next = data.permissions as StudentPermissions;
+          committedPermissionsRef.current = next;
           setStudentPermissions(next);
           if (isRestrictedRole) {
             if (data.changedKey) {
@@ -253,6 +315,7 @@ export default function ClassroomMusicTools({
             chat: enabled,
             reactions: enabled,
           };
+          committedPermissionsRef.current = next;
           setStudentPermissions(next);
         } else if (data.type === "whiteboard_toggle") {
           setWhiteboardOpen(Boolean(data.open));
@@ -292,7 +355,7 @@ export default function ClassroomMusicTools({
 
         // If message is from someone else and staff chat panel is closed, show private toast
         if (data.senderId !== room?.localParticipant?.identity) {
-          if (!staffChatOpen) {
+          if (!staffChatOpenRef.current) {
             setUnreadStaffCount((prev) => prev + 1);
             setStaffToast({
               id: data.id,
@@ -300,7 +363,7 @@ export default function ClassroomMusicTools({
               role: data.senderRole,
               message: data.message,
             });
-            setTimeout(() => {
+            scheduleTimeout(() => {
               setStaffToast((prev) => (prev?.id === data.id ? null : prev));
             }, 6500);
           }
@@ -360,50 +423,47 @@ export default function ClassroomMusicTools({
     }
 
     const payload = new TextEncoder().encode(JSON.stringify(chatItem));
-    if (sendStaffBroadcast) {
-      if (remoteStaffIds.length > 0) {
-        sendStaffBroadcast(payload, {
-          reliable: true,
-          destinationIdentities: remoteStaffIds,
-        });
-      } else {
-        sendStaffBroadcast(payload, { reliable: true });
-      }
+    if (sendStaffBroadcast && remoteStaffIds.length > 0) {
+      sendStaffBroadcast(payload, {
+        reliable: true,
+        destinationIdentities: remoteStaffIds,
+      });
     }
   };
 
-  // Broadcast current permissions whenever room connects or a new participant arrives
+  // Sync committed permissions only when a new participant connects (never on optimistic local edits)
   useEffect(() => {
     if (!canGrantAccess || !room) return;
-    const broadcastCurrent = () => {
+    const broadcastCommitted = () => {
       if (sendBroadcast) {
         const payload = JSON.stringify({
           type: "student_permissions_changed",
-          permissions: studentPermissions,
+          permissions: committedPermissionsRef.current,
         });
         sendBroadcast(new TextEncoder().encode(payload), { reliable: true });
       }
     };
-    broadcastCurrent();
-    room.on("participantConnected", broadcastCurrent);
+    room.on("participantConnected", broadcastCommitted);
     return () => {
-      room.off("participantConnected", broadcastCurrent);
+      room.off("participantConnected", broadcastCommitted);
     };
-  }, [canGrantAccess, room, studentPermissions, sendBroadcast]);
+  }, [canGrantAccess, room, sendBroadcast]);
 
   // Toggle single permission for student
   const toggleSinglePermission = async (feature: keyof StudentPermissions) => {
     if (!canGrantAccess || updatingFeature) return;
+    const previousPermissions = studentPermissions;
     const nextVal = !studentPermissions[feature];
     const nextPermissions: StudentPermissions = {
       ...studentPermissions,
       [feature]: nextVal,
     };
+    setPermissionError("");
     setUpdatingFeature(feature);
     setStudentPermissions(nextPermissions);
 
     try {
-      await fetch("/api/classroom", {
+      const response = await fetch("/api/classroom", {
         method: "PATCH",
         credentials: "include",
         headers: { "Content-Type": "application/json" },
@@ -413,7 +473,12 @@ export default function ClassroomMusicTools({
           enabled: nextVal,
         }),
       });
+      if (!response.ok) {
+        const body = (await response.json().catch(() => ({}))) as { error?: string };
+        throw new Error(body?.error || `Could not update permission (${response.status}).`);
+      }
 
+      committedPermissionsRef.current = nextPermissions;
       if (sendBroadcast) {
         const payload = JSON.stringify({
           type: "student_permissions_changed",
@@ -424,7 +489,10 @@ export default function ClassroomMusicTools({
         sendBroadcast(new TextEncoder().encode(payload), { reliable: true });
       }
     } catch (err) {
-      console.warn("Could not save permission toggle:", err);
+      setStudentPermissions(previousPermissions);
+      setPermissionError(
+        err instanceof Error ? err.message : "Could not save permission toggle."
+      );
     } finally {
       setUpdatingFeature(null);
     }
@@ -433,6 +501,7 @@ export default function ClassroomMusicTools({
   // Toggle all permissions at once
   const toggleAllPermissions = async (enableAll: boolean) => {
     if (!canGrantAccess || updatingFeature) return;
+    const previousPermissions = studentPermissions;
     const nextPermissions: StudentPermissions = {
       piano: enableAll,
       whiteboard: enableAll,
@@ -442,11 +511,12 @@ export default function ClassroomMusicTools({
       chat: enableAll,
       reactions: enableAll,
     };
+    setPermissionError("");
     setUpdatingFeature("all");
     setStudentPermissions(nextPermissions);
 
     try {
-      await fetch("/api/classroom", {
+      const response = await fetch("/api/classroom", {
         method: "PATCH",
         credentials: "include",
         headers: { "Content-Type": "application/json" },
@@ -456,7 +526,12 @@ export default function ClassroomMusicTools({
           studentFeaturesEnabled: enableAll,
         }),
       });
+      if (!response.ok) {
+        const body = (await response.json().catch(() => ({}))) as { error?: string };
+        throw new Error(body?.error || `Could not update permissions (${response.status}).`);
+      }
 
+      committedPermissionsRef.current = nextPermissions;
       if (sendBroadcast) {
         const payload = JSON.stringify({
           type: "student_permissions_changed",
@@ -466,7 +541,10 @@ export default function ClassroomMusicTools({
         sendBroadcast(new TextEncoder().encode(payload), { reliable: true });
       }
     } catch (err) {
-      console.warn("Could not save all permissions:", err);
+      setStudentPermissions(previousPermissions);
+      setPermissionError(
+        err instanceof Error ? err.message : "Could not save permissions."
+      );
     } finally {
       setUpdatingFeature(null);
     }
@@ -494,7 +572,7 @@ export default function ClassroomMusicTools({
           sender,
           message: latest.message,
         });
-        setTimeout(() => {
+        scheduleTimeout(() => {
           setChatToast((prev) =>
             prev?.id === String(latest.timestamp) ? null : prev
           );
@@ -519,7 +597,7 @@ export default function ClassroomMusicTools({
       ...prev,
       { id, sender, emoji, label, leftPercent },
     ]);
-    setTimeout(() => {
+    scheduleTimeout(() => {
       setReactions((prev) => prev.filter((r) => r.id !== id));
     }, 3500);
   };
@@ -736,7 +814,15 @@ export default function ClassroomMusicTools({
         userRole !== "parent" && (
           <div
             className="pc-staff-chat-toast"
+            role="button"
+            tabIndex={0}
             onClick={openStaffChat}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" || e.key === " ") {
+                e.preventDefault();
+                openStaffChat();
+              }
+            }}
             style={{
               position: "fixed",
               bottom: chatToast ? "165px" : "85px",
@@ -808,6 +894,7 @@ export default function ClassroomMusicTools({
             </div>
             <button
               type="button"
+              aria-label="Dismiss staff message notification"
               onClick={(e) => {
                 e.stopPropagation();
                 setStaffToast(null);
@@ -815,7 +902,7 @@ export default function ClassroomMusicTools({
               style={{
                 background: "transparent",
                 border: "none",
-                color: "#888",
+                color: "#a7b8ae",
                 cursor: "pointer",
                 padding: 0,
               }}
@@ -870,11 +957,12 @@ export default function ClassroomMusicTools({
           </div>
           <button
             type="button"
+            aria-label="Dismiss chat notification"
             onClick={() => setChatToast(null)}
             style={{
               background: "transparent",
               border: "none",
-              color: "#888",
+              color: "#a7b8ae",
               cursor: "pointer",
               padding: 0,
             }}
@@ -1024,11 +1112,12 @@ export default function ClassroomMusicTools({
                   </div>
                   <button
                     type="button"
+                    aria-label="Close student permissions menu"
                     onClick={() => setPermissionsMenuOpen(false)}
                     style={{
                       background: "transparent",
                       border: "none",
-                      color: "#aaa",
+                      color: "#a7b8ae",
                       cursor: "pointer",
                       padding: 2,
                     }}
@@ -1036,6 +1125,24 @@ export default function ClassroomMusicTools({
                     <X size={14} />
                   </button>
                 </div>
+
+                {permissionError && (
+                  <div
+                    role="alert"
+                    style={{
+                      marginBottom: 10,
+                      padding: "6px 8px",
+                      borderRadius: 6,
+                      background: "rgba(255, 71, 87, 0.16)",
+                      border: "1px solid rgba(255, 71, 87, 0.45)",
+                      color: "#ff8c99",
+                      fontSize: 11,
+                      fontWeight: 600,
+                    }}
+                  >
+                    {permissionError}
+                  </div>
+                )}
 
                 {/* Quick All / None actions */}
                 <div style={{ display: "flex", gap: 6, marginBottom: 10 }}>
@@ -1121,15 +1228,20 @@ export default function ClassroomMusicTools({
                     const isAllowed = studentPermissions[feat.key];
                     const isUpdating = updatingFeature === feat.key;
                     return (
-                      <div
+                      <button
+                        type="button"
                         key={feat.key}
+                        disabled={updatingFeature !== null}
+                        aria-pressed={isAllowed}
                         onClick={() => void toggleSinglePermission(feat.key)}
                         style={{
+                          width: "100%",
                           display: "flex",
                           alignItems: "center",
                           justifyContent: "space-between",
                           padding: "6px 8px",
                           borderRadius: 6,
+                          color: "#fff",
                           background: isAllowed
                             ? "rgba(46, 213, 115, 0.12)"
                             : "rgba(0, 0, 0, 0.25)",
@@ -1142,7 +1254,7 @@ export default function ClassroomMusicTools({
                           transition: "all 0.15s ease",
                         }}
                       >
-                        <div
+                        <span
                           style={{
                             display: "flex",
                             alignItems: "center",
@@ -1153,7 +1265,7 @@ export default function ClassroomMusicTools({
                           <span style={{ fontSize: 11, fontWeight: 600 }}>
                             {feat.label}
                           </span>
-                        </div>
+                        </span>
                         <span
                           style={{
                             fontSize: 10,
@@ -1161,13 +1273,13 @@ export default function ClassroomMusicTools({
                             padding: "2px 8px",
                             borderRadius: 10,
                             background: isAllowed ? "#2ed573" : "#333",
-                            color: isAllowed ? "#000" : "#888",
+                            color: isAllowed ? "#000" : "#b8c7be",
                             letterSpacing: 0.3,
                           }}
                         >
                           {isUpdating ? "…" : isAllowed ? "ALLOWED" : "LOCKED"}
                         </span>
-                      </div>
+                      </button>
                     );
                   })}
                 </div>
@@ -1743,11 +1855,12 @@ export default function ClassroomMusicTools({
             </div>
             <button
               type="button"
+              aria-label="Close metronome"
               onClick={() => setMetronomeOpen(false)}
               style={{
                 background: "transparent",
                 border: "none",
-                color: "#888",
+                color: "#a7b8ae",
                 cursor: "pointer",
                 padding: 2,
               }}
@@ -1971,18 +2084,17 @@ export default function ClassroomMusicTools({
       )}
 
       {/* Staff Private Backchannel Chat Controller (Admin & Teacher Only) */}
-      {!isRestrictedRole &&
-        userRole !== "student" &&
-        userRole !== "parent" && (
-          <ClassroomStaffChat
-            userRole={userRole}
-            isRestrictedRole={isRestrictedRole}
-            staffMessages={staffMessages}
-            onSendStaffMessage={handleSendStaffMessage}
-            forceOpenStaffTab={forceOpenStaffTab}
-            onStaffTabOpened={() => setForceOpenStaffTab(false)}
-          />
-        )}
+      {!isRestrictedRole && userRole !== "student" && userRole !== "parent" && (
+        <ClassroomStaffChat
+          userRole={userRole}
+          isRestrictedRole={isRestrictedRole}
+          staffMessages={staffMessages}
+          onSendStaffMessage={handleSendStaffMessage}
+          forceOpenStaffTab={forceOpenStaffTab}
+          onStaffTabOpened={() => setForceOpenStaffTab(false)}
+          onStaffOpenChange={handleStaffOpenChange}
+        />
+      )}
     </>
   );
 }

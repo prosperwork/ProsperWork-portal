@@ -35,9 +35,18 @@ export async function ensureParentPoliciesAccepted(parentId: string): Promise<vo
       return;
     }
 
-    // Retain only latest version per policy key
+    // Sort so parent-specific policies take precedence over global policies (matching pw_current_policies),
+    // then newest version first within each scope.
+    const sortedPolicies = [...policies].sort((a, b) => {
+      const aScoped = a.audience_parent_id !== null ? 1 : 0;
+      const bScoped = b.audience_parent_id !== null ? 1 : 0;
+      if (bScoped !== aScoped) return bScoped - aScoped;
+      return (b.version ?? 0) - (a.version ?? 0);
+    });
+
+    // Retain only authoritative policy version per key
     const latestByKey = new Map<string, string>();
-    for (const p of policies) {
+    for (const p of sortedPolicies) {
       if (!latestByKey.has(p.key)) {
         latestByKey.set(p.key, p.id);
       }

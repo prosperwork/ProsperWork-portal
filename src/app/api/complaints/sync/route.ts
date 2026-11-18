@@ -1,8 +1,10 @@
 import { NextResponse } from "next/server";
 import { identity } from "@/lib/supabase/identity";
+import { impersonationBlocked, sameOrigin, timingSafeSecretMatch } from "@/lib/supabase/server";
 import { publicAppUrl } from "@/lib/supabase/app-url.mjs";
 import { syncComplaintEmailReplies } from "@/lib/email/inbox-sync";
 import { processQueuedComplaintEmails } from "@/lib/email/queue";
+import { hasPermission } from "@/lib/academy/roles";
 
 export const dynamic = "force-dynamic";
 
@@ -14,18 +16,21 @@ const reply = (body: object, status = 200) =>
 
 export async function POST(request: Request) {
   try {
-    // Check if called via cron secret or authenticated portal session
-    const cronSecret = request.headers.get("x-cron-secret");
-    const isCron =
-      cronSecret &&
-      (cronSecret === process.env.CRON_SECRET ||
-        cronSecret === process.env.SUPABASE_SERVICE_ROLE_KEY);
+    const cronHeader = request.headers.get("x-cron-secret");
+    const configuredCronSecret = process.env.ACADEMY_CRON_SECRET || process.env.CRON_SECRET;
+    const isCron = timingSafeSecretMatch(cronHeader, configuredCronSecret, 32);
 
     if (!isCron) {
-      const { profile } = await identity();
-      if (!profile || profile.status !== "active") {
-        return reply({ error: "Active academy session required." }, 403);
+      if (!sameOrigin(request)) {
+        return reply({ error: "Invalid request origin." }, 403);
       }
+      const { client, profile } = await identity();
+      const canManage = await hasPermission(client, profile, "complaints.manage");
+      if (!profile || !canManage) {
+        return reply({ error: "Administrative staff access required." }, 403);
+      }
+      const blocked = impersonationBlocked(profile);
+      if (blocked) return blocked;
     }
 
     const appUrl = publicAppUrl("/").origin;
@@ -42,18 +47,10 @@ export async function POST(request: Request) {
     });
   } catch (err) {
     console.error("Complaint email sync error:", err);
-    return reply(
-      {
-        error: "Failed to synchronize email replies.",
-        detail: err instanceof Error ? err.message : String(err),
-      },
-      500
-    );
+    return reply({ error: "Failed to synchronize email replies." }, 500);
   }
 }
 
-export async function GET(request: Request) {
-  // Allow GET for simple webhook/cron invocation
-  return POST(request);
+export async function GET() {
+  return reply({ error: "Use POST to trigger complaint email synchronization." }, 405);
 }
-

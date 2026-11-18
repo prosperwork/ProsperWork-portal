@@ -3,15 +3,13 @@
 import React, { useState, useRef, useEffect } from "react";
 import { createPortal } from "react-dom";
 import { useRoomContext } from "@livekit/components-react";
+import { RoomEvent } from "livekit-client";
 import {
   Lock,
-  MessageSquare,
   Send,
   Users,
-  X,
   ShieldAlert,
   Globe,
-  Info,
 } from "lucide-react";
 
 export interface StaffChatMessage {
@@ -31,21 +29,20 @@ interface ClassroomStaffChatProps {
   onSendStaffMessage: (message: string) => Promise<void> | void;
   forceOpenStaffTab?: boolean;
   onStaffTabOpened?: () => void;
+  onStaffOpenChange?: (open: boolean) => void;
 }
 
 export default function ClassroomStaffChat({
-  onClose,
   userRole = "staff",
   isRestrictedRole = false,
   staffMessages,
   onSendStaffMessage,
   forceOpenStaffTab = false,
   onStaffTabOpened,
+  onStaffOpenChange,
 }: ClassroomStaffChatProps) {
-  // Absolute security guard: if user is restricted (student/parent), NEVER render
-  if (isRestrictedRole || userRole === "student" || userRole === "parent") {
-    return null;
-  }
+  const isRestricted =
+    isRestrictedRole || userRole === "student" || userRole === "parent";
 
   const room = useRoomContext();
   const [activeTab, setActiveTab] = useState<"public" | "staff">("public");
@@ -53,50 +50,82 @@ export default function ClassroomStaffChat({
   const [isSending, setIsSending] = useState(false);
   const [lkChatEl, setLkChatEl] = useState<HTMLElement | null>(null);
   const [portalTarget, setPortalTarget] = useState<HTMLElement | null>(null);
+  const [participantVersion, setParticipantVersion] = useState(0);
 
   const messagesEndRef = useRef<HTMLDivElement | null>(null);
   const inputRef = useRef<HTMLInputElement | null>(null);
 
   // If forceOpenStaffTab is triggered (e.g. from floating toolbar or toast)
   useEffect(() => {
+    if (isRestricted) return;
     if (forceOpenStaffTab) {
       setActiveTab("staff");
       onStaffTabOpened?.();
     }
-  }, [forceOpenStaffTab, onStaffTabOpened]);
+  }, [isRestricted, forceOpenStaffTab, onStaffTabOpened]);
 
-  // Monitor DOM for LiveKit's .lk-chat sidebar
+  // Monitor only the LiveKit conference container for .lk-chat mount/unmount/toggle
   useEffect(() => {
+    if (isRestricted) return;
+
     const findChat = () => {
-      const chat = document.querySelector(".lk-chat") as HTMLElement | null;
-      if (chat) {
-        // Check if visible
-        const isVisible =
-          chat.style.display !== "none" &&
-          window.getComputedStyle(chat).display !== "none";
-        if (isVisible) {
-          setLkChatEl(chat);
-          return;
-        }
+      const root =
+        document.querySelector(".lk-video-conference") ||
+        document.querySelector(".pc-live-conference-area");
+      const chat = (root ?? document).querySelector(".lk-chat") as HTMLElement | null;
+      if (chat && chat.style.display !== "none" && !chat.hidden) {
+        setLkChatEl((prev) => (prev === chat ? prev : chat));
+        return;
       }
-      setLkChatEl(null);
+      setLkChatEl((prev) => (prev === null ? prev : null));
     };
 
     findChat();
-    const observer = new MutationObserver(findChat);
-    observer.observe(document.body, {
-      childList: true,
-      subtree: true,
-      attributes: true,
-      attributeFilter: ["style", "class"],
-    });
 
-    return () => observer.disconnect();
-  }, []);
+    const container =
+      document.querySelector(".lk-video-conference") ||
+      document.querySelector(".pc-live-conference-area");
+
+    let observer: MutationObserver | null = null;
+    if (container) {
+      observer = new MutationObserver(findChat);
+      observer.observe(container, {
+        childList: true,
+        subtree: false,
+      });
+    }
+
+    const handleClick = (e: MouseEvent) => {
+      const target = e.target as HTMLElement | null;
+      if (
+        target?.closest(".lk-chat-toggle, .lk-chat-header button, button[aria-label*='chat' i]")
+      ) {
+        window.requestAnimationFrame(findChat);
+      }
+    };
+    document.addEventListener("click", handleClick);
+
+    return () => {
+      observer?.disconnect();
+      document.removeEventListener("click", handleClick);
+    };
+  }, [isRestricted]);
+
+  // Subscribe to LiveKit participant join/leave events so staff count stays live
+  useEffect(() => {
+    if (isRestricted || !room) return;
+    const bump = () => setParticipantVersion((v) => v + 1);
+    room.on(RoomEvent.ParticipantConnected, bump);
+    room.on(RoomEvent.ParticipantDisconnected, bump);
+    return () => {
+      room.off(RoomEvent.ParticipantConnected, bump);
+      room.off(RoomEvent.ParticipantDisconnected, bump);
+    };
+  }, [isRestricted, room]);
 
   // When .lk-chat is found, inject a portal mount point directly under .lk-chat-header
   useEffect(() => {
-    if (!lkChatEl) {
+    if (isRestricted || !lkChatEl) {
       setPortalTarget(null);
       return;
     }
@@ -127,21 +156,30 @@ export default function ClassroomStaffChat({
         existing.remove();
       }
     };
-  }, [lkChatEl]);
+  }, [isRestricted, lkChatEl]);
 
   // Synchronize staff-active class on portal container
   useEffect(() => {
-    if (!portalTarget) return;
+    if (isRestricted || !portalTarget) return;
     if (activeTab === "staff") {
       portalTarget.classList.add("staff-active");
     } else {
       portalTarget.classList.remove("staff-active");
     }
-  }, [portalTarget, activeTab]);
+  }, [isRestricted, portalTarget, activeTab]);
+
+  // Notify parent when Staff Chat tab is visibly open or closed
+  useEffect(() => {
+    if (isRestricted) return;
+    onStaffOpenChange?.(Boolean(portalTarget && activeTab === "staff"));
+    return () => {
+      onStaffOpenChange?.(false);
+    };
+  }, [isRestricted, portalTarget, activeTab, onStaffOpenChange]);
 
   // Control visibility of default LiveKit public elements based on activeTab
   useEffect(() => {
-    if (!lkChatEl) return;
+    if (isRestricted || !lkChatEl) return;
     const msgList = lkChatEl.querySelector(
       ".lk-chat-messages"
     ) as HTMLElement | null;
@@ -161,25 +199,26 @@ export default function ClassroomStaffChat({
       if (msgList) msgList.style.display = "flex";
       if (msgForm) msgForm.style.display = "flex";
     };
-  }, [lkChatEl, activeTab]);
+  }, [isRestricted, lkChatEl, activeTab]);
 
   // Auto-scroll staff messages to bottom
   useEffect(() => {
-    if (activeTab === "staff") {
+    if (!isRestricted && activeTab === "staff") {
       messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
     }
-  }, [staffMessages, activeTab]);
+  }, [isRestricted, staffMessages, activeTab]);
 
   // Focus input when switching to staff tab
   useEffect(() => {
-    if (activeTab === "staff") {
+    if (!isRestricted && activeTab === "staff") {
       inputRef.current?.focus();
     }
-  }, [activeTab]);
+  }, [isRestricted, activeTab]);
 
   // Find all active staff in the room
   const staffParticipants = React.useMemo(() => {
-    if (!room) return [];
+    if (isRestricted || !room) return [];
+    void participantVersion;
     const staffList: Array<{
       identity: string;
       name: string;
@@ -225,7 +264,12 @@ export default function ClassroomStaffChat({
       }
     }
     return staffList;
-  }, [room, userRole]);
+  }, [isRestricted, room, userRole, participantVersion]);
+
+  // Absolute security guard: if user is restricted (student/parent), NEVER render
+  if (isRestricted) {
+    return null;
+  }
 
   const handleSend = async (e?: React.FormEvent) => {
     if (e) e.preventDefault();
@@ -592,9 +636,9 @@ export default function ClassroomStaffChat({
                 background: "rgba(0, 0, 0, 0.2)",
               }}
             >
-              {staffPresets.map((preset, idx) => (
+              {staffPresets.map((preset) => (
                 <button
-                  key={idx}
+                  key={preset}
                   type="button"
                   onClick={() => {
                     setInputText(preset);

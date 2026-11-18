@@ -1,19 +1,21 @@
 import { NextResponse } from "next/server";
 import { identity } from "@/lib/supabase/identity";
-import { sameOrigin } from "@/lib/supabase/server";
+import { impersonationBlocked, sameOrigin } from "@/lib/supabase/server";
 import { leaveAction } from "@/lib/academy/leave";
-import {loadAllRecords} from "@/lib/academy/paged-records";
+import { loadAllRecords } from "@/lib/academy/paged-records";
+import { hasPermission } from "@/lib/academy/roles";
 export const dynamic="force-dynamic";
 function reply(data:unknown,status=200){return NextResponse.json(data,{status,headers:{"Cache-Control":"private, no-store"}});}
-const staff=["super_admin","hr","head_admin","admin","teacher","qc","finance","sales_marketing","social_media"];
 export async function GET(){
  try{
   const {profile,client}=await identity();
-  if(!profile||!["active","on_leave"].includes(profile.status)||!staff.includes(profile.role))return reply({error:"Staff access required."},403);
+  const canAccess = await hasPermission(client, profile, "workspace.leave", { allowOnLeave: true });
+  if(!profile||!["active","on_leave"].includes(profile.status)||!canAccess)return reply({error:"Staff leave access required."},403);
+  const canPlanStudents = profile.role === "super_admin" || await hasPermission(client, profile, "workspace.students");
   const [leaves,covers,directory,timeline,students]=await Promise.all([
    loadAllRecords(client,"pw_leaves"),
    loadAllRecords(client,"pw_leave_covers"),client.rpc("pw_leave_directory"),client.rpc("pw_leave_cover_timeline"),
-   ["super_admin","head_admin"].includes(profile.role)?loadAllRecords(client,"pw_students","id,teacher_id,admin_id,parent_id,payload,created_at"):Promise.resolve({data:[],error:null})
+   canPlanStudents?loadAllRecords(client,"pw_students","id,teacher_id,admin_id,parent_id,payload,created_at"):Promise.resolve({data:[],error:null})
   ]);
   if([leaves,covers,directory,timeline,students].some(r=>r.error))throw Error();
   return reply({profile,leaves:leaves.data,covers:covers.data,directory:directory.data,coverTimeline:timeline.data,students:students.data,serverNow:new Date().toISOString()});
@@ -22,7 +24,10 @@ export async function GET(){
 export async function POST(request:Request){
  if(!sameOrigin(request))return reply({error:"Cross-origin changes are not allowed."},403);
  try{
-  const {profile,client}=await identity();if(!profile||profile.status!=="active"||!staff.includes(profile.role))return reply({error:"Active staff access required."},403);
+  const {profile,client}=await identity();
+  const canAccess = await hasPermission(client, profile, "workspace.leave");
+  if(!profile||profile.status!=="active"||!canAccess)return reply({error:"Active staff leave access required."},403);
+  const blocked=impersonationBlocked(profile);if(blocked)return blocked;
   const parsed=leaveAction.safeParse(await request.json().catch(()=>null));if(!parsed.success)return reply({error:"Check the leave dates, staff selection and reason."},400);
   const d=parsed.data;
   const result=await client.rpc("pw_leave_action",{p_action:d.action,p_id:"id" in d?d.id:null,p_staff:d.action==="request"?d.staffId||null:null,

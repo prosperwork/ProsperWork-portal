@@ -1,7 +1,14 @@
 import { NextResponse } from "next/server";
+import { cookies } from "next/headers";
 import { z } from "zod";
-import { provisioningClient, sameOrigin, sessionClient } from "@/lib/supabase/server";
-import{publicAppUrl}from"@/lib/supabase/app-url.mjs";
+import {
+  provisioningClient,
+  sameOrigin,
+  sessionClient,
+  verifyPasswordResetCookie,
+} from "@/lib/supabase/server";
+import { checkRateLimit } from "@/lib/ai/rate-limit";
+import { publicAppUrl } from "@/lib/supabase/app-url.mjs";
 import { PARENT_TERMS_VERSION, PRIVACY_POLICY_VERSION } from "@/lib/legal/consent-versions";
 import { ensureParentPoliciesAccepted } from "@/lib/academy/policy-sync";
 
@@ -40,10 +47,19 @@ export async function POST(request: Request) {
       if (error) throw error;
       const res = NextResponse.json({ ok: true, redirect: "/login" });
       res.cookies.set("pw_view_as", "", { path: "/", maxAge: 0 });
+      res.cookies.set("pw_pw_reset", "", { path: "/", maxAge: 0 });
       return res;
     }
     if (action === "login") {
       if (!password) return NextResponse.json({ error: "Enter your password." }, { status: 400 });
+      const clientIp = request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() || "unknown";
+      const loginRate = checkRateLimit(`login:${clientIp}:${email!.trim().toLowerCase()}`, 12, 5 * 60 * 1000);
+      if (!loginRate.allowed) {
+        return NextResponse.json(
+          { error: `Too many sign-in attempts. Please wait ${loginRate.resetInSec} seconds and try again.` },
+          { status: 429 },
+        );
+      }
       let loginEmail = email!.trim();
       const rawUser = loginEmail.replace(/^@/, "");
       if (!loginEmail.includes("@") || !rawUser.includes("@")) {
@@ -178,10 +194,31 @@ export async function POST(request: Request) {
     const { data: { user }, error: userError } = await client.auth.getUser();
     if (userError || !user) return NextResponse.json({ error: "Open a valid recovery link before changing your password." }, { status: 401 });
 
-    // When changing password from the active user profile, require and verify the current password
-    if (currentPassword !== undefined) {
+    // Determine whether this session was established via a verified recovery/invite flow.
+    // Standard authenticated sessions MUST verify currentPassword unconditionally.
+    const cookieStore = await cookies();
+    let isVerifiedRecoveryFlow = verifyPasswordResetCookie(cookieStore.get("pw_pw_reset")?.value, user.id);
+    if (!isVerifiedRecoveryFlow) {
+      const { data: sessionData } = await client.auth.getSession();
+      const accessToken = sessionData.session?.access_token;
+      if (accessToken && accessToken.split(".").length === 3) {
+        try {
+          const claims = JSON.parse(Buffer.from(accessToken.split(".")[1], "base64url").toString("utf8")) as {
+            amr?: Array<{ method?: string } | string>;
+          };
+          const methods = (claims.amr || []).map((entry) => (typeof entry === "string" ? entry : entry?.method || ""));
+          if (methods.some((m) => ["recovery", "otp", "invite", "magiclink"].includes(m))) {
+            isVerifiedRecoveryFlow = true;
+          }
+        } catch {
+          // ignore malformed token claims
+        }
+      }
+    }
+
+    if (currentPassword !== undefined || !isVerifiedRecoveryFlow) {
       if (!currentPassword) {
-        return NextResponse.json({ error: "Enter your current password." }, { status: 400 });
+        return NextResponse.json({ error: "Enter your current password to confirm this change." }, { status: 400 });
       }
       if (!user.email) {
         return NextResponse.json({ error: "Your account email could not be verified." }, { status: 400 });
@@ -204,11 +241,14 @@ export async function POST(request: Request) {
     await admin.auth.admin.signOut(user.id, "global").catch(() => undefined);
     await client.auth.signOut().catch(() => undefined);
 
-    return NextResponse.json({
+    const res = NextResponse.json({
       ok: true,
       message: "Password updated successfully. Please sign in with your new password.",
       redirect: "/login?reason=password_changed",
     });
+    res.cookies.set("pw_pw_reset", "", { path: "/", maxAge: 0 });
+    res.cookies.set("pw_view_as", "", { path: "/", maxAge: 0 });
+    return res;
   } catch {
     return NextResponse.json({ error: "Authentication is temporarily unavailable." }, { status: 503 });
   }

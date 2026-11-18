@@ -115,32 +115,33 @@ export interface AcademyChatParams {
   message: string;
   history?: { role: "user" | "assistant"; content: string }[];
   role: Role;
+  permissions?: string[];
   userName: string;
 }
 
-const portalWorkspaces = [
-  { name: "Overview (Dashboard)", path: "/", description: "Live classroom list, today's lessons, active learner continuity, follow-through queue, executive pulse, and the Birthday radar (next 7 days)." },
-  { name: "Schedule", path: "/schedule", description: "Daily & weekly lesson calendar, classroom links, lesson status updates (Teacher done / verify attendance), and replacement classes." },
-  { name: "Families & students", path: "/students", description: "Student records, parent contacts, DOB, assigned teachers, learning rank, and lesson history." },
-  { name: "Family accounts", path: "/family", description: "Linked children, privacy consent settings, student accounts, and secure Kid Mode PIN controls." },
-  { name: "Lesson boards", path: "/learning", description: "Lesson continuity board, lesson topics, teacher notes, practice assignments, and progress tracking." },
-  { name: "Homework", path: "/homework", description: "Student practice submissions, audio/video file uploads, teacher feedback, and due dates." },
-  { name: "Studio (Media Studio)", path: "/studio", description: "Student practice timer, audio/video recorder, practice streaks, repertoire song bank, student requests/replies, and the Birthday radar with AI tributes." },
-  { name: "Finance & receipts", path: "/finance", description: "Invoices, payment balances, parent receipt upload, and expense records with approved currencies." },
-  { name: "Invoices & Documents", path: "/documents", description: "Downloadable billing documents, official verified payment receipts, and payment invoices." },
-  { name: "Payroll", path: "/payroll", description: "Staff monthly salary preparation, verified attendance calculations, maker-checker approvals, and bank disbursement instructions." },
-  { name: "People & staff", path: "/people", description: "Staff directory, departments, capacity limits, supervisor hierarchy, and teaching assignments." },
-  { name: "Curriculum library", path: "/curriculum", description: "Shared sheet music, exercises, method books, and teaching material." },
-  { name: "Leads", path: "/leads", description: "Prospect enquiries, follow-up callbacks, nursery tracking, and trial lesson booking." },
-  { name: "Operations", path: "/operations", description: "Operational billing agreements, FX foreign currency rates, expenses, availability, pause/resume, and quality oversight." },
-  { name: "Management desk", path: "/management", description: "Desk cases, senior escalations, trial scheduling, priority tasks, and quality coaching alerts." },
-  { name: "Leave", path: "/leave", description: "Staff time off requests, cover teacher assignments, and schedule impact review." },
-  { name: "Hiring", path: "/hiring", description: "Applicant tracking, multi-stage interviews, agreements, guidelines, and onboarding activation." },
-  { name: "Communications", path: "/communications", description: "Consented email campaigns, audience filtering, delivery tracking, and unsubscribe management." },
-  { name: "Policies & agreements", path: "/policies", description: "Official academy policy PDF publishing and required parent/staff acknowledgements." },
-  { name: "Audit & reports", path: "/reports", description: "Audit trail of system edits, historical event records, and monthly student progress reports." },
-  { name: "Settings", path: "/settings", description: "Central academy configuration, currency rates, class durations, referral discounts, and operational rules." },
-  { name: "Manual usage", path: "/manual", description: "Comprehensive indexed operating instructions and workflows for all portal roles." },
+const portalWorkspaces: Array<{ name: string; path: string; description: string; permission?: string; roles?: Role[] }> = [
+  { name: "Overview (Dashboard)", path: "/", description: "Live classroom list, today's lessons, active learner continuity, follow-through queue, and Birthday radar.", permission: "workspace.overview" },
+  { name: "Schedule", path: "/schedule", description: "Daily & weekly lesson calendar, classroom links, lesson status updates, and replacement classes.", permission: "workspace.schedule" },
+  { name: "Families & students", path: "/students", description: "Student records, parent contacts, DOB, assigned teachers, learning rank, and lesson history.", permission: "workspace.students", roles: ["super_admin", "general_manager", "head_admin", "admin", "qc", "teacher", "sales_marketing"] },
+  { name: "Family accounts", path: "/family", description: "Linked children, privacy consent settings, student accounts, and secure Kid Mode PIN controls.", permission: "workspace.family", roles: ["super_admin", "parent"] },
+  { name: "Lesson boards", path: "/learning", description: "Lesson continuity board, lesson topics, teacher notes, practice assignments, and progress tracking.", permission: "workspace.learning" },
+  { name: "Homework", path: "/homework", description: "Student practice submissions, audio/video file uploads, teacher feedback, and due dates.", permission: "workspace.homework" },
+  { name: "Studio (Media Studio)", path: "/studio", description: "Student practice timer, audio/video recorder, practice streaks, repertoire song bank, student requests/replies, and Birthday radar.", permission: "workspace.studio" },
+  { name: "Finance & receipts", path: "/finance", description: "Invoices, payment balances, parent receipt upload, and expense records.", permission: "workspace.finance", roles: ["super_admin", "general_manager", "finance"] },
+  { name: "Invoices & Documents", path: "/documents", description: "Downloadable billing documents, official verified payment receipts, and payment invoices.", permission: "workspace.documents", roles: ["super_admin", "general_manager", "head_admin", "admin", "finance", "parent"] },
+  { name: "Payroll", path: "/payroll", description: "Staff monthly salary preparation, verified attendance calculations, maker-checker approvals, and bank disbursement instructions.", permission: "workspace.payroll", roles: ["super_admin", "finance", "head_admin", "admin", "hr", "qc", "teacher", "sales_marketing", "social_media"] },
+  { name: "People & staff", path: "/people", description: "Staff directory, departments, capacity limits, supervisor hierarchy, and teaching assignments.", permission: "workspace.people", roles: ["super_admin", "general_manager", "head_admin", "hr", "qc"] },
+  { name: "Curriculum library", path: "/curriculum", description: "Shared sheet music, exercises, method books, and teaching material.", permission: "workspace.curriculum" },
+  { name: "Leads", path: "/leads", description: "Prospect enquiries, follow-up callbacks, nursery tracking, and trial lesson booking.", permission: "workspace.leads", roles: ["super_admin", "general_manager", "head_admin", "admin", "sales_marketing"] },
+  { name: "Operations", path: "/operations", description: "Operational billing agreements, FX rates, expenses, availability, pause/resume, and quality oversight.", permission: "workspace.operations", roles: ["super_admin", "general_manager", "head_admin", "admin", "finance", "qc", "teacher", "sales_marketing", "social_media"] },
+  { name: "Management desk", path: "/management", description: "Desk cases, senior escalations, trial scheduling, priority tasks, and quality coaching alerts.", permission: "workspace.management", roles: ["super_admin", "general_manager", "head_admin", "admin", "hr", "qc", "sales_marketing"] },
+  { name: "Leave", path: "/leave", description: "Staff time off requests, cover teacher assignments, and schedule impact review.", permission: "workspace.leave", roles: ["super_admin", "general_manager", "head_admin", "admin", "hr", "qc", "teacher", "finance", "sales_marketing", "social_media"] },
+  { name: "Hiring", path: "/hiring", description: "Applicant tracking, multi-stage interviews, agreements, guidelines, and onboarding activation.", permission: "workspace.hiring", roles: ["super_admin", "general_manager", "head_admin", "admin", "hr", "qc"] },
+  { name: "Communications", path: "/communications", description: "Consented email campaigns, audience filtering, delivery tracking, and unsubscribe management.", permission: "workspace.communications", roles: ["super_admin", "sales_marketing"] },
+  { name: "Policies & agreements", path: "/policies", description: "Official academy policy PDF publishing and required parent/staff acknowledgements.", permission: "workspace.policies" },
+  { name: "Audit & reports", path: "/reports", description: "Audit trail of system edits, historical event records, and monthly student progress reports.", permission: "workspace.reports", roles: ["super_admin", "general_manager", "head_admin", "hr", "finance", "qc"] },
+  { name: "Settings", path: "/settings", description: "Central academy configuration, currency rates, roles, catalogs, class durations, and operational rules.", permission: "workspace.settings", roles: ["super_admin"] },
+  { name: "Manual usage", path: "/manual", description: "Comprehensive indexed operating instructions and workflows for your portal role.", permission: "workspace.manual" },
   { name: "My profile", path: "/profile", description: "Personal details, display name, timezone settings, and private profile photo upload." },
   { name: "Classroom", path: "/classroom", description: "LiveKit video classroom with camera, microphone, screen sharing, and chat." },
 ];
@@ -167,6 +168,14 @@ export async function generateAcademyChatResponse(params: AcademyChatParams): Pr
     )
     .join("\n\n");
 
+  const permittedWorkspaces = portalWorkspaces.filter((w) => {
+    if (params.role === "super_admin") return true;
+    if (params.permissions && w.permission) {
+      return params.permissions.includes(w.permission);
+    }
+    return !w.roles?.length || w.roles.includes(params.role);
+  });
+
   const systemPrompt = `You are the official AI Assistant for ProsperWork Music Academy.
 Your tone is warm, professional, encouraging, and musical.
 
@@ -175,10 +184,10 @@ USER CONTEXT:
 - Role: ${params.role}
 
 PORTAL WORKSPACE DIRECTORY & ACCURATE URLS:
-${portalWorkspaces.map(w => `- ${w.name}: link "${w.path}" — ${w.description}`).join("\n")}
+${permittedWorkspaces.map(w => `- ${w.name}: link "${w.path}" — ${w.description}`).join("\n")}
 
 STRICT GUARDRAILS & ACCURACY RULES (MANDATORY):
-1. ACCURATE LINKS: Whenever you direct the user to a workspace or page, ALWAYS use standard markdown links with the EXACT URL from the directory above (e.g. "[Overview](/) (the main dashboard)", "[Schedule](/schedule)", "[Studio](/studio)", "[Finance](/finance)", "[Documents](/documents)", "[Lesson boards](/learning)", "[Homework](/homework)", "[Manual usage](/manual)").
+1. ACCURATE LINKS: Whenever you direct the user to a workspace or page, ALWAYS use standard markdown links with the EXACT URL from the directory above (e.g. "[Overview](/) (the main dashboard)", "[Schedule](/schedule)", "[Studio](/studio)", "[Lesson boards](/learning)", "[Homework](/homework)", "[Manual usage](/manual)").
 2. NO REPETITION / CLEAN MARKDOWN: Write cleanly and concisely. Never stutter or repeat words (e.g. do NOT say "**Overview** (the main dashboard) and the **Media Studio** **Overview** (the main dashboard)").
 3. SCOPE BOUNDARIES:
    - IN-SCOPE TOPICS (Always answer informatively and warmly):
@@ -192,7 +201,7 @@ STRICT GUARDRAILS & ACCURACY RULES (MANDATORY):
 "${standardRefusal}"
 4. ROLE-BASED ACCESS & PRIVACY:
    - You only know and can only discuss the manual sections and procedures permitted for the user's role ("${params.role}").
-   - If a parent, student, or teacher asks about restricted administrative operations (e.g. staff salary calculations, teacher pay rates, internal hiring reviews, financial profit reports, or owner settings), you MUST politely refuse and state:
+   - If a parent, student, or teacher asks about restricted administrative operations (e.g. staff salary calculations, teacher pay rates, internal hiring reviews, financial profit reports, or owner settings), you MUST politely refuse and state: "That administrative information is restricted to authorized academy leadership. Please contact Academy Administration if you need assistance."
 5. UNRESOLVABLE ISSUES, GRIEVANCES & RAISING COMPLAINTS (CRITICAL):
    - You are an AI mentor and cannot alter student records, reschedule classes directly, modify invoices, process refunds, or investigate teacher conduct/attendance.
    - If a parent, student, or guardian asks about an issue that you cannot solve, a grievance, a teacher who was late or absent, a billing or lesson dispute, or any inquiry you do not have specific information to answer:

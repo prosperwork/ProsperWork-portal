@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, type FormEvent } from "react";
+import { useEffect, useState, type FormEvent } from "react";
 import { Check, X } from "lucide-react";
 import type { AcademyData, Role } from "@/lib/types";
 import { roles } from "../../_lib/portal-formatters";
@@ -29,13 +29,28 @@ export type Field = {
   placeholder?: string;
 };
 
+export interface ActionModalCatalogOptions {
+  instruments?: Field["options"];
+  studentRanks?: Field["options"];
+  expenseCategories?: Field["options"];
+  leadSources?: Field["options"];
+  invitableRoles?: Field["options"];
+  defaultTimezone?: string;
+}
+
 export function getFields(
   kind: FormKind,
   data: AcademyData,
   role: Role,
   familyName?: string,
-  currencyOptions: Field["options"] = []
+  currencyOptions: Field["options"] = [],
+  catalogOptions: ActionModalCatalogOptions = {}
 ): Field[] {
+  const defaultTz = catalogOptions.defaultTimezone || "Africa/Lagos";
+  const hasInstruments = Boolean(catalogOptions.instruments?.length);
+  const hasRanks = Boolean(catalogOptions.studentRanks?.length);
+  const hasExpenseCats = Boolean(catalogOptions.expenseCategories?.length);
+  const hasLeadSources = Boolean(catalogOptions.leadSources?.length);
   const studentChoices = data.students
     .filter((student) => {
       if (role === "student") return student.id === data.students[0]?.id;
@@ -76,7 +91,9 @@ export function getFields(
           type: "email",
           required: true,
         },
-        { name: "instrument", label: "Instrument", required: true },
+        hasInstruments
+          ? { name: "instrument", label: "Instrument", type: "select", options: catalogOptions.instruments, required: true }
+          : { name: "instrument", label: "Instrument", required: true },
         {
           name: "teacherName",
           label: "Assigned teacher",
@@ -95,7 +112,7 @@ export function getFields(
           name: "timezone",
           label: "Student timezone",
           required: true,
-          placeholder: "Europe/London",
+          placeholder: defaultTz,
         },
         {
           name: "consent",
@@ -118,8 +135,12 @@ export function getFields(
         { name: "childName", label: "Child's name", required: true },
         { name: "email", label: "Email", type: "email", required: true },
         { name: "phone", label: "Phone", type: "tel", required: true },
-        { name: "instrument", label: "Instrument of interest", required: true },
-        { name: "source", label: "Enquiry source", required: true },
+        hasInstruments
+          ? { name: "instrument", label: "Instrument of interest", type: "select", options: catalogOptions.instruments, required: true }
+          : { name: "instrument", label: "Instrument of interest", required: true },
+        hasLeadSources
+          ? { name: "source", label: "Enquiry source", type: "select", options: catalogOptions.leadSources, required: true }
+          : { name: "source", label: "Enquiry source", required: true },
         { name: "referralFrom", label: "Referral from (if applicable)" },
         {
           name: "preferredSlots",
@@ -254,7 +275,9 @@ export function getFields(
     case "expense":
       return [
         { name: "title", label: "Expense", required: true },
-        { name: "category", label: "Category", required: true },
+        hasExpenseCats
+          ? { name: "category", label: "Category", type: "select", options: catalogOptions.expenseCategories, required: true }
+          : { name: "category", label: "Category", required: true },
         { name: "amount", label: "Amount", type: "number", required: true },
         {
           name: "currency",
@@ -278,8 +301,12 @@ export function getFields(
           })),
           required: true,
         },
-        { name: "instrument", label: "Instrument", required: true },
-        { name: "level", label: "Level", required: true },
+        hasInstruments
+          ? { name: "instrument", label: "Instrument", type: "select", options: catalogOptions.instruments, required: true }
+          : { name: "instrument", label: "Instrument", required: true },
+        hasRanks
+          ? { name: "level", label: "Level", type: "select", options: catalogOptions.studentRanks, required: true }
+          : { name: "level", label: "Level", required: true },
         {
           name: "summary",
           label: "Practice note",
@@ -408,14 +435,17 @@ export function getFields(
           name: "role",
           label: "Position",
           type: "select",
-          options: roles
-            .filter(
-              (item) =>
-                !["super_admin", "general_manager", "social_media"].includes(
-                  item.id
-                )
-            )
-            .map((item) => ({ value: item.id, label: item.label })),
+          options:
+            catalogOptions.invitableRoles && catalogOptions.invitableRoles.length > 0
+              ? catalogOptions.invitableRoles
+              : roles
+                  .filter(
+                    (item) =>
+                      !["super_admin", "general_manager", "social_media"].includes(
+                        item.id
+                      )
+                  )
+                  .map((item) => ({ value: item.id, label: item.label })),
           required: true,
         },
         { name: "department", label: "Department", required: true },
@@ -423,7 +453,7 @@ export function getFields(
           name: "timezone",
           label: "Timezone",
           required: true,
-          placeholder: "Africa/Lagos",
+          placeholder: defaultTz,
         },
       ];
   }
@@ -445,6 +475,14 @@ export default function ActionModal({
   submitLabel?: string;
 }) {
   const [error, setError] = useState("");
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") onClose();
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [onClose]);
+
   function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const form = new FormData(event.currentTarget);
@@ -456,13 +494,25 @@ export default function ActionModal({
         values[field.name] = (form.get(field.name) as File)?.name || "";
       else values[field.name] = String(form.get(field.name) || "");
     });
-    if (values.pin && (values.pin.length < 4 || !/^\d+$/.test(values.pin))) {
+    if (
+      values.pin &&
+      (values.pin.length < 4 ||
+        values.pin.length > 8 ||
+        !/^\d+$/.test(values.pin))
+    ) {
       setError("Use 4–8 digits for the Kid Mode PIN.");
       return;
     }
     if (values.pin && values.pin !== values.confirmPin) {
       setError("The PIN entries do not match.");
       return;
+    }
+    if (values.startsAt) {
+      const parsedStart = new Date(values.startsAt);
+      if (!Number.isFinite(parsedStart.getTime())) {
+        setError("Please enter a valid lesson start date and time.");
+        return;
+      }
     }
     if (
       values.deduction &&
@@ -494,6 +544,7 @@ export default function ActionModal({
             <p>{subtitle}</p>
           </div>
           <button
+            type="button"
             className="close-btn"
             onClick={onClose}
             aria-label="Close dialog"

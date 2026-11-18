@@ -10,14 +10,7 @@ export const COMPLAINT_CATEGORIES = [
   { value: "other", label: "General Concern / Other" },
 ] as const;
 
-export type ComplaintCategory =
-  | "lesson_quality"
-  | "punctuality"
-  | "scheduling"
-  | "billing"
-  | "technical"
-  | "customer_service"
-  | "other";
+export type ComplaintCategory = string;
 
 export type ComplaintUrgency = "normal" | "high" | "urgent";
 export type ComplaintStatus = "open" | "in_progress" | "resolved";
@@ -59,15 +52,7 @@ export const createComplaintSchema = z
     action: z.literal("create"),
     studentId: z.string().trim().optional().nullable(),
     studentName: z.string().trim().max(120).optional().nullable(),
-    category: z.enum([
-      "lesson_quality",
-      "punctuality",
-      "scheduling",
-      "billing",
-      "technical",
-      "customer_service",
-      "other",
-    ]),
+    category: z.string().trim().regex(/^[a-z0-9_-]{2,64}$/, "Select a valid complaint category."),
     urgency: z.enum(["normal", "high", "urgent"]).default("normal"),
     subject: z.string().trim().min(3).max(200),
     message: z.string().trim().min(10).max(5000),
@@ -103,7 +88,12 @@ export type UpdateComplaintInput = z.infer<typeof updateComplaintSchema>;
 export type ReplyComplaintInput = z.infer<typeof replyComplaintSchema>;
 export type ComplaintActionInput = z.infer<typeof complaintActionSchema>;
 
-export function categoryLabel(cat: ComplaintCategory | string): string {
+export function categoryLabel(
+  cat: ComplaintCategory | string,
+  catalogItems?: Array<{ code: string; label: string }>,
+): string {
+  const fromCatalog = catalogItems?.find((c) => c.code === cat);
+  if (fromCatalog) return fromCatalog.label;
   const match = COMPLAINT_CATEGORIES.find((c) => c.value === cat);
   return match ? match.label : cat.replace(/_/g, " ");
 }

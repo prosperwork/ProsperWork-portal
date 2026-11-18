@@ -44,6 +44,15 @@ export default function ClassroomTuner({
   const streamRef = useRef<MediaStream | null>(null);
   const animationFrameRef = useRef<number | null>(null);
   const lastBroadcastRef = useRef<number>(0);
+  const lastUiUpdateRef = useRef<number>(0);
+  const syncToRoomRef = useRef<boolean>(syncToRoom);
+  const sessionTokenRef = useRef<number>(0);
+  const timeDomainBufferRef = useRef<Float32Array<ArrayBuffer> | null>(null);
+  const corrBufferRef = useRef<Float32Array<ArrayBuffer> | null>(null);
+
+  useEffect(() => {
+    syncToRoomRef.current = syncToRoom;
+  }, [syncToRoom]);
 
   // Sync Tuner Pitch across Call
   const { send: sendTuner } = useDataChannel("tuner_sync", (msg) => {
@@ -75,6 +84,7 @@ export default function ClassroomTuner({
       return;
     }
 
+    const token = ++sessionTokenRef.current;
     setError("");
     try {
       const stream = await navigator.mediaDevices.getUserMedia({
@@ -84,6 +94,10 @@ export default function ClassroomTuner({
           autoGainControl: false,
         },
       });
+      if (sessionTokenRef.current !== token) {
+        for (const track of stream.getTracks()) track.stop();
+        return;
+      }
       streamRef.current = stream;
 
       const AudioCtx =
@@ -96,6 +110,7 @@ export default function ClassroomTuner({
       const analyser = ctx.createAnalyser();
       analyser.fftSize = 2048;
       analyserRef.current = analyser;
+      timeDomainBufferRef.current = new Float32Array(analyser.fftSize);
 
       const source = ctx.createMediaStreamSource(stream);
       source.connect(analyser);
@@ -103,6 +118,7 @@ export default function ClassroomTuner({
       setListening(true);
       detectPitch();
     } catch (err) {
+      if (sessionTokenRef.current !== token) return;
       setError(
         err instanceof Error
           ? err.message
@@ -112,21 +128,27 @@ export default function ClassroomTuner({
   };
 
   const stopTuner = () => {
-    if (animationFrameRef.current)
+    sessionTokenRef.current += 1;
+    if (animationFrameRef.current) {
       cancelAnimationFrame(animationFrameRef.current);
+      animationFrameRef.current = null;
+    }
     if (streamRef.current) {
       for (const track of streamRef.current.getTracks()) track.stop();
+      streamRef.current = null;
     }
     if (audioCtxRef.current && audioCtxRef.current.state !== "closed") {
-      void audioCtxRef.current.close();
+      void audioCtxRef.current.close().catch(() => {});
     }
+    audioCtxRef.current = null;
+    analyserRef.current = null;
     setListening(false);
     setNote("-");
     setFrequency(0);
     setCents(0);
     setInTune(false);
 
-    if (sendTuner && syncToRoom) {
+    if (sendTuner && syncToRoomRef.current) {
       const payload = JSON.stringify({ type: "stop" });
       sendTuner(new TextEncoder().encode(payload), { reliable: false });
     }
@@ -148,7 +170,11 @@ export default function ClassroomTuner({
       Math.floor(sampleRate / 50)
     );
 
-    const c = new Float32Array(maxPeriod + 2);
+    const neededLen = maxPeriod + 2;
+    if (!corrBufferRef.current || corrBufferRef.current.length < neededLen) {
+      corrBufferRef.current = new Float32Array(neededLen);
+    }
+    const c = corrBufferRef.current;
     const halfLen = Math.floor(buffer.length / 2);
 
     for (let lag = 0; lag <= maxPeriod + 1; lag++) {
@@ -164,7 +190,7 @@ export default function ClassroomTuner({
 
     let maxVal = -1;
     let maxPos = -1;
-    for (let i = d; i <= maxPeriod; i++) {
+    for (let i = Math.max(d, minPeriod); i <= maxPeriod; i++) {
       if (c[i] > maxVal) {
         maxVal = c[i];
         maxPos = i;
@@ -192,14 +218,22 @@ export default function ClassroomTuner({
 
   const detectPitch = () => {
     if (!analyserRef.current || !audioCtxRef.current) return;
-    const buffer = new Float32Array(analyserRef.current.fftSize);
+    if (
+      !timeDomainBufferRef.current ||
+      timeDomainBufferRef.current.length !== analyserRef.current.fftSize
+    ) {
+      timeDomainBufferRef.current = new Float32Array(
+        analyserRef.current.fftSize
+      );
+    }
+    const buffer = timeDomainBufferRef.current;
     analyserRef.current.getFloatTimeDomainData(buffer);
 
     const freq = autoCorrelate(buffer, audioCtxRef.current.sampleRate);
     if (freq !== -1 && freq >= 50 && freq <= 4500) {
       const midi = 12 * (Math.log(freq / 440) / Math.log(2)) + 69;
       const roundedMidi = Math.round(midi);
-      const noteName = NOTE_STRINGS[roundedMidi % 12];
+      const noteName = NOTE_STRINGS[((roundedMidi % 12) + 12) % 12];
       const oct = Math.floor(roundedMidi / 12) - 1;
 
       const targetFreq = 440 * Math.pow(2, (roundedMidi - 69) / 12);
@@ -211,15 +245,22 @@ export default function ClassroomTuner({
       const roundedFreq = Math.round(freq * 10) / 10;
       const clampedCents = Math.max(-50, Math.min(50, centDiff));
 
-      setNote(noteName);
-      setOctave(oct);
-      setFrequency(roundedFreq);
-      setCents(clampedCents);
-      setInTune(isWithinTune);
+      const now = Date.now();
+      if (now - lastUiUpdateRef.current >= 65) {
+        lastUiUpdateRef.current = now;
+        setNote(noteName);
+        setOctave(oct);
+        setFrequency(roundedFreq);
+        setCents(clampedCents);
+        setInTune(isWithinTune);
+      }
 
       // Broadcast detected pitch to other participants every 100ms
-      const now = Date.now();
-      if (sendTuner && syncToRoom && now - lastBroadcastRef.current > 100) {
+      if (
+        sendTuner &&
+        syncToRoomRef.current &&
+        now - lastBroadcastRef.current > 100
+      ) {
         lastBroadcastRef.current = now;
         const payload = JSON.stringify({
           type: "pitch",
@@ -304,11 +345,12 @@ export default function ClassroomTuner({
         </div>
         <button
           type="button"
+          aria-label="Close tuner"
           onClick={onClose}
           style={{
             background: "transparent",
             border: "none",
-            color: "#aaa",
+            color: "#a7b8ae",
             cursor: "pointer",
             padding: 2,
           }}
@@ -398,7 +440,7 @@ export default function ClassroomTuner({
                 display: "flex",
                 justifyContent: "space-between",
                 fontSize: 10,
-                color: "#777",
+                color: "#a7b8ae",
                 marginBottom: 4,
               }}
             >
@@ -544,7 +586,7 @@ export default function ClassroomTuner({
               <span
                 style={{
                   fontSize: 10,
-                  color: syncToRoom ? "#2ed573" : "#666",
+                  color: syncToRoom ? "#2ed573" : "#a7b8ae",
                 }}
               >
                 {syncToRoom ? "● Synchronized" : "Local only"}

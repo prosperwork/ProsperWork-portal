@@ -28,10 +28,7 @@ export default function AccessPendingPage() {
   const [pending, setPending] = useState(false);
   const [error, setError] = useState("");
   const [checkedAt, setCheckedAt] = useState<Date | null>(null);
-  const hiringApplicant = Boolean(
-    profile?.status === "applicant" &&
-      hiringRoles.includes(profile.role as (typeof hiringRoles)[number])
-  );
+  const hiringApplicant = Boolean(profile?.status === "applicant");
 
   const refreshStatus = useCallback(async () => {
     setLoading(true);
@@ -85,6 +82,7 @@ export default function AccessPendingPage() {
         body: JSON.stringify({ action: "exit_view_as" }),
       });
       if (res.ok) {
+        clearAcademyCache();
         window.location.assign("/accounts");
       } else {
         window.location.reload();

@@ -1021,6 +1021,13 @@
   overflow: hidden !important;
 }
 
+.pw-chat-locked .lk-chat-toggle,
+.pw-chat-locked .lk-chat,
+.pw-chat-locked .lk-chat-form {
+  display: none !important;
+  pointer-events: none !important;
+}
+
 @keyframes pulse {
   0%,
   100% {

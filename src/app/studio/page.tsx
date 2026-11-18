@@ -161,6 +161,9 @@ export default function StudioPage() {
   const recorderRef = useRef<MediaRecorder | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const chunksRef = useRef<BlobPart[]>([]);
+  const audioCtxRef = useRef<AudioContext | null>(null);
+  const noteTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const unmountedRef = useRef(false);
 
   const load = useCallback(async (): Promise<StudioData | null> => {
     setError("");
@@ -214,10 +217,15 @@ export default function StudioPage() {
   useEffect(() => {
     void load();
   }, [load]);
+  const hasRunningPractice = Boolean(
+    data?.practice.some((row) => row.status === "running")
+  );
   useEffect(() => {
+    if (!hasRunningPractice) return;
+    setTick(Date.now());
     const interval = window.setInterval(() => setTick(Date.now()), 1000);
     return () => window.clearInterval(interval);
-  }, []);
+  }, [hasRunningPractice]);
   useEffect(() => {
     if (!clipBlob) {
       setClipPreviewUrl("");
@@ -227,8 +235,18 @@ export default function StudioPage() {
     setClipPreviewUrl(url);
     return () => URL.revokeObjectURL(url);
   }, [clipBlob]);
-  useEffect(
-    () => () => {
+  useEffect(() => {
+    unmountedRef.current = false;
+    return () => {
+      unmountedRef.current = true;
+      if (noteTimerRef.current) {
+        clearTimeout(noteTimerRef.current);
+        noteTimerRef.current = null;
+      }
+      if (audioCtxRef.current && audioCtxRef.current.state !== "closed") {
+        void audioCtxRef.current.close().catch(() => {});
+      }
+      audioCtxRef.current = null;
       const recorder = recorderRef.current;
       if (recorder && recorder.state !== "inactive") {
         recorder.ondataavailable = null;
@@ -240,9 +258,10 @@ export default function StudioPage() {
         }
       }
       streamRef.current?.getTracks().forEach((track) => track.stop());
-    },
-    []
-  );
+      streamRef.current = null;
+      chunksRef.current = [];
+    };
+  }, []);
 
   const role = roleKey(data?.profile.role ?? "");
   const isActive = data?.profile.status.trim().toLowerCase() === "active";
@@ -576,14 +595,12 @@ export default function StudioPage() {
     return isAdmin;
   };
   const decideRequest = async (
-    event: FormEvent<HTMLFormElement>,
-    request: RequestRow
+    request: RequestRow,
+    status: Exclude<RequestStatus, "open">,
+    note: string
   ) => {
-    event.preventDefault();
     if (!canDecideRequest(request)) return;
-    const form = new FormData(event.currentTarget);
-    const body = String(form.get("decisionBody") ?? "").trim();
-    const status = decisionStatuses[request.id] ?? "in_progress";
+    const body = note.trim();
     if (!body) {
       setActionError("A decision note is required.");
       return;
@@ -800,6 +817,10 @@ export default function StudioPage() {
         mode === "audio" ? { audio: true } : { audio: true, video: true }
       );
       acquiredStream = stream;
+      if (unmountedRef.current) {
+        stream.getTracks().forEach((track) => track.stop());
+        return;
+      }
       const chosenMime = mimeChoices[mode].find((type) =>
         MediaRecorder.isTypeSupported(type)
       );
@@ -820,14 +841,17 @@ export default function StudioPage() {
         );
         stream.getTracks().forEach((track) => track.stop());
         streamRef.current = null;
+        chunksRef.current = [];
         setRecording(false);
       };
       recorder.onstop = () => {
         const mime = recorder.mimeType || chosenMime || "";
         const blob = new Blob(chunksRef.current, { type: mime });
+        chunksRef.current = [];
         stream.getTracks().forEach((track) => track.stop());
         streamRef.current = null;
         recorderRef.current = null;
+        if (unmountedRef.current) return;
         setRecording(false);
         if (!/^(audio|video)\/(webm|mp4)/i.test(mime)) {
           setCaptureError(
@@ -941,7 +965,17 @@ export default function StudioPage() {
 
   const playNote = (frequency: number, label: string) => {
     try {
-      const context = new AudioContext();
+      if (!audioCtxRef.current || audioCtxRef.current.state === "closed") {
+        const AudioCtx =
+          window.AudioContext ||
+          (window as unknown as { webkitAudioContext: typeof AudioContext })
+            .webkitAudioContext;
+        audioCtxRef.current = new AudioCtx();
+      }
+      const context = audioCtxRef.current;
+      if (context.state === "suspended") {
+        void context.resume();
+      }
       const oscillator = context.createOscillator();
       const gain = context.createGain();
       oscillator.type = "sine";
@@ -957,9 +991,10 @@ export default function StudioPage() {
       oscillator.start();
       oscillator.stop(context.currentTime + 0.36);
       setKeyboardNote(label);
-      window.setTimeout(() => {
-        void context.close();
+      if (noteTimerRef.current) clearTimeout(noteTimerRef.current);
+      noteTimerRef.current = setTimeout(() => {
         setKeyboardNote("");
+        noteTimerRef.current = null;
       }, 450);
     } catch {
       setKeyboardNote("Audio playback is not supported here.");

@@ -27,155 +27,38 @@ import {
   Wallet,
   X,
 } from "lucide-react";
+import { readJson } from "@/lib/academy/web-client";
+import {
+  dateLabel,
+  isHRRole,
+  isOwnerRole,
+  isPayrollRole,
+  label,
+  money,
+  type BankDetails,
+  type Batch,
+  type ModalState,
+  type PayrollData,
+  type PayrollItem,
+  type PreviewStatement,
+  type Rate,
+  type RateDraft,
+  type Staff,
+  type Statement,
+  type Tab,
+} from "./payroll-types";
 import PayrollBatchesSection from "./components/PayrollBatchesSection";
 import PayrollRatesSection, {
   RateInputs,
 } from "./components/PayrollRatesSection";
 import PayrollAdjustmentModal from "./components/PayrollAdjustmentModal";
 
-type PayrollItem = {
-  kind: string;
-  sourceKey: string;
-  amount: number;
-  data?: {
-    studentId?: string | number;
-    studentName?: string;
-    lessonId?: string | number;
-    startsAt?: string;
-    startDate?: string;
-    weekTier?: string | number;
-    weeklyFrequency?: number;
-    rateId?: string | number;
-    reason?: string;
-  };
-};
-type Adjustment = {
-  id: string | number;
-  kind: string;
-  amount: number;
-  reason: string;
-};
-type Statement = {
-  id: string | number;
-  staff_id: string | number;
-  staff_name: string;
-  role: string;
-  currency: string;
-  net: number;
-  items: PayrollItem[];
-  adjustments: Adjustment[];
-  paid_at?: string | null;
-  transfer_reference?: string | null;
-};
-type PreviewStatement = {
-  staffId: string | number;
-  staffName: string;
-  role: string;
-  currency: string;
-  net: number;
-  items: PayrollItem[];
-};
-type Issue = { staffId: string | number; staffName: string; message: string };
-type Batch = {
-  id: string | number;
-  pay_date: string;
-  status: "draft" | "submitted" | "approved" | "paid" | "rejected";
-  revision: number;
-  created_at: string;
-  approval_mode?: string;
-  statements: Statement[];
-};
-type Terms = {
-  monthlyStudentRate: number;
-  trialRate: number;
-  coverRate: number;
-  baseSalary: number;
-  adminExtraParentRate: number;
-  adminQuota: number;
-  advanceEligible: boolean;
-  currency: string;
-};
-type Rate = {
-  id: string | number;
-  staff_id: string | number;
-  effective_from: string;
-  status?: string;
-  reason?: string;
-  managementFirstPeriod?: "full_month" | "manual_adjustment";
-  terms: Terms;
-  proposed_by?: string;
-};
-type Staff = {
-  id: string | number;
-  name: string;
-  role: string;
-  status: string;
-};
-type Course = {
-  student_id: string | number;
-  student_name: string;
-  start_date: string;
-  effective_from: string;
-  weekly_frequency: number;
-};
-type BillingStudent = { id: string | number; name: string };
-type RateDraft = {
-  staffId: string;
-  effectiveFrom: string;
-  currency: string;
-  monthlyStudentRate: string;
-  trialRate: string;
-  coverRate: string;
-  baseSalary: string;
-  adminExtraParentRate: string;
-  adminQuota: string;
-  advanceEligible: boolean;
-  reason: string;
-  initialAgreed: boolean;
-  managementFirstPeriod: "" | "full_month" | "manual_adjustment";
-};
-type PayrollData = {
-  profile: { id: string | number; name: string; role: string; status: string };
-  rulesConfigured: boolean;
-  preview: null | {
-    payDate: string;
-    from: string;
-    to: string;
-    statements: PreviewStatement[];
-    issues: Issue[];
-  };
-  batches: Batch[];
-  rateProposals: Rate[];
-  rates: Rate[];
-  staff: Staff[];
-  courses: Course[];
-  billingStudents: BillingStudent[];
-  bankConfiguredIds: (string | number)[];
-};
-type BankDetails = {
-  bank_name: string;
-  account_name: string;
-  account_number: string;
-  routing_code: string;
-  currency: string;
-};
-type Tab = "overview" | "batches" | "rates" | "onboarding";
-type ModalState = {
-  title: string;
-  description: string;
-  action: Record<string, unknown>;
-  requireReason?: boolean;
-  submitLabel?: string;
-} | null;
-
-const label = (value: string) =>
-  value.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
-const today = new Date();
 const pad = (n: number) => String(n).padStart(2, "0");
 function targetMonth() {
+  const now = new Date();
   const month = new Date(
-    today.getFullYear(),
-    today.getMonth() + (today.getDate() > 28 ? 1 : 0),
+    now.getFullYear(),
+    now.getMonth() + (now.getDate() > 28 ? 1 : 0),
     1
   );
   return `${month.getFullYear()}-${pad(month.getMonth() + 1)}`;
@@ -192,40 +75,361 @@ function nextFuture28th() {
 function payDateForMonth(month: string) {
   return `${month}-28`;
 }
-function readJson(response: Response) {
-  return response.json().catch(() => ({}));
-}
-function money(amount: number, currency: string) {
-  try {
-    return new Intl.NumberFormat(undefined, {
-      style: "currency",
-      currency,
-      minimumFractionDigits: 2,
-      maximumFractionDigits: 2,
-    }).format(amount);
-  } catch {
-    return `${currency} ${Number(amount).toFixed(2)}`;
+
+function BankPanel({
+  profileId,
+  profileName,
+  staff,
+  ownOnly,
+  initialOnly,
+  pending,
+  onSave,
+}: {
+  profileId: string | number;
+  profileName: string;
+  staff: Staff[];
+  ownOnly: boolean;
+  initialOnly: boolean;
+  pending: boolean;
+  onSave: (
+    action: Record<string, unknown>,
+    successText: string,
+    sensitive?: boolean
+  ) => Promise<boolean>;
+}) {
+  const [staffId, setStaffId] = useState(String(profileId));
+  const [currency, setCurrency] = useState("");
+  const [bank, setBank] = useState<BankDetails | null>(null);
+  const [visible, setVisible] = useState(false);
+  const [editing, setEditing] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+  const [draft, setDraft] = useState({
+    bank_name: "",
+    account_name: "",
+    account_number: "",
+    routing_code: "",
+  });
+  const selectedStaffName =
+    staff.find((person) => String(person.id) === staffId)?.name ||
+    (staffId === String(profileId) ? profileName : "Selected staff");
+  const canEdit = !initialOnly || !bank;
+
+  function clearSensitive() {
+    setBank(null);
+    setVisible(false);
+    setEditing(false);
+    setDraft({
+      bank_name: "",
+      account_name: "",
+      account_number: "",
+      routing_code: "",
+    });
+    setError("");
   }
-}
-function dateLabel(value?: string | null) {
-  if (!value) return "—";
-  const date = new Date(`${value.slice(0, 10)}T12:00:00`);
-  return Number.isFinite(date.getTime())
-    ? date.toLocaleDateString(undefined, {
-        year: "numeric",
-        month: "short",
-        day: "numeric",
-      })
-    : value;
-}
-function isOwnerRole(role: string) {
-  return role === "super_admin";
-}
-function isPayrollRole(role: string) {
-  return role === "finance" || isOwnerRole(role);
-}
-function isHRRole(role: string) {
-  return role === "hr" || role === "qc";
+
+  async function revealBank() {
+    if (!staffId || !/^[A-Za-z]{3}$/.test(currency.trim())) {
+      setError(
+        "Choose a staff member and enter a three-letter currency code to check that specific instruction."
+      );
+      return;
+    }
+    setBusy(true);
+    setError("");
+    try {
+      const params = new URLSearchParams({
+        bankStaffId: staffId,
+        currency: currency.trim().toUpperCase(),
+      });
+      const response = await fetch(`/api/payroll?${params.toString()}`, {
+        method: "GET",
+        credentials: "include",
+        cache: "no-store",
+      });
+      const result = await readJson<{ bank?: BankDetails | null; error?: string }>(
+        response
+      );
+      if (response.status === 401) {
+        window.location.assign("/login");
+        return;
+      }
+      if (!response.ok)
+        throw new Error(
+          "This bank instruction is unavailable. Check access and try again."
+        );
+      const saved = (result.bank ?? null) as BankDetails | null;
+      setBank(saved);
+      setVisible(true);
+      setEditing(!saved);
+      if (saved)
+        setDraft({
+          bank_name: saved.bank_name,
+          account_name: saved.account_name,
+          account_number: saved.account_number,
+          routing_code: saved.routing_code,
+        });
+      else
+        setDraft({
+          bank_name: "",
+          account_name: "",
+          account_number: "",
+          routing_code: "",
+        });
+    } catch {
+      setError(
+        "This bank instruction is unavailable. Check access and try again."
+      );
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function saveBank(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!event.currentTarget.reportValidity() || !currency) return;
+    setBusy(true);
+    setError("");
+    const ok = await onSave(
+      {
+        action: "bank",
+        staffId,
+        bankName: draft.bank_name.trim(),
+        accountName: draft.account_name.trim(),
+        accountNumber: draft.account_number,
+        routingCode: draft.routing_code.trim(),
+        currency: currency.trim().toUpperCase(),
+      },
+      "Bank details saved and payroll reloaded.",
+      true
+    );
+    setBusy(false);
+    if (ok) clearSensitive();
+  }
+
+  return (
+    <section className="pr-card">
+      <header className="pr-card-head">
+        <div>
+          <h2>Private bank instructions</h2>
+          <p>
+            Load one staff-and-currency instruction on demand. Each currency
+            is checked separately; the general setup flag is not proof that
+            this currency is on file.
+          </p>
+        </div>
+        <Landmark size={17} color="#54856a" />
+      </header>
+      <div className="pr-card-body">
+        <div className="pr-form pr-section-rule">
+          {!ownOnly && (
+            <label className="pr-field">
+              <span>Staff member</span>
+              <select
+                value={staffId}
+                onChange={(event) => {
+                  setStaffId(event.target.value);
+                  clearSensitive();
+                }}
+              >
+                <option value="">Select staff</option>
+                {!staff.some(
+                  (person) => String(person.id) === String(profileId)
+                ) && (
+                  <option value={profileId}>
+                    {profileName} · your account
+                  </option>
+                )}
+                {staff.map((person) => (
+                  <option key={person.id} value={person.id}>
+                    {person.name} · {label(person.role)}
+                  </option>
+                ))}
+              </select>
+            </label>
+          )}
+          <label className="pr-field">
+            <span>Currency</span>
+            <CurrencySelect
+              value={currency}
+              onChange={(value) => {
+                setCurrency(value);
+                clearSensitive();
+              }}
+              required
+            />
+          </label>
+          <div className="pr-action-row">
+            <button
+              type="button"
+              className="pr-button secondary"
+              onClick={() => void revealBank()}
+              disabled={busy || pending || (!ownOnly && !staffId)}
+            >
+              <ShieldCheck size={13} />
+              {busy ? "Checking…" : "Reveal this currency’s details"}
+            </button>
+            {visible && (
+              <button
+                type="button"
+                className="pr-button outline"
+                onClick={clearSensitive}
+              >
+                Hide &amp; clear details
+              </button>
+            )}
+          </div>
+          {error && (
+            <div className="pr-alert" role="alert" style={{ marginTop: 8 }}>
+              {error}
+            </div>
+          )}
+          {visible && bank && !editing && (
+            <div className="pr-bank-reveal" aria-live="polite">
+              <div>
+                <small>Staff</small>
+                <strong>{selectedStaffName}</strong>
+              </div>
+              <div>
+                <small>Currency</small>
+                <strong>{bank.currency}</strong>
+              </div>
+              <div>
+                <small>Bank</small>
+                <strong>{bank.bank_name}</strong>
+              </div>
+              <div>
+                <small>Account name</small>
+                <strong>{bank.account_name}</strong>
+              </div>
+              <div>
+                <small>Account number</small>
+                <strong className="pr-sensitive-value">
+                  {bank.account_number}
+                </strong>
+              </div>
+              <div>
+                <small>Routing / sort code</small>
+                <strong>{bank.routing_code}</strong>
+              </div>
+              {canEdit && (
+                <button
+                  type="button"
+                  className="pr-button outline small"
+                  onClick={() => {
+                    setDraft({
+                      bank_name: bank.bank_name,
+                      account_name: bank.account_name,
+                      account_number: bank.account_number,
+                      routing_code: bank.routing_code,
+                    });
+                    setEditing(true);
+                  }}
+                >
+                  Edit this instruction
+                </button>
+              )}
+              {!canEdit && (
+                <p className="pr-subtitle">
+                  HR and QC can add initial instructions only. An owner,
+                  Finance, or the account holder can make changes.
+                </p>
+              )}
+            </div>
+          )}
+          {visible && !bank && (
+            <div className="pr-side-note" role="status">
+              <strong>
+                No instruction returned for {currency.toUpperCase()}
+              </strong>
+              Add the initial receiving details below. The response is for
+              this currency only.
+            </div>
+          )}
+          {visible && editing && canEdit && (
+            <form
+              className="pr-form pr-bank-form"
+              onSubmit={saveBank}
+              autoComplete="off"
+            >
+              <p className="pr-subtitle">
+                {bank
+                  ? "Update the revealed instruction. Saving replaces the record for this currency."
+                  : `Add the initial ${currency.toUpperCase()} receiving instruction for ${selectedStaffName}.`}
+              </p>
+              <label className="pr-field">
+                <span>Bank name</span>
+                <input
+                  required
+                  value={draft.bank_name}
+                  onChange={(event) =>
+                    setDraft({ ...draft, bank_name: event.target.value })
+                  }
+                  autoComplete="off"
+                />
+              </label>
+              <label className="pr-field">
+                <span>Account name</span>
+                <input
+                  required
+                  value={draft.account_name}
+                  onChange={(event) =>
+                    setDraft({ ...draft, account_name: event.target.value })
+                  }
+                  autoComplete="off"
+                />
+              </label>
+              <label className="pr-field">
+                <span>Account number</span>
+                <input
+                  required
+                  inputMode="numeric"
+                  autoComplete="new-password"
+                  value={draft.account_number}
+                  onChange={(event) =>
+                    setDraft({
+                      ...draft,
+                      account_number: event.target.value,
+                    })
+                  }
+                />
+              </label>
+              <label className="pr-field">
+                <span>Routing / sort code</span>
+                <input
+                  required
+                  autoComplete="off"
+                  value={draft.routing_code}
+                  onChange={(event) =>
+                    setDraft({ ...draft, routing_code: event.target.value })
+                  }
+                />
+              </label>
+              <div className="pr-action-row">
+                <button
+                  className="pr-button"
+                  type="submit"
+                  disabled={busy || pending}
+                >
+                  {busy || pending
+                    ? "Saving…"
+                    : "Save private bank instruction"}
+                </button>
+                <button
+                  className="pr-button outline"
+                  type="button"
+                  onClick={clearSensitive}
+                  disabled={busy}
+                >
+                  Cancel &amp; clear
+                </button>
+              </div>
+            </form>
+          )}
+        </div>
+      </div>
+    </section>
+  );
 }
 
 export default function PayrollPage() {
@@ -296,7 +500,9 @@ export default function PayrollPage() {
           `/api/payroll?payDate=${encodeURIComponent(payDateForMonth(month))}`,
           { method: "GET", credentials: "include", cache: "no-store" }
         );
-        const result = await readJson(response);
+        const result = await readJson<Partial<PayrollData> & { error?: string }>(
+          response
+        );
         if (response.status === 401) {
           window.location.assign("/login");
           return false;
@@ -403,7 +609,7 @@ export default function PayrollPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(action),
       });
-      const result = await readJson(response);
+      const result = await readJson<{ ok?: boolean; error?: string }>(response);
       if (response.status === 409) {
         const refreshed = await load(true);
         setError(
@@ -539,360 +745,6 @@ export default function PayrollPage() {
         weeklyFrequency: "1",
         mode: "initial",
       });
-  }
-
-  function BankPanel({
-    profileId,
-    profileName,
-    staff,
-    ownOnly,
-    initialOnly,
-    pending,
-    onSave,
-  }: {
-    profileId: string | number;
-    profileName: string;
-    staff: Staff[];
-    ownOnly: boolean;
-    initialOnly: boolean;
-    pending: boolean;
-    onSave: (
-      action: Record<string, unknown>,
-      successText: string,
-      sensitive?: boolean
-    ) => Promise<boolean>;
-  }) {
-    const [staffId, setStaffId] = useState(String(profileId));
-    const [currency, setCurrency] = useState("");
-    const [bank, setBank] = useState<BankDetails | null>(null);
-    const [visible, setVisible] = useState(false);
-    const [editing, setEditing] = useState(false);
-    const [busy, setBusy] = useState(false);
-    const [error, setError] = useState("");
-    const [draft, setDraft] = useState({
-      bank_name: "",
-      account_name: "",
-      account_number: "",
-      routing_code: "",
-    });
-    const selectedStaffName =
-      staff.find((person) => String(person.id) === staffId)?.name ||
-      (staffId === String(profileId) ? profileName : "Selected staff");
-    const canEdit = !initialOnly || !bank;
-
-    function clearSensitive() {
-      setBank(null);
-      setVisible(false);
-      setEditing(false);
-      setDraft({
-        bank_name: "",
-        account_name: "",
-        account_number: "",
-        routing_code: "",
-      });
-      setError("");
-    }
-
-    async function revealBank() {
-      if (!staffId || !/^[A-Za-z]{3}$/.test(currency.trim())) {
-        setError(
-          "Choose a staff member and enter a three-letter currency code to check that specific instruction."
-        );
-        return;
-      }
-      setBusy(true);
-      setError("");
-      try {
-        const params = new URLSearchParams({
-          bankStaffId: staffId,
-          currency: currency.trim().toUpperCase(),
-        });
-        const response = await fetch(`/api/payroll?${params.toString()}`, {
-          method: "GET",
-          credentials: "include",
-          cache: "no-store",
-        });
-        const result = await readJson(response);
-        if (response.status === 401) {
-          window.location.assign("/login");
-          return;
-        }
-        if (!response.ok)
-          throw new Error(
-            "This bank instruction is unavailable. Check access and try again."
-          );
-        const saved = (result.bank ?? null) as BankDetails | null;
-        setBank(saved);
-        setVisible(true);
-        setEditing(!saved);
-        if (saved)
-          setDraft({
-            bank_name: saved.bank_name,
-            account_name: saved.account_name,
-            account_number: saved.account_number,
-            routing_code: saved.routing_code,
-          });
-        else
-          setDraft({
-            bank_name: "",
-            account_name: "",
-            account_number: "",
-            routing_code: "",
-          });
-      } catch {
-        setError(
-          "This bank instruction is unavailable. Check access and try again."
-        );
-      } finally {
-        setBusy(false);
-      }
-    }
-
-    async function saveBank(event: FormEvent<HTMLFormElement>) {
-      event.preventDefault();
-      if (!event.currentTarget.reportValidity() || !currency) return;
-      setBusy(true);
-      setError("");
-      const ok = await onSave(
-        {
-          action: "bank",
-          staffId,
-          bankName: draft.bank_name.trim(),
-          accountName: draft.account_name.trim(),
-          accountNumber: draft.account_number,
-          routingCode: draft.routing_code.trim(),
-          currency: currency.trim().toUpperCase(),
-        },
-        "Bank details saved and payroll reloaded.",
-        true
-      );
-      setBusy(false);
-      if (ok) clearSensitive();
-    }
-
-    return (
-      <section className="pr-card">
-        <header className="pr-card-head">
-          <div>
-            <h2>Private bank instructions</h2>
-            <p>
-              Load one staff-and-currency instruction on demand. Each currency
-              is checked separately; the general setup flag is not proof that
-              this currency is on file.
-            </p>
-          </div>
-          <Landmark size={17} color="#54856a" />
-        </header>
-        <div className="pr-card-body">
-          <div className="pr-form pr-section-rule">
-            {!ownOnly && (
-              <label className="pr-field">
-                <span>Staff member</span>
-                <select
-                  value={staffId}
-                  onChange={(event) => {
-                    setStaffId(event.target.value);
-                    clearSensitive();
-                  }}
-                >
-                  <option value="">Select staff</option>
-                  {!staff.some(
-                    (person) => String(person.id) === String(profileId)
-                  ) && (
-                    <option value={profileId}>
-                      {profileName} · your account
-                    </option>
-                  )}
-                  {staff.map((person) => (
-                    <option key={person.id} value={person.id}>
-                      {person.name} · {label(person.role)}
-                    </option>
-                  ))}
-                </select>
-              </label>
-            )}
-            <label className="pr-field">
-              <span>Currency</span>
-              <CurrencySelect
-                value={currency}
-                onChange={(value) => {
-                  setCurrency(value);
-                  clearSensitive();
-                }}
-                required
-              />
-            </label>
-            <div className="pr-action-row">
-              <button
-                type="button"
-                className="pr-button secondary"
-                onClick={() => void revealBank()}
-                disabled={busy || pending || (!ownOnly && !staffId)}
-              >
-                <ShieldCheck size={13} />
-                {busy ? "Checking…" : "Reveal this currency’s details"}
-              </button>
-              {visible && (
-                <button
-                  type="button"
-                  className="pr-button outline"
-                  onClick={clearSensitive}
-                >
-                  Hide &amp; clear details
-                </button>
-              )}
-            </div>
-            {error && (
-              <div className="pr-alert" role="alert" style={{ marginTop: 8 }}>
-                {error}
-              </div>
-            )}
-            {visible && bank && !editing && (
-              <div className="pr-bank-reveal" aria-live="polite">
-                <div>
-                  <small>Staff</small>
-                  <strong>{selectedStaffName}</strong>
-                </div>
-                <div>
-                  <small>Currency</small>
-                  <strong>{bank.currency}</strong>
-                </div>
-                <div>
-                  <small>Bank</small>
-                  <strong>{bank.bank_name}</strong>
-                </div>
-                <div>
-                  <small>Account name</small>
-                  <strong>{bank.account_name}</strong>
-                </div>
-                <div>
-                  <small>Account number</small>
-                  <strong className="pr-sensitive-value">
-                    {bank.account_number}
-                  </strong>
-                </div>
-                <div>
-                  <small>Routing / sort code</small>
-                  <strong>{bank.routing_code}</strong>
-                </div>
-                {canEdit && (
-                  <button
-                    type="button"
-                    className="pr-button outline small"
-                    onClick={() => {
-                      setDraft({
-                        bank_name: bank.bank_name,
-                        account_name: bank.account_name,
-                        account_number: bank.account_number,
-                        routing_code: bank.routing_code,
-                      });
-                      setEditing(true);
-                    }}
-                  >
-                    Edit this instruction
-                  </button>
-                )}
-                {!canEdit && (
-                  <p className="pr-subtitle">
-                    HR and QC can add initial instructions only. An owner,
-                    Finance, or the account holder can make changes.
-                  </p>
-                )}
-              </div>
-            )}
-            {visible && !bank && (
-              <div className="pr-side-note" role="status">
-                <strong>
-                  No instruction returned for {currency.toUpperCase()}
-                </strong>
-                Add the initial receiving details below. The response is for
-                this currency only.
-              </div>
-            )}
-            {visible && editing && canEdit && (
-              <form
-                className="pr-form pr-bank-form"
-                onSubmit={saveBank}
-                autoComplete="off"
-              >
-                <p className="pr-subtitle">
-                  {bank
-                    ? "Update the revealed instruction. Saving replaces the record for this currency."
-                    : `Add the initial ${currency.toUpperCase()} receiving instruction for ${selectedStaffName}.`}
-                </p>
-                <label className="pr-field">
-                  <span>Bank name</span>
-                  <input
-                    required
-                    value={draft.bank_name}
-                    onChange={(event) =>
-                      setDraft({ ...draft, bank_name: event.target.value })
-                    }
-                    autoComplete="off"
-                  />
-                </label>
-                <label className="pr-field">
-                  <span>Account name</span>
-                  <input
-                    required
-                    value={draft.account_name}
-                    onChange={(event) =>
-                      setDraft({ ...draft, account_name: event.target.value })
-                    }
-                    autoComplete="off"
-                  />
-                </label>
-                <label className="pr-field">
-                  <span>Account number</span>
-                  <input
-                    required
-                    inputMode="numeric"
-                    autoComplete="new-password"
-                    value={draft.account_number}
-                    onChange={(event) =>
-                      setDraft({
-                        ...draft,
-                        account_number: event.target.value,
-                      })
-                    }
-                  />
-                </label>
-                <label className="pr-field">
-                  <span>Routing / sort code</span>
-                  <input
-                    required
-                    autoComplete="off"
-                    value={draft.routing_code}
-                    onChange={(event) =>
-                      setDraft({ ...draft, routing_code: event.target.value })
-                    }
-                  />
-                </label>
-                <div className="pr-action-row">
-                  <button
-                    className="pr-button"
-                    type="submit"
-                    disabled={busy || pending}
-                  >
-                    {busy || pending
-                      ? "Saving…"
-                      : "Save private bank instruction"}
-                  </button>
-                  <button
-                    className="pr-button outline"
-                    type="button"
-                    onClick={clearSensitive}
-                    disabled={busy}
-                  >
-                    Cancel &amp; clear
-                  </button>
-                </div>
-              </form>
-            )}
-          </div>
-        </div>
-      </section>
-    );
   }
 
   async function submitAdjustment(event: FormEvent<HTMLFormElement>) {

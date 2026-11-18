@@ -1,45 +1,135 @@
-  import { createServerClient } from "@supabase/ssr";
+import { createServerClient } from "@supabase/ssr";
 import { NextRequest, NextResponse } from "next/server";
-import{publicAppUrl}from"./lib/supabase/app-url.mjs";
+import { publicAppUrl } from "./lib/supabase/app-url.mjs";
+import { parseViewAsCookie } from "./lib/supabase/server";
+
+const PROTECTED_PATHS = new Set([
+  "/",
+  "/schedule",
+  "/students",
+  "/leads",
+  "/finance",
+  "/people",
+  "/curriculum",
+  "/reports",
+  "/homework",
+  "/workflows",
+  "/accounts",
+  "/settings",
+  "/classroom",
+  "/payroll",
+  "/learning",
+  "/documents",
+  "/family",
+  "/policies",
+  "/onboarding",
+  "/kid",
+  "/studio",
+  "/leave",
+  "/hiring",
+  "/operations",
+  "/management",
+  "/communications",
+  "/manual",
+  "/complaints",
+  "/history",
+  "/profile",
+]);
 
 export async function proxy(request: NextRequest) {
   let response = NextResponse.next({ request });
-  const client = createServerClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!, {
-    cookies: {
-      getAll: () => request.cookies.getAll(),
-      setAll: (values) => {
-        for (const { name, value } of values) request.cookies.set(name, value);
-        response = NextResponse.next({ request });
-        for (const { name, value, options } of values) response.cookies.set(name, value, options);
+  const pathname = request.nextUrl.pathname;
+
+  const client = createServerClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+    {
+      cookies: {
+        getAll: () => request.cookies.getAll(),
+        setAll: (values) => {
+          for (const { name, value } of values) request.cookies.set(name, value);
+          response = NextResponse.next({ request });
+          for (const { name, value, options } of values) response.cookies.set(name, value, options);
+        },
       },
     },
-  });
+  );
   const { data: { user } } = await client.auth.getUser();
-  if (["/", "/schedule", "/students", "/leads", "/finance", "/people", "/curriculum", "/reports", "/homework", "/workflows", "/accounts", "/settings", "/classroom", "/payroll","/learning","/documents","/family","/policies","/onboarding","/kid","/studio","/leave","/hiring","/operations","/profile"].includes(request.nextUrl.pathname)) {
+
+  // Enforce read-only View-As mode across mutating API endpoints ONLY when a verified
+  // signed pw_view_as cookie is active for the authenticated super_admin.
+  if (
+    pathname.startsWith("/api/") &&
+    !["GET", "HEAD", "OPTIONS"].includes(request.method) &&
+    pathname !== "/api/accounts" &&
+    pathname !== "/api/auth" &&
+    user &&
+    request.cookies.has("pw_view_as")
+  ) {
+    const verifiedTarget = parseViewAsCookie(request.cookies.get("pw_view_as")?.value, user.id);
+    if (verifiedTarget) {
+      return NextResponse.json(
+        { error: "View-As mode is read-only. Exit View-As before making changes." },
+        { status: 403, headers: { "Cache-Control": "private, no-store" } },
+      );
+    }
+  }
+
+  if (PROTECTED_PATHS.has(pathname)) {
     let destination: string | null = null;
     if (!user) {
-      destination = request.nextUrl.pathname !== "/"
-        ? `/login?next=${encodeURIComponent(request.nextUrl.pathname + request.nextUrl.search)}`
+      destination = pathname !== "/"
+        ? `/login?next=${encodeURIComponent(pathname + request.nextUrl.search)}`
         : "/login";
-    }
-    else {
+    } else {
       let targetId = user.id;
       const { data: realUser } = await client.from("pw_profiles").select("id,status,role").eq("id", user.id).single();
-      const viewAsId = request.cookies.get("pw_view_as")?.value;
-      if (realUser?.role === "super_admin" && realUser.status === "active" && viewAsId && /^[0-9a-f-]{36}$/i.test(viewAsId) && viewAsId !== user.id) {
-        targetId = viewAsId;
+      const verifiedViewAs = realUser?.role === "super_admin" && realUser.status === "active"
+        ? parseViewAsCookie(request.cookies.get("pw_view_as")?.value, user.id)
+        : null;
+      if (verifiedViewAs) {
+        targetId = verifiedViewAs;
       }
-      const data = targetId === user.id ? realUser : (await client.from("pw_profiles").select("status,role").eq("id", targetId).single()).data;
-      if (!data || (!["active", "on_leave"].includes(data.status) && !(request.nextUrl.pathname === "/hiring" && data.status === "applicant" && !["parent", "student"].includes(data.role)))) {
+      const data = targetId === user.id
+        ? realUser
+        : (await client.from("pw_profiles").select("status,role").eq("id", targetId).single()).data;
+
+      if (
+        !data ||
+        (
+          !["active", "on_leave"].includes(data.status) &&
+          !(pathname === "/hiring" && data.status === "applicant" && !["parent", "student"].includes(data.role))
+        )
+      ) {
         destination = "/access-pending";
-      } else if (["parent", "student"].includes(data.role) && request.nextUrl.pathname !== "/onboarding" && !(request.nextUrl.pathname === "/kid" && data.role === "student" && request.cookies.has("pw-kid-parent"))) {
+      } else if (
+        ["parent", "student"].includes(data.role) &&
+        pathname !== "/onboarding" &&
+        !(pathname === "/kid" && data.role === "student" && request.cookies.has("pw-kid-parent"))
+      ) {
         if (targetId !== user.id) {
-          const { count: currentCount } = await client.from("pw_policy_versions").select("id", { count: "exact", head: true }).not("published_at", "is", null);
+          let policyOwnerId = targetId;
+          if (data.role === "student") {
+            const { data: studentLink } = await client
+              .from("pw_students")
+              .select("parent_id")
+              .eq("student_user_id", targetId)
+              .limit(1)
+              .maybeSingle();
+            if (studentLink?.parent_id) policyOwnerId = studentLink.parent_id;
+          }
+          const { count: currentCount } = await client
+            .from("pw_policy_versions")
+            .select("id", { count: "exact", head: true })
+            .not("published_at", "is", null);
           if (!currentCount || currentCount < 3) {
             destination = "/onboarding";
           } else {
-            const { count: acceptedCount } = await client.from("pw_policy_acceptances").select("policy_id", { count: "exact", head: true }).eq("parent_id", targetId);
-            if (!acceptedCount || acceptedCount < currentCount) destination = "/onboarding";
+            const { count: acceptedCount } = await client
+              .from("pw_policy_acceptances")
+              .select("policy_id", { count: "exact", head: true })
+              .eq("parent_id", policyOwnerId);
+            if (!acceptedCount || acceptedCount < 3) destination = "/onboarding";
           }
         } else {
           const policy = await client.rpc("pw_policy_ready");
@@ -64,4 +154,41 @@ export async function proxy(request: NextRequest) {
   return response;
 }
 
-export const config = { matcher: ["/", "/schedule", "/students", "/leads", "/finance", "/people", "/curriculum", "/reports", "/homework", "/workflows", "/accounts", "/settings", "/classroom", "/payroll","/learning","/documents","/family","/policies","/onboarding","/kid","/studio","/leave","/hiring","/operations","/management","/communications","/manual","/profile", "/login", "/access-pending", "/reset-password", "/api/:path*"] };
+export const config = {
+  matcher: [
+    "/",
+    "/schedule",
+    "/students",
+    "/leads",
+    "/finance",
+    "/people",
+    "/curriculum",
+    "/reports",
+    "/homework",
+    "/workflows",
+    "/accounts",
+    "/settings",
+    "/classroom",
+    "/payroll",
+    "/learning",
+    "/documents",
+    "/family",
+    "/policies",
+    "/onboarding",
+    "/kid",
+    "/studio",
+    "/leave",
+    "/hiring",
+    "/operations",
+    "/management",
+    "/communications",
+    "/manual",
+    "/complaints",
+    "/history",
+    "/profile",
+    "/login",
+    "/access-pending",
+    "/reset-password",
+    "/api/:path*",
+  ],
+};

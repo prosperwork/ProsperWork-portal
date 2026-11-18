@@ -10,7 +10,7 @@ export function billingAmounts(record: BillingRecord) {
   ) {
     throw new Error("This billing record has invalid amounts.");
   }
-  const cents = (value: number) => Math.round((value + Number.EPSILON) * 100);
+  const cents = (value: number) => Math.round(Number(value.toFixed(6)) * 100);
   const grossAmount = cents(gross) / 100;
   const referralDiscount = cents(discount) / 100;
   const netAmount = (cents(gross) - cents(discount)) / 100;

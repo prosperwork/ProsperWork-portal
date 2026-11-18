@@ -20,6 +20,7 @@ import type {
 export default function LearningView({
   data,
   role,
+  profileName,
   query,
   searchBar,
   studentsVisible,
@@ -36,6 +37,7 @@ export default function LearningView({
 }: {
   data: AcademyData;
   role: Role;
+  profileName?: string;
   query: string;
   searchBar: (placeholder: string) => ReactNode;
   studentsVisible: Student[];
@@ -59,13 +61,18 @@ export default function LearningView({
     </button>
   );
 
+  const normalizedProfileName = (profileName || "").trim().toLowerCase();
   const relevantHomework =
     parentAccess || role === "qc"
       ? data.homework.filter((item) =>
           studentsVisible.some((student) => student.id === item.studentId)
         )
-      : role === "teacher"
-      ? data.homework.filter((item) => item.teacherName === "Daniel Adebayo")
+      : role === "teacher" && normalizedProfileName
+      ? data.homework.filter(
+          (item) =>
+            (item.teacherName || "").trim().toLowerCase() ===
+            normalizedProfileName
+        )
       : data.homework;
   const student =
     parentAccess || role === "qc"
@@ -153,7 +160,7 @@ export default function LearningView({
                   />
                 </div>
                 <span className="progress-num">
-                  {student.rank} · {student.songsDone.length}/8 to Master
+                  {student.rank} · {student.songsDone.length}/8 milestone progress
                 </span>
               </div>
             </section>

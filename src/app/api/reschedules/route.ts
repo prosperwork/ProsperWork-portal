@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { identity } from "@/lib/supabase/identity";
-import { sameOrigin } from "@/lib/supabase/server";
+import { impersonationBlocked, sameOrigin } from "@/lib/supabase/server";
 const schema = z.discriminatedUnion("action", [
   z.object({ action: z.literal("request"), lessonId: z.string().regex(/^[a-zA-Z0-9_-]{1,100}$/), slots: z.array(z.string().datetime({ offset: true })).min(1).max(10), reason: z.string().trim().min(1).max(4000) }).strict(),
   z.object({ action: z.literal("decide"), id: z.string().uuid(), decision: z.enum(["approve", "reject"]), selectedSlot: z.string().datetime({ offset: true }).optional(), note: z.string().max(4000).default("") }).strict().refine(d=>d.decision!=="reject"||d.note.trim().length>=5),
@@ -13,6 +13,8 @@ export async function POST(request: Request) {
   try {
     const { client, profile } = await identity();
     if (!profile || profile.status !== "active") return NextResponse.json({ error: "An active academy account is required." }, { status: 403 });
+    const blocked = impersonationBlocked(profile);
+    if (blocked) return blocked;
     const parsed = schema.safeParse(await request.json());
     if (!parsed.success) return NextResponse.json({ error: "Provide a reason and valid proposed dates, or a valid approval decision." }, { status: 400 });
     const input = parsed.data;

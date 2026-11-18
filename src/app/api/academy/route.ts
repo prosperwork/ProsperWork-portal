@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { identity } from "@/lib/supabase/identity";
-import { sameOrigin } from "@/lib/supabase/server";
+import { impersonationBlocked, sameOrigin } from "@/lib/supabase/server";
 import { academySnapshot, resolveChange } from "@/lib/academy/server-data";
 import { batchSchema } from "@/lib/academy/schemas";
 
@@ -23,6 +23,8 @@ export async function POST(request: Request) {
   try {
     const { client, profile } = await identity();
     if (!profile || profile.status !== "active") return NextResponse.json({ error: "An active academy account is required." }, { status: 403 });
+    const blocked = impersonationBlocked(profile);
+    if (blocked) return blocked;
     const parsed = batchSchema.safeParse(await request.json().catch(() => null));
     if (!parsed.success) return NextResponse.json({ error: "Invalid record change." }, { status: 400 });
     const changes = [];

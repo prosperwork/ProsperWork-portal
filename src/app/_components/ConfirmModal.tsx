@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useCallback, useEffect, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useSyncExternalStore } from "react";
 import {
   AlertCircle,
   AlertTriangle,
@@ -19,6 +19,7 @@ export interface ConfirmModalProps {
   cancelLabel?: string;
   tone?: ConfirmTone;
   busy?: boolean;
+  error?: string;
   onConfirm: () => void | Promise<void>;
   onCancel: () => void;
 }
@@ -31,6 +32,7 @@ export function ConfirmModal({
   cancelLabel = "Cancel",
   tone = "warning",
   busy = false,
+  error = "",
   onConfirm,
   onCancel,
 }: ConfirmModalProps) {
@@ -122,6 +124,15 @@ export function ConfirmModal({
                 </p>
               ))
             : message}
+          {error && (
+            <p
+              role="alert"
+              className="form-error"
+              style={{ marginTop: 12, marginBottom: 0 }}
+            >
+              {error}
+            </p>
+          )}
         </div>
 
         <div
@@ -165,46 +176,92 @@ export interface ConfirmOptions {
   onConfirm: () => void | Promise<void>;
 }
 
+interface ConfirmStoreSnapshot {
+  options: ConfirmOptions | null;
+  busy: boolean;
+  error: string;
+}
+
 export function useConfirmModal() {
-  const [state, setState] = useState<ConfirmOptions | null>(null);
-  const [busy, setBusy] = useState(false);
+  const storeRef = useRef<{
+    snapshot: ConfirmStoreSnapshot;
+    listeners: Set<() => void>;
+    set: (updater: (prev: ConfirmStoreSnapshot) => ConfirmStoreSnapshot) => void;
+  } | null>(null);
+
+  if (!storeRef.current) {
+    const store = {
+      snapshot: { options: null, busy: false, error: "" } as ConfirmStoreSnapshot,
+      listeners: new Set<() => void>(),
+      set(updater: (prev: ConfirmStoreSnapshot) => ConfirmStoreSnapshot) {
+        store.snapshot = updater(store.snapshot);
+        store.listeners.forEach((listener) => listener());
+      },
+    };
+    storeRef.current = store;
+  }
+
+  const subscribe = useCallback((listener: () => void) => {
+    const store = storeRef.current!;
+    store.listeners.add(listener);
+    return () => {
+      store.listeners.delete(listener);
+    };
+  }, []);
+
+  const getSnapshot = useCallback(() => storeRef.current!.snapshot, []);
+  const snap = useSyncExternalStore(subscribe, getSnapshot, getSnapshot);
 
   const confirm = useCallback((options: ConfirmOptions) => {
-    setState(options);
+    storeRef.current!.set(() => ({ options, busy: false, error: "" }));
   }, []);
 
   const close = useCallback(() => {
-    if (!busy) setState(null);
-  }, [busy]);
+    storeRef.current!.set((prev) =>
+      prev.busy ? prev : { options: null, busy: false, error: "" }
+    );
+  }, []);
 
   const handleConfirm = useCallback(async () => {
-    if (!state) return;
+    const current = storeRef.current!.snapshot;
+    if (!current.options || current.busy) return;
+    storeRef.current!.set((prev) => ({ ...prev, busy: true, error: "" }));
     try {
-      setBusy(true);
-      await state.onConfirm();
-      setState(null);
-    } finally {
-      setBusy(false);
+      await current.options.onConfirm();
+      storeRef.current!.set(() => ({ options: null, busy: false, error: "" }));
+    } catch (cause) {
+      storeRef.current!.set((prev) => ({
+        ...prev,
+        busy: false,
+        error:
+          cause instanceof Error
+            ? cause.message
+            : "This action could not be completed. Please try again.",
+      }));
     }
-  }, [state]);
+  }, []);
 
-  const ConfirmDialog = useCallback(() => {
-    if (!state) return null;
-    return (
-      <ConfirmModal
-        isOpen={Boolean(state)}
-        title={state.title}
-        message={state.message}
-        confirmLabel={state.confirmLabel}
-        cancelLabel={state.cancelLabel}
-        tone={state.tone}
-        busy={busy}
-        onConfirm={handleConfirm}
-        onCancel={close}
-      />
-    );
-  }, [state, busy, handleConfirm, close]);
+  const ConfirmDialog = useMemo(() => {
+    return function StableConfirmDialog() {
+      const current = useSyncExternalStore(subscribe, getSnapshot, getSnapshot);
+      if (!current.options) return null;
+      return (
+        <ConfirmModal
+          isOpen={true}
+          title={current.options.title}
+          message={current.options.message}
+          confirmLabel={current.options.confirmLabel}
+          cancelLabel={current.options.cancelLabel}
+          tone={current.options.tone}
+          busy={current.busy}
+          error={current.error}
+          onConfirm={handleConfirm}
+          onCancel={close}
+        />
+      );
+    };
+  }, [subscribe, getSnapshot, handleConfirm, close]);
 
-  return { confirm, ConfirmDialog, isOpen: Boolean(state), busy };
+  return { confirm, ConfirmDialog, isOpen: Boolean(snap.options), busy: snap.busy };
 }
 export default ConfirmModal;

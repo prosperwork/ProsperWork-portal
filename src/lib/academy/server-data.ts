@@ -3,11 +3,23 @@ import type { AcademyData, StaffMember } from "../types";
 import type { AcademyProfile } from "../supabase/identity";
 import { recordSchemas, type Module } from "./schemas";
 import { loadAllRecords } from "./paged-records";
+import { fetchRoleRecord, humanizeRoleCode, PERMISSION_CATALOG } from "./roles";
 
 export const emptyAcademyData: AcademyData = {
   students: [], lessons: [], leads: [], payments: [], staff: [], payroll: [], resources: [], homework: [], expenses: [], audit: [],
 };
 export async function academySnapshot(client: SupabaseClient, profile: AcademyProfile) {
+  const [roleRow] = await Promise.all([
+    fetchRoleRecord(client, profile.role),
+  ]);
+  const enrichedProfile: AcademyProfile = {
+    ...profile,
+    roleLabel: roleRow?.label || humanizeRoleCode(profile.role),
+    permissions: profile.role === "super_admin"
+      ? PERMISSION_CATALOG.map((p) => p.key)
+      : (roleRow && roleRow.enabled ? roleRow.permissions : []),
+  };
+
   const modules = Object.keys(recordSchemas) as Module[];
   const results = await Promise.all(modules.map(async (module) => {
     const { data, error } = await loadAllRecords(client, `pw_${module}`);
@@ -16,14 +28,16 @@ export async function academySnapshot(client: SupabaseClient, profile: AcademyPr
   }));
   const data = structuredClone(emptyAcademyData);
   const revisions: Record<string, number> = {};
+  let studentRows: Array<Record<string, any>> = [];
   for (const { module, rows } of results) {
+    if (module === "students") studentRows = rows;
     (data[module] as unknown[]) = rows.filter(row=>module!=="resources"||!row.archived_at).map((row) => row.payload);
     for (const row of rows) revisions[`${module}:${row.id}`] = row.revision;
   }
   const [{ data: profiles, error: profilesError }, { data: rates, error: ratesError }, { data: audit, error: auditError }] = await Promise.all([
     loadAllRecords(client, "pw_profiles", "id,name,email,role,status,timezone,department,quota", { sort: "name", ascending: true }),
     loadAllRecords(client, "pw_staff_compensation", "staff_id,monthly_student_rate,currency", { cursor: "staff_id" }),
-    loadAllRecords(client, "pw_audit"),
+    client.from("pw_audit").select("*").order("created_at", { ascending: false }).limit(1000),
   ]);
   if (profilesError || ratesError || auditError) throw new Error("Account records could not be loaded.");
   data.staff = (profiles || []).filter((person) => !["parent", "student"].includes(person.role)).map((person) => {
@@ -33,7 +47,11 @@ export async function academySnapshot(client: SupabaseClient, profile: AcademyPr
       status: person.status === "pending" ? "applicant" : person.status,
       timezone: person.timezone, department: person.department, quota: person.quota,
       baseRate: Number(compensation?.monthly_student_rate || 0), currency: compensation?.currency || "NGN",
-      parentCount: new Set(data.students.filter((student) => student.adminName === person.name && student.status === "active").map((student) => student.parentEmail)).size,
+      parentCount: new Set(
+        studentRows
+          .filter((row) => row.admin_id === person.id && row.payload?.status === "active")
+          .map((row) => row.payload?.parentEmail),
+      ).size,
     } as StaffMember;
   });
   data.audit = (audit || []).map((entry) => ({
@@ -51,7 +69,7 @@ export async function academySnapshot(client: SupabaseClient, profile: AcademyPr
       id: person.id, parentId: person.parent_id, name: person.name, parentName: person.parent_name,
     }));
   }
-  return { data, revisions, profile };
+  return { data, revisions, profile: enrichedProfile };
 }
 
 export async function resolveChange(client: SupabaseClient, module: Module, input: Record<string, unknown>, operation: string, profile: AcademyProfile) {
@@ -59,26 +77,34 @@ export async function resolveChange(client: SupabaseClient, module: Module, inpu
   if (!parsed.success) throw new Error("Please check the record's required fields, dates and timezone.");
   const payload = parsed.data as unknown as Record<string, unknown>;
   const record: Record<string, unknown> = { id: payload.id, payload };
-  async function person(label: unknown, requiredRole?: string | string[]) {
+  async function person(label: unknown, roleKind?: "teacher" | "admin" | string[]) {
     if (!label) return null;
     const query = client.from("pw_profiles").select("id,name,role,status").eq("status", "active");
     // Both existing label fields and explicit profile identifiers are supported.
     const byId = typeof label === "string" && /^[0-9a-f-]{36}$/i.test(label);
     const { data, error } = await (byId ? query.eq("id", label) : query.eq("name", label)).limit(2);
     if (error || data?.length !== 1) throw new Error("Select one active, authorized staff account. Invite and activate that person first.");
-    if (requiredRole) {
-      const allowed = Array.isArray(requiredRole) ? requiredRole : [requiredRole];
-      if (!allowed.includes(data[0].role)) {
+    const personRow = data[0];
+    if (roleKind === "teacher") {
+      const { data: roleData } = await client.from("pw_roles").select("is_staff,department").eq("code", personRow.role).maybeSingle();
+      const isTeacher = personRow.role === "teacher" || personRow.role === "super_admin" || personRow.role === "qc" || (roleData?.is_staff && roleData.department === "Music Education");
+      if (!isTeacher) throw new Error("Select one active, authorized teacher account. Invite and activate that person first.");
+    } else if (roleKind === "admin") {
+      const { data: roleData } = await client.from("pw_roles").select("is_staff,department").eq("code", personRow.role).maybeSingle();
+      const isAdmin = ["admin", "head_admin", "super_admin", "general_manager"].includes(personRow.role) || (roleData?.is_staff && roleData.department !== "Music Education");
+      if (!isAdmin) throw new Error("Select one active, authorized staff account. Invite and activate that person first.");
+    } else if (Array.isArray(roleKind)) {
+      if (!roleKind.includes(personRow.role)) {
         throw new Error("Select one active, authorized staff account. Invite and activate that person first.");
       }
     }
-    return data[0];
+    return personRow;
   }
   if (module === "students") {
     const { data: parent, error } = await client.from("pw_profiles").select("id,name,email,role").eq("email", String(payload.parentEmail).toLowerCase()).single();
     if (error || !parent || parent.role !== "parent") throw new Error("Invite and activate this parent account before enrolling their child.");
-    const teacher = await person(payload.teacherName, ["teacher", "super_admin", "owner"]);
-    const admin = await person(payload.adminName, ["admin", "head_admin", "super_admin", "owner", "general_manager"]);
+    const teacher = await person(payload.teacherName, "teacher");
+    const admin = await person(payload.adminName, "admin");
     record.parent_id = parent.id; record.teacher_id = teacher?.id || null; record.admin_id = admin?.id || null;
     payload.parentName = parent.name; payload.parentEmail = parent.email;
     payload.teacherName = teacher?.name || ""; payload.adminName = admin?.name || "";
@@ -87,7 +113,7 @@ export async function resolveChange(client: SupabaseClient, module: Module, inpu
   } else if (module === "lessons" || module === "homework") {
     const { data: student, error } = await client.from("pw_students").select("id,parent_id,teacher_id,admin_id,payload").eq("id", payload.studentId).single();
     if (error || !student) throw new Error("The selected child is not accessible.");
-    const teacher = await person(payload.teacherName || student.teacher_id, ["teacher", "super_admin", "owner"]);
+    const teacher = await person(payload.teacherName || student.teacher_id, "teacher");
     if (!teacher) throw new Error("Assign an active teacher first.");
     record.student_id = student.id; record.teacher_id = teacher.id;
     payload.studentName = student.payload.name; payload.teacherName = teacher.name;
@@ -96,7 +122,7 @@ export async function resolveChange(client: SupabaseClient, module: Module, inpu
       const adminCandidate = payload.adminName || student.admin_id;
       if (adminCandidate && adminCandidate !== "Academy Administration") {
         try {
-          admin = await person(adminCandidate, ["admin", "head_admin", "super_admin", "owner", "general_manager"]);
+          admin = await person(adminCandidate, "admin");
         } catch {
           admin = null;
         }

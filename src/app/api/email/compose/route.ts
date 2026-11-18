@@ -1,9 +1,11 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { identity } from "@/lib/supabase/identity";
-import { sameOrigin } from "@/lib/supabase/server";
+import { impersonationBlocked, sameOrigin } from "@/lib/supabase/server";
+import { checkRateLimit } from "@/lib/ai/rate-limit";
 import { senderAliases, replyToAliases, smtpTransport, safeEmailError } from "@/lib/email/transport.mjs";
-import type { Role } from "@/lib/types";
+import { hasPermission } from "@/lib/academy/roles";
+import { fetchPublicAcademyConfig } from "@/lib/academy/catalogs";
 
 export const runtime = "nodejs";
 
@@ -21,10 +23,10 @@ const schema = z.object({
   message: z.string().trim().min(1).max(10000),
 }).strict();
 
-const allowedRoles: Record<z.infer<typeof schema>["recipientType"], Role[]> = {
-  staff: ["super_admin", "general_manager", "head_admin", "hr"],
-  family: ["super_admin", "general_manager", "head_admin", "admin"],
-  lead: ["super_admin", "general_manager", "head_admin", "admin", "sales_marketing"],
+const recipientPermissionMap: Record<z.infer<typeof schema>["recipientType"], string> = {
+  staff: "email.compose_staff",
+  family: "email.compose_family",
+  lead: "email.compose_lead",
 };
 
 function validEmail(value: unknown): value is string {
@@ -40,10 +42,20 @@ export async function POST(request: Request) {
     if (!profile || profile.status !== "active" || !user?.email_confirmed_at) {
       return NextResponse.json({ error: "An active, verified academy account is required." }, { status: 403 });
     }
+    const blocked = impersonationBlocked(profile);
+    if (blocked) return blocked;
+    const rate = checkRateLimit(`email-compose:${profile.id}`, 20, 60 * 60 * 1000);
+    if (!rate.allowed) {
+      return NextResponse.json(
+        { error: `Email send limit reached. Please wait ${rate.resetInSec} seconds before sending another email.` },
+        { status: 429 },
+      );
+    }
     const parsed = schema.safeParse(await request.json().catch(() => null));
     if (!parsed.success) return NextResponse.json({ error: "Check the recipient, subject and message." }, { status: 400 });
     const input = parsed.data;
-    if (!allowedRoles[input.recipientType].includes(profile.role)) {
+    const canCompose = await hasPermission(client, profile, recipientPermissionMap[input.recipientType]);
+    if (!canCompose) {
       return NextResponse.json({ error: "You do not have permission to email this contact." }, { status: 403 });
     }
     if (!process.env.SMTP_PASSWORD) return NextResponse.json({ error: "Academy email is not configured." }, { status: 503 });
@@ -75,21 +87,38 @@ export async function POST(request: Request) {
     if (!validEmail(recipientEmail)) {
       return NextResponse.json({ error: "This contact has no valid email address." }, { status: 400 });
     }
-    const from = senderAliases[input.fromCategory];
-    if (!from) return NextResponse.json({ error: "The selected sender address is unavailable." }, { status: 400 });
 
-    const replyTo = replyToAliases[input.fromCategory] || replyToAliases.default;
+    const academyConfig = await fetchPublicAcademyConfig(client);
+    const from =
+      (input.fromCategory === "admissions" && academyConfig.emails.admissions) ||
+      (input.fromCategory === "support" && academyConfig.emails.support) ||
+      ((input.fromCategory === "fees" || input.fromCategory === "payments" || input.fromCategory === "billing" || input.fromCategory === "finance") && academyConfig.emails.fees) ||
+      senderAliases[input.fromCategory] ||
+      academyConfig.emails.info ||
+      "admin@prosperworkmusic.com";
 
-    const signature = `\n\n--\nProsperWork Music Academy\nWebsite: https://www.prosperworkmusic.com\nStudent Support: support@prosperworkmusic.com`;
+    const replyTo =
+      (input.fromCategory === "admissions" && academyConfig.emails.admissions) ||
+      (input.fromCategory === "support" && academyConfig.emails.support) ||
+      ((input.fromCategory === "fees" || input.fromCategory === "payments") && academyConfig.emails.fees) ||
+      replyToAliases[input.fromCategory] ||
+      academyConfig.emails.info;
 
-    const result = await smtpTransport().sendMail({
-      from: { name: "ProsperWork Music Academy", address: from },
-      replyTo,
-      to: recipientEmail.trim(),
-      subject: input.subject,
-      text: `${input.message}${signature}`,
-    });
-    if (!result.accepted?.length) return NextResponse.json({ error: "The email provider did not accept this message." }, { status: 502 });
+    const signature = `\n\n--\nProsperWork Music Academy\nWebsite: https://www.prosperworkmusic.com\nStudent Support: ${academyConfig.emails.support}`;
+
+    const transport = smtpTransport();
+    try {
+      const result = await transport.sendMail({
+        from: { name: "ProsperWork Music Academy", address: from },
+        replyTo,
+        to: recipientEmail.trim(),
+        subject: input.subject,
+        text: `${input.message}${signature}`,
+      });
+      if (!result.accepted?.length) return NextResponse.json({ error: "The email provider did not accept this message." }, { status: 502 });
+    } finally {
+      transport.close();
+    }
     return NextResponse.json({ ok: true }, { headers: { "Cache-Control": "private, no-store" } });
   } catch (error) {
     const code = safeEmailError(error);

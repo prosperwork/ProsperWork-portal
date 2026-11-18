@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, type ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import {
   AlertCircle,
   BookOpen,
@@ -102,6 +102,15 @@ export default function ScheduleView({
   const { confirm, ConfirmDialog } = useConfirmModal();
   const [actionLesson, setActionLesson] = useState<Lesson | null>(null);
 
+  useEffect(() => {
+    if (!actionLesson) return;
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setActionLesson(null);
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [actionLesson]);
+
   const cancelForReplacement = (id: string) => {
     const lesson = data.lessons.find(
       (item) => item.id === id && item.status === "scheduled"
@@ -125,13 +134,36 @@ export default function ScheduleView({
     </button>
   );
 
-  const base = new Date(`${todayKey()}T12:00:00Z`);
+  const dayKeyInOwnTz = (value: string | Date) => {
+    const parsed = value instanceof Date ? value : new Date(value);
+    if (!Number.isFinite(parsed.getTime())) return "";
+    try {
+      return new Intl.DateTimeFormat("en-CA", {
+        timeZone: ownTimezone || "Africa/Lagos",
+        year: "numeric",
+        month: "2-digit",
+        day: "2-digit",
+      }).format(parsed);
+    } catch {
+      return parsed.toISOString().slice(0, 10);
+    }
+  };
+
+  const todayInOwnTz = dayKeyInOwnTz(new Date()) || todayKey();
+  const base = new Date(`${todayInOwnTz}T12:00:00Z`);
   const weekStart = new Date(base);
   weekStart.setUTCDate(base.getUTCDate() - ((base.getUTCDay() + 6) % 7));
   const weekDays = Array.from({ length: 7 }, (_, index) => {
     const day = new Date(weekStart);
-    day.setDate(weekStart.getDate() + index);
-    return day;
+    day.setUTCDate(weekStart.getUTCDate() + index);
+    return {
+      key: day.toISOString().slice(0, 10),
+      weekday: new Intl.DateTimeFormat("en", {
+        weekday: "short",
+        timeZone: "UTC",
+      }).format(day),
+      dayNumber: day.getUTCDate(),
+    };
   });
   const thisDateLessons = filteredLessons;
   const ownQCClasses =
@@ -223,7 +255,7 @@ export default function ScheduleView({
               <div className="lesson-row" key={lesson.id}>
                 <div className="lesson-time">
                   {niceDate(lesson.startsAt)}
-                  <small> {timeAt(lesson.startsAt)}</small>
+                  <small> {timeAt(lesson.startsAt, ownTimezone)}</small>
                 </div>
                 <div>
                   <div className="lesson-person">
@@ -322,23 +354,17 @@ export default function ScheduleView({
       {scheduleMode === "week" && (
         <div className="week-strip">
           {weekDays.map((day) => {
-            const key = day.toISOString().slice(0, 10);
             const count = visibleLessons.filter(
-              (lesson) =>
-                new Date(lesson.startsAt).toISOString().slice(0, 10) === key
+              (lesson) => dayKeyInOwnTz(lesson.startsAt) === day.key
             ).length;
             return (
               <button
-                key={key}
-                onClick={() => setSelectedDate(key)}
-                className={`day-tile ${selectedDate === key ? "active" : ""}`}
+                key={day.key}
+                onClick={() => setSelectedDate(day.key)}
+                className={`day-tile ${selectedDate === day.key ? "active" : ""}`}
               >
-                <span className="day-name">
-                  {new Intl.DateTimeFormat("en", { weekday: "short" }).format(
-                    day
-                  )}
-                </span>
-                <span className="day-date">{day.getDate()}</span>
+                <span className="day-name">{day.weekday}</span>
+                <span className="day-date">{day.dayNumber}</span>
                 <span className="day-count">
                   {count} {count === 1 ? "class" : "classes"}
                 </span>
@@ -377,7 +403,7 @@ export default function ScheduleView({
               {thisDateLessons.map((lesson) => (
                 <tr key={lesson.id}>
                   <td>
-                    <strong>{timeAt(lesson.startsAt)}</strong>
+                    <strong>{timeAt(lesson.startsAt, ownTimezone)}</strong>
                     <div className="table-small">{ownTimezone}</div>
                   </td>
                   {!parentAccess && (
@@ -525,7 +551,7 @@ export default function ScheduleView({
                 <h2 id="lesson-action-title">Lesson actions</h2>
                 <p>
                   {actionLesson.studentName} · {niceDate(actionLesson.startsAt)}{" "}
-                  at {timeAt(actionLesson.startsAt)}
+                  at {timeAt(actionLesson.startsAt, ownTimezone)}
                 </p>
               </div>
               <button

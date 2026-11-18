@@ -76,6 +76,17 @@ export default function WorkflowsPage() {
   >({});
   const [qcAssignedLessonIds, setQcAssignedLessonIds] = useState<string[]>([]);
   const [qcAssignmentError, setQcAssignmentError] = useState("");
+  const [initialPaymentId, setInitialPaymentId] = useState("");
+
+  useEffect(() => {
+    try {
+      const param =
+        new URLSearchParams(window.location.search).get("paymentId") || "";
+      if (param) setInitialPaymentId(param);
+    } catch {
+      // ignore
+    }
+  }, []);
 
   // --------------------------------------------------------------------------
   // Data Loader & QC Verification
@@ -154,7 +165,7 @@ export default function WorkflowsPage() {
 
   useEffect(() => {
     const cached = getCachedJson<WorkflowData>(WORKFLOWS_CACHE_KEY, (p) =>
-      Boolean(p && p.profile && Array.isArray(p.recentHomework))
+      Boolean(p && p.profile && Array.isArray(p.homework))
     );
     if (cached) {
       setData(cached);
@@ -282,6 +293,7 @@ export default function WorkflowsPage() {
     action: () => Promise<void>,
     success: string
   ) {
+    if (busy) return;
     setBusy(key);
     setActionError("");
     setNotice("");
@@ -306,7 +318,7 @@ export default function WorkflowsPage() {
   async function submitReceipt(
     event: FormEvent<HTMLFormElement>,
     targetPaymentId: string
-  ) {
+  ): Promise<boolean> {
     event.preventDefault();
     const form = event.currentTarget;
     const file =
@@ -314,16 +326,18 @@ export default function WorkflowsPage() {
       null;
     if (!targetPaymentId || !file) {
       setActionError("Select a receipt file for this payment.");
-      return;
+      return false;
     }
     const note = (
       form.elements.namedItem("receiptNote") as HTMLInputElement
     ).value.trim();
+    let success = false;
     await runAction(
       "receipt",
       async () => {
         await upload("receipt", targetPaymentId, file, note);
         form.reset();
+        setInitialPaymentId("");
         const currentUrl = new URL(window.location.href);
         currentUrl.searchParams.delete("paymentId");
         window.history.replaceState(
@@ -331,12 +345,16 @@ export default function WorkflowsPage() {
           "",
           `${currentUrl.pathname}${currentUrl.search}${currentUrl.hash}`
         );
+        success = true;
       },
       "Receipt submitted. The saved status is shown below."
     );
+    return success;
   }
 
-  async function submitHomework(event: FormEvent<HTMLFormElement>) {
+  async function submitHomework(
+    event: FormEvent<HTMLFormElement>
+  ): Promise<boolean> {
     event.preventDefault();
     const form = event.currentTarget;
     const homeworkSelect = form.elements.namedItem(
@@ -351,16 +369,19 @@ export default function WorkflowsPage() {
     ).value.trim();
     if (!hwId || !note) {
       setActionError("Choose an assignment and write a practice reflection.");
-      return;
+      return false;
     }
+    let success = false;
     await runAction(
       "homework",
       async () => {
         await upload("homework", hwId, file, note);
         form.reset();
+        success = true;
       },
       "Homework submitted. The saved status is shown below."
     );
+    return success;
   }
 
   async function submitReschedule(
@@ -625,6 +646,7 @@ export default function WorkflowsPage() {
                     data={data}
                     isFamily={isFamily}
                     isHomeworkRoute={isHomeworkRoute}
+                    initialPaymentId={initialPaymentId}
                     busy={busy}
                     filesFor={filesFor}
                     submitReceipt={submitReceipt}

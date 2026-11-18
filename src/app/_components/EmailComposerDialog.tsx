@@ -1,8 +1,8 @@
 "use client";
 
-import { useState, type FormEvent } from "react";
+import { useEffect, useMemo, useState, type FormEvent } from "react";
 import { LoaderCircle, Send, X } from "lucide-react";
-import { ACADEMY_EMAILS } from "@/lib/email/config";
+import { useCatalogs } from "@/lib/academy/use-academy-config";
 
 export type PortalEmailTarget = {
   recipientType: "staff" | "family" | "lead";
@@ -10,21 +10,6 @@ export type PortalEmailTarget = {
   name: string;
   email: string;
 };
-
-const senderOptions = [
-  { value: "admissions", label: `Admissions · ${ACADEMY_EMAILS.communications.admissions}` },
-  { value: "support", label: `Support · ${ACADEMY_EMAILS.communications.support}` },
-  { value: "students", label: `Students · ${ACADEMY_EMAILS.communications.students}` },
-  { value: "registration", label: `Registration · ${ACADEMY_EMAILS.communications.registration}` },
-  { value: "fees", label: `Fees & Tuition · ${ACADEMY_EMAILS.communications.fees}` },
-  { value: "contact", label: `General Communications · ${ACADEMY_EMAILS.communications.primary}` },
-  { value: "admin", label: `Administration · ${ACADEMY_EMAILS.adminTech.admin}` },
-  { value: "finance", label: `Finance · ${ACADEMY_EMAILS.adminTech.finance}` },
-  { value: "billing", label: `Billing · ${ACADEMY_EMAILS.adminTech.billing}` },
-  { value: "technical", label: `Technical Support · ${ACADEMY_EMAILS.adminTech.tech}` },
-  { value: "official", label: `Official Academy · ${ACADEMY_EMAILS.leadership.official}` },
-  { value: "management", label: `Management · ${ACADEMY_EMAILS.leadership.management}` },
-] as const;
 
 function defaultSender(target: PortalEmailTarget) {
   if (target.recipientType === "lead") return "admissions";
@@ -41,11 +26,34 @@ export default function EmailComposerDialog({
   onClose: () => void;
   onSent: () => void;
 }) {
+  const { config } = useCatalogs();
   const [fromCategory, setFromCategory] = useState<string>(defaultSender(target));
   const [subject, setSubject] = useState("");
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
   const [sending, setSending] = useState(false);
+
+  const senderOptions = useMemo(() => {
+    const e = config.emails;
+    return [
+      { value: "admissions", label: `Admissions · ${e.admissions}` },
+      { value: "support", label: `Support · ${e.support}` },
+      { value: "fees", label: `Fees & Tuition · ${e.fees}` },
+      { value: "contact", label: `General Communications · ${e.info}` },
+      { value: "admin", label: "Administration · admin@prosperworkmusic.com" },
+      { value: "finance", label: `Finance · ${e.fees}` },
+      { value: "technical", label: "Technical Support · tech@prosperworkmusic.com" },
+      { value: "management", label: `Management · ${e.info}` },
+    ];
+  }, [config.emails]);
+
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape" && !sending) onClose();
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [sending, onClose]);
 
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();

@@ -10,7 +10,7 @@ import {
   Save,
   X,
 } from "lucide-react";
-import type { FormEvent } from "react";
+import { useEffect, type FormEvent } from "react";
 import type { ResourceDraft, ResourceRow } from "../learning-types";
 
 interface LearningResourcesSectionProps {
@@ -60,6 +60,27 @@ export default function LearningResourcesSection({
   archiving,
   onArchiveResource,
 }: LearningResourcesSectionProps) {
+  useEffect(() => {
+    if (!modalOpen && !archiveTarget) return;
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key !== "Escape") return;
+      if (archiveTarget && !archiving) {
+        onSetArchiveTarget(null);
+      } else if (modalOpen && !resourceBusy) {
+        onCloseResourceModal();
+      }
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [
+    modalOpen,
+    resourceBusy,
+    onCloseResourceModal,
+    archiveTarget,
+    archiving,
+    onSetArchiveTarget,
+  ]);
+
   if (!canReadResources) {
     return (
       <section className="learn-flat-section">

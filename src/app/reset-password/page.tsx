@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { FormEvent } from "react";
 
 function BrandMark() {
@@ -19,12 +19,19 @@ export default function ResetPasswordPage() {
   const [error, setError] = useState("");
   const [complete, setComplete] = useState(false);
   const [isInvite, setIsInvite] = useState(false);
+  const redirectTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
     try {
       const params = new URLSearchParams(window.location.search);
       setIsInvite(params.get("reason") === "invite");
     } catch {}
+    return () => {
+      if (redirectTimerRef.current) {
+        clearTimeout(redirectTimerRef.current);
+        redirectTimerRef.current = null;
+      }
+    };
   }, []);
 
   async function submit(event: FormEvent<HTMLFormElement>) {
@@ -56,7 +63,8 @@ export default function ResetPasswordPage() {
           data.error || "We couldn’t update your password. Please try again."
         );
       setComplete(true);
-      setTimeout(() => {
+      if (redirectTimerRef.current) clearTimeout(redirectTimerRef.current);
+      redirectTimerRef.current = setTimeout(() => {
         window.location.assign(
           isInvite
             ? "/login?reason=password_created"
@@ -119,9 +127,9 @@ export default function ResetPasswordPage() {
                   <div className="auth-overline">
                     {isInvite ? "Account activated" : "Password updated"}
                   </div>
-                  <h2>
+                  <h1>
                     {isInvite ? "Welcome to ProsperWork!" : "You’re all set."}
-                  </h2>
+                  </h1>
                   <p>
                     {isInvite
                       ? "Your account password has been created. Redirecting to sign in…"
@@ -147,11 +155,11 @@ export default function ResetPasswordPage() {
                       ? "Academy invitation"
                       : "Secure account recovery"}
                   </div>
-                  <h2>
+                  <h1>
                     {isInvite
                       ? "Create your password"
                       : "Choose a new password"}
-                  </h2>
+                  </h1>
                   <p>
                     {isInvite
                       ? "Choose a secure password (at least 8 characters) to activate your account."

@@ -2,13 +2,15 @@ import {NextResponse} from "next/server";
 import {cookies} from "next/headers";
 import {randomBytes,randomUUID} from "node:crypto";
 import {identity} from "@/lib/supabase/identity";
-import {provisioningClient,sameOrigin} from "@/lib/supabase/server";
+import {impersonationBlocked,provisioningClient,sameOrigin} from "@/lib/supabase/server";
 import {publicAppUrl} from "@/lib/supabase/app-url.mjs";
 import {familyAction} from "@/lib/academy/family";
 import {deliverEmail} from "@/lib/email/transport.mjs";
 import {open,seal,pinDigest,pinMatches,sessionId} from "@/lib/academy/kid-session";
 import {loadAllRecords} from "@/lib/academy/paged-records";
 import {createStudentAuthUser} from "@/lib/academy/student-accounts";
+import {hasPermission} from "@/lib/academy/roles";
+import {fetchPublicAcademyConfig} from "@/lib/academy/catalogs";
 
 export const dynamic="force-dynamic";
 const reply=(body:object,status=200)=>NextResponse.json(body,{status,headers:{"Cache-Control":"private, no-store"}});
@@ -67,6 +69,8 @@ export async function POST(request:Request){
  try{
   const d=parsed.data,{client,user,profile}=await identity({allowPolicy:parsed.data.action==="exit_kid"});
   if(!profile||profile.status!=="active"||!user)return reply({error:"Active family account required."},403);
+  const blocked=impersonationBlocked(profile);
+  if(blocked)return blocked;
   const admin=provisioningClient(),store=await cookies();
   if(d.action==="exit_kid"){
    const saved=open(store.get("pw-kid-parent")?.value||"");
@@ -83,27 +87,68 @@ export async function POST(request:Request){
    return reply({ok:true,redirect:"/family"});
   }
   if (d.action === "approve_student") {
-    if (!["super_admin", "general_manager", "head_admin", "admin"].includes(profile.role)) {
+    const canApprove = await hasPermission(client, profile, "admissions.approve");
+    if (!canApprove) {
       return reply({ error: "Administrator access is required to approve admissions." }, 403);
     }
     const studentRow = await admin.from("pw_students").select("id,parent_id,student_user_id,payload").eq("id", d.studentId).single();
     if (studentRow.error || !studentRow.data) return reply({ error: "Student record not found." }, 404);
 
     const prevPayload = (studentRow.data.payload || {}) as Record<string, any>;
+    const isPendingAdmission =
+      prevPayload.admissionStatus === "pending_review" ||
+      (!prevPayload.admissionStatus && prevPayload.status === "inactive");
+    if (!isPendingAdmission) {
+      return reply({ error: "This learner is already enrolled. Use the Students workspace to manage active assignments." }, 409);
+    }
+
+    // Validate teacherId and adminId against active staff profiles with authorized roles
+    let verifiedTeacherId: string | null = null;
+    let verifiedTeacherName = d.teacherName.trim();
+    if (d.teacherId) {
+      if (!/^[0-9a-f-]{36}$/i.test(d.teacherId)) return reply({ error: "Invalid teacher selection." }, 400);
+      const tRow = await admin.from("pw_profiles").select("id,name,role,status").eq("id", d.teacherId).single();
+      const { data: tRole } = await admin.from("pw_roles").select("is_staff,department").eq("code", tRow.data?.role || "").maybeSingle();
+      const isTeacher = tRow.data && tRow.data.status === "active" && (
+        ["teacher", "qc", "super_admin"].includes(tRow.data.role) || (tRole?.is_staff && tRole.department === "Music Education")
+      );
+      if (!isTeacher) {
+        return reply({ error: "Selected teacher must be an active instructor." }, 400);
+      }
+      verifiedTeacherId = tRow.data.id;
+      verifiedTeacherName = tRow.data.name;
+    }
+
+    let verifiedAdminId = profile.id;
+    let verifiedAdminName = d.adminName?.trim() || profile.name;
+    if (d.adminId) {
+      if (!/^[0-9a-f-]{36}$/i.test(d.adminId)) return reply({ error: "Invalid administrator selection." }, 400);
+      const aRow = await admin.from("pw_profiles").select("id,name,role,status").eq("id", d.adminId).single();
+      const { data: aRole } = await admin.from("pw_roles").select("is_staff,department").eq("code", aRow.data?.role || "").maybeSingle();
+      const isAdmin = aRow.data && aRow.data.status === "active" && (
+        ["admin", "head_admin", "general_manager", "super_admin"].includes(aRow.data.role) || (aRole?.is_staff && aRole.department !== "Music Education")
+      );
+      if (!isAdmin) {
+        return reply({ error: "Selected administrator must be an active staff administrator." }, 400);
+      }
+      verifiedAdminId = aRow.data.id;
+      verifiedAdminName = aRow.data.name;
+    }
+
     const updatedPayload = {
       ...prevPayload,
       status: "active",
       admissionStatus: "approved",
-      teacherName: d.teacherName.trim(),
-      adminName: d.adminName?.trim() || profile.name,
+      teacherName: verifiedTeacherName,
+      adminName: verifiedAdminName,
       approvedAt: new Date().toISOString(),
       approvedBy: profile.name,
     };
 
     const updateRes = await admin.from("pw_students").update({
       payload: updatedPayload,
-      teacher_id: d.teacherId || null,
-      admin_id: d.adminId || profile.id,
+      teacher_id: verifiedTeacherId,
+      admin_id: verifiedAdminId,
       updated_at: new Date().toISOString(),
     }).eq("id", d.studentId);
     if (updateRes.error) throw updateRes.error;
@@ -120,7 +165,7 @@ export async function POST(request:Request){
         entity_type: "pw_students",
         entity_id: d.studentId,
         action: "student_admission_approved",
-        changed_fields: [`teacher:${d.teacherName}`, `admin:${d.adminName || profile.name}`, "status:active"],
+        changed_fields: [`teacher:${verifiedTeacherName}`, `admin:${verifiedAdminName}`, "status:active"],
       });
     } catch {}
 
@@ -138,7 +183,7 @@ export async function POST(request:Request){
             childName: prevPayload.name || "Learner",
             parentName: prevPayload.parentName || "Guardian",
             instrument: prevPayload.instrument || "Music",
-            teacherName: d.teacherName.trim(),
+            teacherName: verifiedTeacherName,
             lessonDuration: prevPayload.lessonDuration || "1 hour (Standard)",
           },
         }, publicAppUrl("/").origin);
@@ -162,6 +207,7 @@ export async function POST(request:Request){
    return reply({ok:true});
   }
   if(d.action==="create_student"){
+   const academyConfig = await fetchPublicAcademyConfig(client);
    const studentId=`stu_${randomBytes(8).toString("hex")}`;
    const payload={
      id:studentId,
@@ -177,7 +223,7 @@ export async function POST(request:Request){
      preferredDays:d.preferredDays?.trim()||undefined,
      specialNeeds:d.specialNeeds?.trim()||undefined,
      notes:d.notes?.trim()||undefined,
-     timezone:d.timezone?.trim()||profile.timezone||"Europe/London",
+     timezone:d.timezone?.trim()||profile.timezone||academyConfig.defaultTimezone,
      parentName:profile.name,
      parentEmail:user.email||profile.email,
      consent:d.consent===true,
@@ -245,7 +291,7 @@ export async function POST(request:Request){
      await deliverEmail({
        id: randomUUID(),
        lease_id: randomUUID(),
-       email: "admissions@prosperworkmusic.com",
+       email: academyConfig.emails.admissions,
        category: "admissions",
        subject: `New Student Registration Awaiting Review: ${d.name.trim()} (${d.instrument.trim()})`,
        template: "student_registration_alert",

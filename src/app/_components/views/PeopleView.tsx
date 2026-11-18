@@ -39,7 +39,7 @@ export default function PeopleView({
   updateStaffStatus: (
     person: StaffMember,
     nextStatus: StaffMember["status"]
-  ) => void;
+  ) => void | Promise<void>;
 }) {
   const people = data.staff.filter((person) =>
     `${person.name} ${person.department} ${person.role} ${person.status}`
@@ -233,13 +233,13 @@ export default function PeopleView({
                           >
                             <MessageCircle size={13} />
                           </button>
-                          {(role === "hr" || canManage || superAdmin) && (
+                          {role === "super_admin" && (
                             <select
                               aria-label={`Update ${person.name} status`}
                               className="select-mini"
                               value={person.status}
                               onChange={(event) =>
-                                updateStaffStatus(
+                                void updateStaffStatus(
                                   person,
                                   event.target.value as StaffMember["status"]
                                 )

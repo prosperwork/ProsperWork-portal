@@ -1,7 +1,9 @@
 import { NextResponse } from "next/server";
 import { identity } from "@/lib/supabase/identity";
+import { impersonationBlocked, sameOrigin } from "@/lib/supabase/server";
 import { generateBirthdayTribute } from "@/lib/ai/groq";
 import { checkRateLimit } from "@/lib/ai/rate-limit";
+import { hasPermission } from "@/lib/academy/roles";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -10,18 +12,24 @@ const reply = (error: string, status: number) =>
   NextResponse.json({ error }, { status, headers: { "Cache-Control": "private, no-store" } });
 
 export async function POST(request: Request) {
+  if (!sameOrigin(request)) {
+    return reply("Invalid request origin.", 403);
+  }
   try {
     const { client, profile } = await identity();
     if (!profile || !["active", "on_leave"].includes(profile.status)) {
       return reply("Sign in to access academy tools.", 403);
     }
+    const blocked = impersonationBlocked(profile);
+    if (blocked) return blocked;
 
     const rate = checkRateLimit(`bday:${profile.id}`, 10, 60000);
     if (!rate.allowed) {
       return reply(`Rate limit reached. Please wait ${rate.resetInSec} seconds before generating another tribute.`, 429);
     }
 
-    if (["finance", "hr", "sales_marketing", "social_media"].includes(profile.role)) {
+    const canGenerateBirthday = await hasPermission(client, profile, "ai.birthday", { allowOnLeave: true });
+    if (!canGenerateBirthday) {
       return reply("Student celebration tools are restricted to instructional and management roles.", 403);
     }
 

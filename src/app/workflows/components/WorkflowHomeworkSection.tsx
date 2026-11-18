@@ -19,7 +19,7 @@ export interface WorkflowHomeworkSectionProps {
   assignedHomework: HomeworkItem[];
   busy: string;
   filesFor: (category: "receipt" | "homework", targetId: string) => FileMetadata[];
-  submitHomework: (event: FormEvent<HTMLFormElement>) => Promise<void>;
+  submitHomework: (event: FormEvent<HTMLFormElement>) => Promise<boolean>;
   review: (item: HomeworkItem, form: HTMLFormElement) => Promise<void>;
 }
 
@@ -50,7 +50,13 @@ export default function WorkflowHomeworkSection({
         <span className="wf-count">{assignedHomework.length} assigned</span>
       </header>
       {isFamily && (
-        <form className="wf-form" onSubmit={submitHomework}>
+        <form
+          className="wf-form"
+          onSubmit={async (event) => {
+            const ok = await submitHomework(event);
+            if (ok) setHomeworkId("");
+          }}
+        >
           <div className="wf-form-grid">
             <div className="wf-field full">
               <label htmlFor="homework-assignment">Assignment</label>

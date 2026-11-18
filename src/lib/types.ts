@@ -1,4 +1,4 @@
-export type Role =
+export type BuiltInRole =
   | "super_admin"
   | "general_manager"
   | "head_admin"
@@ -11,6 +11,8 @@ export type Role =
   | "finance"
   | "sales_marketing"
   | "social_media";
+
+export type Role = string;
 
 export type AppView =
   | "overview"
@@ -57,7 +59,7 @@ export interface Student {
   adminName: string;
   timezone: string;
   consent: boolean;
-  rank: "Novice" | "Beginner" | "Amateur" | "Master";
+  rank: string;
   songsDone: string[];
   songsToDo: string[];
   status: "active" | "paused" | "inactive";

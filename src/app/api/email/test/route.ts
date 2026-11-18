@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import{publicAppUrl}from"@/lib/supabase/app-url.mjs";
 import { identity } from "@/lib/supabase/identity";
-import { sameOrigin } from "@/lib/supabase/server";
+import { impersonationBlocked, sameOrigin } from "@/lib/supabase/server";
 import { automationClient } from "@/lib/supabase/automation";
 import { deliverEmail, safeEmailError } from "@/lib/email/transport.mjs";
 export const runtime = "nodejs";
@@ -11,6 +11,8 @@ export async function POST(request: Request) {
     const { client, user, profile } = await identity();
     if (profile?.role !== "super_admin" || profile.status !== "active" || !user?.email_confirmed_at)
       return NextResponse.json({ error: "Verified Super Admin access is required." }, { status: 403 });
+    const blocked = impersonationBlocked(profile);
+    if (blocked) return blocked;
     if (!process.env.SMTP_PASSWORD) return NextResponse.json({ error: "SMTP is not configured." }, { status: 503 });
     const queued = await client.rpc("pw_queue_owner_test");
     if (queued.error) return NextResponse.json({ error: queued.error.code === "PW429" ? "Wait one minute before sending another test." : "The email could not be queued." }, { status: queued.error.code === "PW429" ? 429 : 503 });

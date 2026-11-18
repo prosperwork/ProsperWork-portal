@@ -1,6 +1,6 @@
 "use client";
 
-import { type FormEvent } from "react";
+import { useEffect, type FormEvent } from "react";
 import { X } from "lucide-react";
 import { type ModalState } from "../payroll-types";
 
@@ -25,6 +25,15 @@ export default function PayrollAdjustmentModal({
   onClose,
   onSubmitModal,
 }: PayrollAdjustmentModalProps) {
+  useEffect(() => {
+    if (!modal) return;
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape" && !modalBusy) onClose();
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [modal, modalBusy, onClose]);
+
   if (!modal) return null;
 
   return (

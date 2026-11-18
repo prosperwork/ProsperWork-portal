@@ -3,6 +3,7 @@
 import { useState, type FormEvent } from "react";
 import { UserPlus, LoaderCircle } from "lucide-react";
 import { hiringRoles } from "@/lib/academy/hiring";
+import { useRoles } from "@/lib/academy/use-academy-config";
 import {
   expectedSupervisor,
   roleKey,
@@ -30,6 +31,7 @@ export default function HiringCandidateForm({
   busy,
   onSubmitCreate,
 }: HiringCandidateFormProps) {
+  const { invitableRoles } = useRoles();
   const [newName, setNewName] = useState("");
   const [newEmail, setNewEmail] = useState("");
   const [newRole, setNewRole] = useState<HiringRole>("teacher");
@@ -37,6 +39,10 @@ export default function HiringCandidateForm({
   const [createNotes, setCreateNotes] = useState("");
 
   const supervisorRole = expectedSupervisor(newRole);
+  const selectableRoles =
+    invitableRoles.length > 0
+      ? invitableRoles
+      : hiringRoles.map((value) => ({ code: value, label: roleLabel(value) }));
 
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -103,9 +109,9 @@ export default function HiringCandidateForm({
                 }}
                 required
               >
-                {hiringRoles.map((value) => (
-                  <option value={value} key={value}>
-                    {roleLabel(value)}
+                {selectableRoles.map((r) => (
+                  <option value={r.code} key={r.code}>
+                    {r.label}
                   </option>
                 ))}
               </select>

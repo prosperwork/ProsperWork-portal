@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import {
   Baby,
@@ -14,6 +14,8 @@ import {
   UserRound,
 } from "lucide-react";
 import { useCurrencies } from "@/lib/academy/use-currencies";
+import { useCatalogs, useRoles } from "@/lib/academy/use-academy-config";
+import { apiErrorMessage, readJson } from "@/lib/academy/web-client";
 import { useAcademyData } from "../lib/storage";
 import ClassroomLinks from "./classroom/ClassroomLinks";
 import BrandEmblem from "./_components/BrandEmblem";
@@ -22,6 +24,7 @@ import EmailComposerDialog, {
 } from "./_components/EmailComposerDialog";
 import ProfileAvatar from "./_components/ProfileAvatar";
 import {
+  hasWorkspaceAccess,
   legacyWorkspaceAccess,
   legacyWorkspaceRoutes,
   legacyViewForPath,
@@ -100,6 +103,8 @@ export default function HomePage() {
     rates: currencyRates,
     currencyError,
   } = useCurrencies();
+  const { enabledByCatalog, config: academyConfig } = useCatalogs();
+  const { invitableRoles, myPermissions } = useRoles();
 
   const currencyOptions: Field["options"] = currencyCatalog
     .filter((c) => c.enabled)
@@ -107,6 +112,32 @@ export default function HomePage() {
       value: c.code,
       label: `${c.code} · ${c.name} (${c.symbol})`,
     }));
+
+  const actionModalCatalogs = useMemo(
+    () => ({
+      instruments: enabledByCatalog("instruments").map((i) => ({
+        value: i.code,
+        label: i.label,
+      })),
+      studentRanks: enabledByCatalog("student_ranks").map((i) => ({
+        value: i.code,
+        label: i.label,
+      })),
+      expenseCategories: enabledByCatalog("expense_categories").map((i) => ({
+        value: i.code,
+        label: i.label,
+      })),
+      leadSources: enabledByCatalog("lead_sources").map((i) => ({
+        value: i.code,
+        label: i.label,
+      })),
+      invitableRoles: invitableRoles
+        .filter((r) => r.is_staff)
+        .map((r) => ({ value: r.code, label: r.label })),
+      defaultTimezone: academyConfig.defaultTimezone,
+    }),
+    [enabledByCatalog, invitableRoles, academyConfig.defaultTimezone]
+  );
 
   // --------------------------------------------------------------------------
   // Academy Data & Profile State
@@ -124,13 +155,20 @@ export default function HomePage() {
   } = useAcademyData();
   const ownTimezone = profile?.timezone || "Africa/Lagos";
 
-  const dayKey = (value: string | Date) =>
-    new Intl.DateTimeFormat("en-CA", {
-      timeZone: ownTimezone,
-      year: "numeric",
-      month: "2-digit",
-      day: "2-digit",
-    }).format(new Date(value));
+  const dayKey = (value: string | Date) => {
+    const parsed = value instanceof Date ? value : new Date(value);
+    if (!Number.isFinite(parsed.getTime())) return "";
+    try {
+      return new Intl.DateTimeFormat("en-CA", {
+        timeZone: ownTimezone,
+        year: "numeric",
+        month: "2-digit",
+        day: "2-digit",
+      }).format(parsed);
+    } catch {
+      return parsed.toISOString().slice(0, 10);
+    }
+  };
   const todayKey = () => dayKey(new Date());
 
   const fx = Object.fromEntries(
@@ -157,6 +195,7 @@ export default function HomePage() {
     null
   );
   const [toast, setToast] = useState("");
+  const toastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [query, setQuery] = useState("");
   const [scheduleMode, setScheduleMode] = useState<"today" | "week">("today");
   const [selectedDate, setSelectedDate] = useState(todayKey());
@@ -193,28 +232,66 @@ export default function HomePage() {
         cache: "no-store",
       });
       const result = await response.json().catch(() => ({}));
-      if (response.ok && Array.isArray(result.staff)) {
+      if (!response.ok) {
+        throw new Error(
+          result.error || "Could not refresh active staff for emergency cover."
+        );
+      }
+      if (Array.isArray(result.staff)) {
         setManagementStaff(result.staff);
       }
-    } catch {
-      // ignore, fall back
+    } catch (cause) {
+      setToast(
+        cause instanceof Error
+          ? cause.message
+          : "Could not refresh active staff for emergency cover."
+      );
+      if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
+      toastTimerRef.current = setTimeout(() => setToast(""), 4000);
     }
   };
 
   useEffect(() => {
-    setSelectedDate(
-      new Intl.DateTimeFormat("en-CA", {
-        timeZone: ownTimezone,
-        year: "numeric",
-        month: "2-digit",
-        day: "2-digit",
-      }).format(new Date())
-    );
+    return () => {
+      if (toastTimerRef.current) {
+        clearTimeout(toastTimerRef.current);
+        toastTimerRef.current = null;
+      }
+    };
+  }, []);
+
+  useEffect(() => {
+    try {
+      setSelectedDate(
+        new Intl.DateTimeFormat("en-CA", {
+          timeZone: ownTimezone,
+          year: "numeric",
+          month: "2-digit",
+          day: "2-digit",
+        }).format(new Date())
+      );
+    } catch {
+      setSelectedDate(new Date().toISOString().slice(0, 10));
+    }
   }, [ownTimezone]);
+
+  const accessProfile = useMemo(
+    () =>
+      profile
+        ? {
+            role: profile.role,
+            permissions: myPermissions.length > 0 ? myPermissions : undefined,
+          }
+        : null,
+    [profile, myPermissions]
+  );
 
   useEffect(() => {
     if (!profile) return;
-    if (pathname === "/") {
+    if (
+      pathname === "/" ||
+      !hasWorkspaceAccess(legacyWorkspaceRoutes[view], accessProfile)
+    ) {
       if (profile.role === "parent") {
         router.replace("/family");
         return;
@@ -231,7 +308,7 @@ export default function HomePage() {
     const canonical =
       legacyWorkspaceRoutes[requested as keyof typeof legacyWorkspaceRoutes];
     router.replace(
-      canonical && (canonical.roles as Role[]).includes(profile.role)
+      canonical && hasWorkspaceAccess(canonical, accessProfile)
         ? canonical.href
         : profile.role === "parent"
         ? "/family"
@@ -239,7 +316,7 @@ export default function HomePage() {
         ? "/learning"
         : "/"
     );
-  }, [profile?.id, profile?.role, pathname, router]);
+  }, [profile?.id, profile?.role, pathname, router, view]);
 
   useEffect(() => {
     if (role !== "qc" || !profile?.id) {
@@ -353,10 +430,17 @@ export default function HomePage() {
   );
   const subtitle = titles[view];
 
+  function showToast(message: string, durationMs = 3000) {
+    setToast(message);
+    if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
+    toastTimerRef.current = setTimeout(() => {
+      setToast("");
+      toastTimerRef.current = null;
+    }, durationMs);
+  }
   function notify(message: string) {
     afterSave(() => {
-      setToast(message);
-      window.setTimeout(() => setToast(""), 3000);
+      showToast(message, 3000);
     });
   }
   function record(
@@ -377,7 +461,7 @@ export default function HomePage() {
   }
   function changeView(nextView: AppView) {
     const destination = legacyWorkspaceRoutes[nextView];
-    if (!destination || !legacyWorkspaceAccess[nextView].includes(role)) return;
+    if (!destination || !hasWorkspaceAccess(destination, accessProfile)) return;
     router.push(destination.href);
     setQuery("");
   }
@@ -525,8 +609,11 @@ export default function HomePage() {
     notify(`Homework marked as ${status}.`);
   }
 
-  function setPaymentStatus(payment: Payment, status: Payment["status"]) {
-    updateData((current) => ({
+  async function setPaymentStatus(
+    payment: Payment,
+    status: Payment["status"]
+  ): Promise<void> {
+    const ok = await updateData((current) => ({
       ...current,
       payments: current.payments.map((p) =>
         p.id === payment.id ? { ...p, status } : p
@@ -543,33 +630,52 @@ export default function HomePage() {
         ...current.audit,
       ],
     }));
+    if (!ok) {
+      throw new Error(
+        "The payment status could not be updated. Please try again."
+      );
+    }
     notify(`Payment marked as ${status}.`);
   }
 
-  function updateStaffStatus(
+  async function updateStaffStatus(
     person: StaffMember,
     nextStatus: StaffMember["status"]
   ) {
-    updateData((current) => ({
-      ...current,
-      staff: current.staff.map((s) =>
-        s.id === person.id ? { ...s, status: nextStatus } : s
-      ),
-      audit: [
-        {
-          id: makeId("audit"),
-          action: "Staff status updated",
-          record: `${person.name} · ${person.role}`,
-          actor: roleNames[role],
-          at: new Date().toISOString(),
-          detail: `Status changed to ${nextStatus}.`,
-        },
-        ...current.audit,
-      ],
-    }));
-    notify(
-      `${person.name}'s status changed to ${nextStatus.replace("_", " ")}.`
-    );
+    if (!superAdmin || person.role === "super_admin") return;
+    try {
+      const response = await fetch("/api/accounts", {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "status",
+          id: person.id,
+          status: nextStatus,
+        }),
+      });
+      const result = await readJson(response);
+      if (!response.ok || result.error || result.ok !== true) {
+        throw new Error(
+          apiErrorMessage(
+            result,
+            response.status,
+            "Could not update staff status"
+          )
+        );
+      }
+      await reload();
+      showToast(
+        `${person.name}'s status changed to ${nextStatus.replace("_", " ")}.`
+      );
+    } catch (cause) {
+      showToast(
+        cause instanceof Error
+          ? cause.message
+          : "Could not update staff status.",
+        4500
+      );
+    }
   }
 
   function updateConsent(student: Student) {
@@ -607,13 +713,17 @@ export default function HomePage() {
         if (s.id !== student.id) return s;
         const done = [...new Set([...s.songsDone, song])];
         const todo = s.songsToDo.filter((item) => item !== song);
+        const availableRanks = enabledByCatalog("student_ranks").map((r) => r.label || r.code);
+        const highestRank = availableRanks[availableRanks.length - 1] ?? "Master";
+        const midRank = availableRanks.length > 2 ? availableRanks[Math.floor(availableRanks.length / 2)] : "Amateur";
+        const beginnerRank = availableRanks[0] ?? "Beginner";
         const rank =
           done.length >= 8
-            ? "Master"
+            ? highestRank
             : done.length >= 5
-            ? "Amateur"
+            ? midRank
             : done.length >= 2
-            ? "Beginner"
+            ? beginnerRank
             : s.rank;
         return { ...s, songsDone: done, songsToDo: todo, rank };
       }),
@@ -757,9 +867,8 @@ export default function HomePage() {
       </main>
     );
 
-  if (!legacyWorkspaceAccess[view]?.includes(profile.role)) {
+  if (!hasWorkspaceAccess(legacyWorkspaceRoutes[view], accessProfile)) {
     if (profile.role === "parent") {
-      router.replace("/family");
       return (
         <main className="loading-screen">
           <p>Opening family workspace…</p>
@@ -767,7 +876,6 @@ export default function HomePage() {
       );
     }
     if (profile.role === "student") {
-      router.replace("/learning");
       return (
         <main className="loading-screen">
           <p>Opening student workspace…</p>
@@ -934,6 +1042,7 @@ export default function HomePage() {
         updateConsent={updateConsent}
         openEmailComposer={openEmailComposer}
         notify={notify}
+        onRefresh={reload}
         qcAssignmentError={qcAssignmentError}
         qcAssignmentLoading={qcAssignmentLoading}
       />
@@ -1018,6 +1127,7 @@ export default function HomePage() {
       <LearningView
         data={data}
         role={role}
+        profileName={profile.name}
         query={query}
         searchBar={searchBar}
         studentsVisible={studentsVisible}
@@ -1115,7 +1225,8 @@ export default function HomePage() {
             data,
             role,
             activeStudent?.parentName,
-            currencyOptions
+            currencyOptions,
+            actionModalCatalogs
           )}
           onClose={() => setModal(null)}
           onSubmit={submitForm}

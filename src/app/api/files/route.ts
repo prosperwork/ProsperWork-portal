@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { identity } from "@/lib/supabase/identity";
-import { sameOrigin } from "@/lib/supabase/server";
+import { impersonationBlocked, sameOrigin } from "@/lib/supabase/server";
 export const dynamic = "force-dynamic";
 const types = ["application/pdf", "image/png", "image/jpeg", "video/mp4", "video/webm","audio/mpeg","audio/wav","audio/x-wav","audio/ogg","audio/webm"];
 function matches(bytes: Uint8Array, type: string) {
@@ -37,6 +37,8 @@ export async function POST(request: Request) {
   try {
     const { client, profile } = await identity();
     if (!profile || profile.status !== "active") return NextResponse.json({ error: "An active academy account is required." }, { status: 403 });
+    const blocked = impersonationBlocked(profile);
+    if (blocked) return blocked;
     const form = await request.formData();
     const category = String(form.get("category") || ""), target = String(form.get("targetId") || ""), note = String(form.get("note") || "").trim();
     const file = form.get("file");

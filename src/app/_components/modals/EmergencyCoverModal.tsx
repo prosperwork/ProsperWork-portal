@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, type FormEvent } from "react";
+import { useEffect, useState, type FormEvent } from "react";
 import { X } from "lucide-react";
 import type { Lesson } from "@/lib/types";
 import { niceDate, timeAt } from "../../_lib/portal-formatters";
@@ -28,6 +28,14 @@ export default function EmergencyCoverModal({
   const [coverReason, setCoverReason] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape" && !loading) onClose();
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [loading, onClose]);
 
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
@@ -67,7 +75,12 @@ export default function EmergencyCoverModal({
   };
 
   return (
-    <div className="overlay">
+    <div
+      className="overlay"
+      onMouseDown={(event) => {
+        if (!loading && event.target === event.currentTarget) onClose();
+      }}
+    >
       <section
         className="modal"
         role="dialog"
@@ -85,6 +98,7 @@ export default function EmergencyCoverModal({
             </p>
           </div>
           <button
+            type="button"
             className="close-btn"
             aria-label="Cancel"
             onClick={onClose}

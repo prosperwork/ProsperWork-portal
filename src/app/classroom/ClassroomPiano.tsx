@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { useDataChannel, useRoomContext } from "@livekit/components-react";
+import { useDataChannel } from "@livekit/components-react";
 import {
   ChevronLeft,
   ChevronRight,
@@ -84,7 +84,6 @@ export default function ClassroomPiano({
   isAdmin = false,
   initialSize = "large",
 }: ClassroomPianoProps) {
-  const room = useRoomContext();
   const [keyboardSize, setKeyboardSize] = useState<PianoSize>(initialSize);
   const [activeNotes, setActiveNotes] = useState<Set<number>>(new Set());
   const [remoteNotes, setRemoteNotes] = useState<Set<number>>(new Set());
@@ -98,6 +97,19 @@ export default function ClassroomPiano({
   const activeOscillatorsRef = useRef<
     Map<number, { osc: OscillatorNode; gain: GainNode }>
   >(new Map());
+  const soundEnabledRef = useRef(soundEnabled);
+  const syncToRoomRef = useRef(syncToRoom);
+  const isLockedRef = useRef(isLocked);
+
+  useEffect(() => {
+    soundEnabledRef.current = soundEnabled;
+  }, [soundEnabled]);
+  useEffect(() => {
+    syncToRoomRef.current = syncToRoom;
+  }, [syncToRoom]);
+  useEffect(() => {
+    isLockedRef.current = isLocked;
+  }, [isLocked]);
 
   const currentConfig = PIANO_SIZES[keyboardSize];
 
@@ -108,7 +120,7 @@ export default function ClassroomPiano({
       const data = JSON.parse(decoded);
       if (data.type === "note_on" && typeof data.midi === "number") {
         setRemoteNotes((prev) => new Set(prev).add(data.midi));
-        if (soundEnabled) playTone(data.midi);
+        if (soundEnabledRef.current) playTone(data.midi);
       } else if (data.type === "note_off" && typeof data.midi === "number") {
         setRemoteNotes((prev) => {
           const next = new Set(prev);
@@ -145,7 +157,7 @@ export default function ClassroomPiano({
   const midiToFreq = (midi: number) => 440 * Math.pow(2, (midi - 69) / 12);
 
   const playTone = (midi: number) => {
-    if (!soundEnabled) return;
+    if (!soundEnabledRef.current) return;
     try {
       const ctx = getAudioContext();
       stopTone(midi);
@@ -165,6 +177,14 @@ export default function ClassroomPiano({
       gain.connect(ctx.destination);
 
       osc.start();
+      // Safety stop so oscillators never leak if noteOff is missed
+      osc.stop(ctx.currentTime + 2.0);
+      osc.onended = () => {
+        const current = activeOscillatorsRef.current.get(midi);
+        if (current && current.osc === osc) {
+          activeOscillatorsRef.current.delete(midi);
+        }
+      };
       activeOscillatorsRef.current.set(midi, { osc, gain });
     } catch {
       // AudioContext might require user gesture
@@ -178,7 +198,7 @@ export default function ClassroomPiano({
         const ctx = audioCtxRef.current;
         existing.gain.gain.cancelScheduledValues(ctx.currentTime);
         existing.gain.gain.setValueAtTime(
-          existing.gain.gain.value,
+          Math.max(existing.gain.gain.value, 0.0001),
           ctx.currentTime
         );
         existing.gain.gain.exponentialRampToValueAtTime(
@@ -195,28 +215,31 @@ export default function ClassroomPiano({
 
   const handleNoteOn = (midi: number) => {
     // If student has piano locked, prevent student from triggering note events
-    if (isLocked) return;
+    if (isLockedRef.current) return;
     setActiveNotes((prev) => new Set(prev).add(midi));
     playTone(midi);
-    if (sendPianoData && syncToRoom) {
+    if (sendPianoData && syncToRoomRef.current) {
       const payload = JSON.stringify({ type: "note_on", midi });
       sendPianoData(new TextEncoder().encode(payload), { reliable: true });
     }
   };
 
   const handleNoteOff = (midi: number) => {
-    if (isLocked) return;
+    if (isLockedRef.current) return;
     setActiveNotes((prev) => {
       const next = new Set(prev);
       next.delete(midi);
       return next;
     });
     stopTone(midi);
-    if (sendPianoData && syncToRoom) {
+    if (sendPianoData && syncToRoomRef.current) {
       const payload = JSON.stringify({ type: "note_off", midi });
       sendPianoData(new TextEncoder().encode(payload), { reliable: true });
     }
   };
+
+  const noteHandlersRef = useRef({ handleNoteOn, handleNoteOff });
+  noteHandlersRef.current = { handleNoteOn, handleNoteOff };
 
   // Change keyboard size (Admin broadcasts to all students in room if syncToRoom is enabled)
   const handleSizeChange = (newSize: PianoSize) => {
@@ -227,36 +250,61 @@ export default function ClassroomPiano({
     }
   };
 
-  // Web MIDI Support (Synchronizes external hardware keyboard)
+  // Web MIDI Support (Synchronizes external hardware keyboard) + AudioContext cleanup
   useEffect(() => {
+    let cancelled = false;
+    let midiAccessRef: {
+      inputs: { values: () => Iterable<{ onmidimessage: ((e: { data: Uint8Array | number[] }) => void) | null }> };
+      onstatechange: (() => void) | null;
+    } | null = null;
+
     if (typeof navigator !== "undefined" && "requestMIDIAccess" in navigator) {
-      (navigator as any).requestMIDIAccess().then(
-        (midiAccess: any) => {
-          setMidiConnected(true);
-          const handleMidiMessage = (event: { data: Uint8Array | number[] }) => {
-            const [status, noteNumber, velocity] = Array.from(event.data);
-            const command = status >> 4;
-            if (command === 9 && velocity > 0) {
-              handleNoteOn(noteNumber);
-            } else if (command === 8 || (command === 9 && velocity === 0)) {
-              handleNoteOff(noteNumber);
-            }
-          };
+      (
+        navigator as unknown as {
+          requestMIDIAccess: () => Promise<NonNullable<typeof midiAccessRef>>;
+        }
+      )
+        .requestMIDIAccess()
+        .then(
+          (midiAccess) => {
+            if (cancelled) return;
+            midiAccessRef = midiAccess;
+            setMidiConnected(true);
+            const handleMidiMessage = (event: {
+              data: Uint8Array | number[];
+            }) => {
+              const [status, noteNumber, velocity] = Array.from(event.data);
+              const command = status >> 4;
+              if (command === 9 && velocity > 0) {
+                noteHandlersRef.current.handleNoteOn(noteNumber);
+              } else if (command === 8 || (command === 9 && velocity === 0)) {
+                noteHandlersRef.current.handleNoteOff(noteNumber);
+              }
+            };
 
-          for (const input of midiAccess.inputs.values()) {
-            input.onmidimessage = handleMidiMessage;
-          }
-
-          midiAccess.onstatechange = () => {
             for (const input of midiAccess.inputs.values()) {
               input.onmidimessage = handleMidiMessage;
             }
-          };
-        },
-        () => setMidiConnected(false)
-      );
+
+            midiAccess.onstatechange = () => {
+              for (const input of midiAccess.inputs.values()) {
+                input.onmidimessage = handleMidiMessage;
+              }
+            };
+          },
+          () => {
+            if (!cancelled) setMidiConnected(false);
+          }
+        );
     }
     return () => {
+      cancelled = true;
+      if (midiAccessRef) {
+        midiAccessRef.onstatechange = null;
+        for (const input of midiAccessRef.inputs.values()) {
+          input.onmidimessage = null;
+        }
+      }
       activeOscillatorsRef.current.forEach(({ osc }) => {
         try {
           osc.stop();
@@ -265,8 +313,12 @@ export default function ClassroomPiano({
         }
       });
       activeOscillatorsRef.current.clear();
+      if (audioCtxRef.current && audioCtxRef.current.state !== "closed") {
+        void audioCtxRef.current.close().catch(() => {});
+      }
+      audioCtxRef.current = null;
     };
-  }, [isLocked]);
+  }, []);
 
   // Generate Keys for the active size configuration
   const allKeys: PianoNote[] = [];
@@ -667,11 +719,12 @@ export default function ClassroomPiano({
           {/* Close Button */}
           <button
             type="button"
+            aria-label="Close piano"
             onClick={onClose}
             style={{
               background: "transparent",
               border: "none",
-              color: "#aaa",
+              color: "#a7b8ae",
               cursor: "pointer",
               padding: 4,
               borderRadius: 4,
@@ -760,6 +813,24 @@ export default function ClassroomPiano({
             return (
               <div
                 key={k.midi}
+                role="button"
+                tabIndex={isLocked ? -1 : 0}
+                aria-label={`${k.name}${k.octave}`}
+                aria-pressed={isPressed}
+                onKeyDown={(e) => {
+                  if (isLocked || e.repeat) return;
+                  if (e.key === "Enter" || e.key === " ") {
+                    e.preventDefault();
+                    handleNoteOn(k.midi);
+                  }
+                }}
+                onKeyUp={(e) => {
+                  if (isLocked) return;
+                  if (e.key === "Enter" || e.key === " ") {
+                    e.preventDefault();
+                    handleNoteOff(k.midi);
+                  }
+                }}
                 onMouseDown={() => {
                   if (isLocked) return;
                   handleNoteOn(k.midi);
@@ -902,6 +973,24 @@ export default function ClassroomPiano({
             return (
               <div
                 key={k.midi}
+                role="button"
+                tabIndex={isLocked ? -1 : 0}
+                aria-label={`${k.name}${k.octave}`}
+                aria-pressed={isPressed}
+                onKeyDown={(e) => {
+                  if (isLocked || e.repeat) return;
+                  if (e.key === "Enter" || e.key === " ") {
+                    e.preventDefault();
+                    handleNoteOn(k.midi);
+                  }
+                }}
+                onKeyUp={(e) => {
+                  if (isLocked) return;
+                  if (e.key === "Enter" || e.key === " ") {
+                    e.preventDefault();
+                    handleNoteOff(k.midi);
+                  }
+                }}
                 onMouseDown={() => {
                   if (isLocked) return;
                   handleNoteOn(k.midi);

@@ -81,22 +81,7 @@ export async function uploadLessonRecordingToDrive(
       fields: "id, name, webViewLink, webContentLink"
     });
 
-    // Make file viewable by anyone with link or within academy
-    try {
-      if (uploadRes.data.id) {
-        await (drive.permissions as any).create({
-          fileId: uploadRes.data.id,
-          requestBody: {
-            role: "reader",
-            type: "anyone"
-          }
-        });
-      }
-    } catch (permErr: any) {
-      console.warn("[GoogleDrive] Permission notice for recording file:", permErr?.message);
-    }
-
-
+    // Keep lesson recordings strictly private to the academy Drive account (never type: "anyone").
     return {
       success: true,
       fileId: uploadRes.data.id || undefined,

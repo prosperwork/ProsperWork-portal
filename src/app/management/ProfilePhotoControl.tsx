@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState, type ChangeEvent } from "react";
+import { useCallback, useEffect, useRef, useState, type ChangeEvent } from "react";
 import { Camera } from "lucide-react";
 
 type ProfileResponse = { profile?: { id: string; name: string; avatar_file_id?: string | null }; avatarUrl?: string | null; error?: string };
@@ -9,6 +9,8 @@ export default function ProfilePhotoControl({ userId, name, onPhoto }: { userId:
   const [url, setUrl] = useState<string | null>(null);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
+  const retryCountRef = useRef(0);
+  const retryTimerRef = useRef<number | null>(null);
   const initials = name.trim().split(/\s+/).slice(0, 2).map(part => part[0]).join("").toUpperCase();
 
   const refresh = useCallback(async () => {
@@ -20,7 +22,17 @@ export default function ProfilePhotoControl({ userId, name, onPhoto }: { userId:
       setUrl(next); onPhoto?.(next);
     } catch { setUrl(null); onPhoto?.(null); }
   }, [onPhoto]);
-  useEffect(() => { void refresh(); const timer = window.setInterval(() => void refresh(), 90_000); return () => window.clearInterval(timer); }, [refresh]);
+  useEffect(() => {
+    void refresh();
+    const timer = window.setInterval(() => void refresh(), 90_000);
+    return () => {
+      window.clearInterval(timer);
+      if (retryTimerRef.current) {
+        window.clearTimeout(retryTimerRef.current);
+        retryTimerRef.current = null;
+      }
+    };
+  }, [refresh]);
 
   async function upload(event: ChangeEvent<HTMLInputElement>) {
     const file = event.target.files?.[0];
@@ -36,12 +48,33 @@ export default function ProfilePhotoControl({ userId, name, onPhoto }: { userId:
       const response = await fetch("/api/files", { method: "POST", credentials: "include", body: form });
       const result = await response.json().catch(() => ({}));
       if (!response.ok || result.error) throw new Error(result.error || "Photo upload failed.");
+      retryCountRef.current = 0;
       await refresh();
     } catch (cause) { setError(cause instanceof Error ? cause.message : "Photo upload failed."); }
     finally { setBusy(false); }
   }
   return <div className="mw-photo-control">
-    {url ? <img className="mw-photo" src={url} alt={`${name} profile`} onError={() => { setUrl(null); window.setTimeout(() => void refresh(), 1000); }} /> : <span className="mw-photo" aria-label={`${name} initials`}>{initials}</span>}
+    {url ? (
+      <img
+        className="mw-photo"
+        src={url}
+        alt={`${name} profile`}
+        onLoad={() => {
+          retryCountRef.current = 0;
+        }}
+        onError={() => {
+          setUrl(null);
+          if (retryCountRef.current < 1) {
+            retryCountRef.current += 1;
+            if (retryTimerRef.current) window.clearTimeout(retryTimerRef.current);
+            retryTimerRef.current = window.setTimeout(() => {
+              retryTimerRef.current = null;
+              void refresh();
+            }, 1000);
+          }
+        }}
+      />
+    ) : <span className="mw-photo" aria-label={`${name} initials`}>{initials}</span>}
     <label className="mw-button" aria-disabled={busy} title="Update your profile photo"><Camera size={14} /> {busy ? "Uploading…" : "Photo"}<input className="mw-file" type="file" accept="image/png,image/jpeg" disabled={busy} onChange={upload} /></label>
     {error && <span role="alert" className="mw-hint">{error}</span>}
   </div>;

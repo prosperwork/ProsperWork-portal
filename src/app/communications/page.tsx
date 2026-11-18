@@ -53,6 +53,7 @@ export default function CommunicationsPage() {
   const [subject, setSubject] = useState("");
   const [body, setBody] = useState("");
   const [reason, setReason] = useState("");
+  const [reviewed, setReviewed] = useState(false);
   const [sendConfirm, setSendConfirm] = useState("");
   const [requestId, setRequestId] = useState("");
   const [consentReasons, setConsentReasons] = useState<Record<string, string>>({});
@@ -150,13 +151,17 @@ export default function CommunicationsPage() {
     } finally { busyRef.current = false; setBusy(false); }
   };
 
+  const resetCampaignDraft = () => {
+    setSubject(""); setBody(""); setReason(""); setReviewed(false); setSendConfirm(""); setRequestId("");
+  };
   const startNewMessage = () => {
-    setSubject(""); setBody(""); setReason(""); setSendConfirm(""); setRequestId("");
+    resetCampaignDraft();
     setActionError(""); setNotice("");
   };
   const submitCampaign = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     if (!canSend || busyRef.current) return;
+    if (!reviewed) { setActionError("Confirm that you have reviewed the audience and message before sending."); return; }
     if (sendConfirm !== "SEND") { setActionError("Type SEND exactly to authorize this campaign."); return; }
     if (reason.trim().length < 5) { setActionError("A campaign reason of at least five characters is required."); return; }
     if (recipientCount < 1) { setActionError("There are no consented contacts in this audience."); return; }
@@ -169,8 +174,8 @@ export default function CommunicationsPage() {
         audience: effectiveAudience, confirm: "SEND", reason: reason.trim(),
       });
       await load(true);
+      resetCampaignDraft();
       setNotice(`Campaign request accepted for ${result.recipients} eligible recipient${result.recipients === 1 ? "" : "s"}. Stored campaign status is shown in history when the refresh completes.`);
-      startNewMessage();
     } catch (cause) {
       setActionError(cause instanceof Error ? cause.message : "Campaign could not be submitted. The same request ID is retained for a safe retry.");
     } finally { busyRef.current = false; setBusy(false); }
@@ -216,15 +221,15 @@ export default function CommunicationsPage() {
                 <div className="cm-field full"><label htmlFor="cm-reason">Reason for sending</label><textarea id="cm-reason" required minLength={5} maxLength={2000} value={reason} onChange={event => setReason(event.target.value)} placeholder="Campaign purpose and why this audience should receive it." /></div>
               </div>
               <div className="cm-recipient-summary"><Users size={14} /><strong>{recipientCount}</strong> eligible recipient{recipientCount === 1 ? "" : "s"} with recorded marketing consent</div>
-              <label className="cm-send-check"><input type="checkbox" checked={sendConfirm === "SEND"} onChange={event => setSendConfirm(event.target.checked ? "SEND" : "")} /> I have reviewed the audience and message.</label>
+              <label className="cm-send-check"><input type="checkbox" checked={reviewed} onChange={event => setReviewed(event.target.checked)} /> I have reviewed the audience and message.</label>
               <div className="cm-field" style={{ maxWidth: 240, marginTop: 11 }}><label htmlFor="cm-type-send">Type SEND to confirm</label><input id="cm-type-send" value={sendConfirm} onChange={event => setSendConfirm(event.target.value)} autoComplete="off" /></div>
-              <div className="cm-actions"><button type="submit" className="cm-btn primary" disabled={busy || !subject.trim() || body.trim().length < 5 || reason.trim().length < 5 || sendConfirm !== "SEND" || recipientCount < 1}><Send size={14} />{busy ? "Submitting…" : "Send campaign"}</button><button type="button" className="cm-btn" onClick={startNewMessage} disabled={busy}><X size={14} /> New message</button><span className="cm-hint">Retries retain the same request ID. It changes only after a successful send or when you start a new message.</span></div>
+              <div className="cm-actions"><button type="submit" className="cm-btn primary" disabled={busy || !reviewed || !subject.trim() || body.trim().length < 5 || reason.trim().length < 5 || sendConfirm !== "SEND" || recipientCount < 1}><Send size={14} />{busy ? "Submitting…" : "Send campaign"}</button><button type="button" className="cm-btn" onClick={startNewMessage} disabled={busy}><X size={14} /> New message</button><span className="cm-hint">Retries retain the same request ID. It changes only after a successful send or when you start a new message.</span></div>
             </form>
           </section>
         </div>}
         <aside className="cm-stack">
           <section className="cm-card"><div className="cm-card-head"><div><h2>Eligible audience</h2><p>Counts use consented contact records returned for your account.</p></div></div><div className="cm-list">{(["families", "leads", "all"] as Audience[]).filter(item => isOwner || item !== "all").map(item => {
-            const count = contacts.filter(contact => contact.consent && (item === "families" ? Boolean(contact.guardianId) : item === "leads" ? Boolean(contact.leadId) : Boolean(contact.guardianId || contact.leadId))).length;
+            const count = contacts.filter(contact => contact.consent && contact.eligible !== false && (item === "families" ? Boolean(contact.guardianId) : item === "leads" ? Boolean(contact.leadId) : Boolean(contact.guardianId || contact.leadId))).length;
             return <div className="cm-row" key={item}><div><h3>{item === "all" ? "All consented contacts" : item}</h3><p>Explicit marketing permission</p></div><span className="cm-count">{count}</span></div>;
           })}</div></section>
           {isParent && <div className="cm-note"><strong>Your choice is yours</strong>Only the guardian's own marketing consent is shown and can be changed here. This action does not update a child's media-sharing preference.</div>}

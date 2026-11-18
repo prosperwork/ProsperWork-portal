@@ -6,7 +6,7 @@ export const managementAction=z.discriminatedUnion("action",[
  z.object({action:z.literal("create"),kind:z.enum(deskKinds),studentId:id.optional(),leadId:id.optional(),staffId:uuid.optional(),assignedTo:uuid,at:z.string().datetime({offset:true}),slots:z.array(z.string().datetime({offset:true})).max(10).default([]),notes}).strict(),
  z.object({action:z.literal("update"),id:uuid,revision:z.number().int().positive(),status:z.enum(["open","in_progress","completed","cancelled"]),notes}).strict(),
  z.object({action:z.literal("hierarchy"),adminId:uuid,headId:uuid,quota:z.number().int().min(0).max(1000),notes}).strict(),
- z.object({action:z.literal("announcement"),title:z.string().trim().min(1).max(160),body:notes,roles:z.array(z.enum(["super_admin","head_admin","admin","teacher","qc","hr","finance","sales_marketing","social_media","parent","student"])).min(1).max(11),expiresAt:z.string().datetime({offset:true})}).strict(),
+ z.object({action:z.literal("announcement"),title:z.string().trim().min(1).max(160),body:notes,roles:z.array(z.string().trim().toLowerCase().regex(/^[a-z][a-z0-9_]{1,40}$/)).min(1).max(50),expiresAt:z.string().datetime({offset:true})}).strict(),
  z.object({action:z.literal("announcement_archive"),id:uuid,notes}).strict(),
  z.object({action:z.literal("emergency_cover"),lessonId:id,teacherId:uuid,adminId:uuid,notes}).strict(),
  z.object({action:z.literal("deactivate"),staffId:uuid,confirm:z.literal("DEACTIVATE"),notes}).strict(),

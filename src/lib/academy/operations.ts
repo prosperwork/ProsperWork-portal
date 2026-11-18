@@ -14,7 +14,7 @@ export const operationsAction=z.discriminatedUnion("action",[
  z.object({action:z.literal("expense"),title:z.string().trim().min(1).max(120),amount:amount.positive(),currency,date,category:z.string().trim().min(1).max(100),notes:note}).strict(),
  z.object({action:z.literal("availability"),staffId:uuid,weekday:z.number().int().min(0).max(6),from:time,to:time,notes:note}).strict(),
  z.object({action:z.literal("availability_remove"),id:uuid,notes:note}).strict(),
- z.object({action:z.literal("recurrence"),studentId:id,weekday:z.number().int().min(0).max(6),time,zone,duration:z.number().int().min(45).max(180),startsOn:date,weeks:z.number().int().min(1).max(26),notes:note}).strict(),
+ z.object({action:z.literal("recurrence"),studentId:id,weekday:z.number().int().min(0).max(6),time,zone,duration:z.number().int().min(1).max(180),startsOn:date,weeks:z.number().int().min(1).max(26),notes:note}).strict(),
  z.object({action:z.literal("pause"),studentId:id,resumeOn:date.nullable(),notes:note}).strict(),
  z.object({action:z.literal("resume"),id:uuid,notes:note}).strict(),
  z.object({action:z.literal("reassign"),studentId:id,teacherId:uuid,adminId:uuid,notes:note}).strict(),

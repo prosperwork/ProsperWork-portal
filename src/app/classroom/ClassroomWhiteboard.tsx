@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { useDataChannel, useRoomContext } from "@livekit/components-react";
+import { useDataChannel } from "@livekit/components-react";
 import {
   Columns2,
   Eraser,
@@ -32,6 +32,7 @@ interface DrawStroke {
   color: string;
   width: number;
   isHighlighter?: boolean;
+  isEraser?: boolean;
 }
 
 interface TypingState {
@@ -49,16 +50,14 @@ export default function ClassroomWhiteboard({
   onClose,
   pianoOpen = false,
   isLocked = false,
-  isAdmin = false,
 }: ClassroomWhiteboardProps) {
-  const room = useRoomContext();
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const containerRef = useRef<HTMLDivElement | null>(null);
   const directInputRef = useRef<HTMLInputElement | null>(null);
 
   const [tool, setTool] = useState<ToolType>("pen");
   const [color, setColor] = useState("#2ed573");
-  const [strokeWidth, setStrokeWidth] = useState(3);
+  const [strokeWidth] = useState(3);
   const [fontSize, setFontSize] = useState(22);
   const [showStaff, setShowStaff] = useState(true);
   const [layoutMode, setLayoutMode] = useState<LayoutMode>("full");
@@ -69,36 +68,6 @@ export default function ClassroomWhiteboard({
 
   const isDrawingRef = useRef(false);
   const currentStrokeRef = useRef<DrawPoint[]>([]);
-
-  // Draw musical staff lines
-  const drawStaffLines = (
-    ctx: CanvasRenderingContext2D,
-    width: number,
-    height: number
-  ) => {
-    if (!showStaff) return;
-    ctx.save();
-    ctx.strokeStyle = "rgba(255, 255, 255, 0.18)";
-    ctx.lineWidth = 1.5;
-
-    // Draw 2 staves (Treble and Bass system)
-    const staffHeight = 60;
-    const lineSpacing = staffHeight / 4;
-
-    const staves = [height * 0.3, height * 0.65];
-
-    staves.forEach((topY) => {
-      for (let i = 0; i < 5; i++) {
-        const y = topY + i * lineSpacing;
-        ctx.beginPath();
-        ctx.moveTo(40, y);
-        ctx.lineTo(width - 40, y);
-        ctx.stroke();
-      }
-    });
-
-    ctx.restore();
-  };
 
   const drawTextOnCanvas = (
     ctx: CanvasRenderingContext2D,
@@ -127,7 +96,12 @@ export default function ClassroomWhiteboard({
     if (!ctx) return;
 
     ctx.save();
-    ctx.strokeStyle = stroke.color;
+    if (stroke.isEraser || stroke.color === "#16201a") {
+      ctx.globalCompositeOperation = "destination-out";
+      ctx.strokeStyle = "rgba(0,0,0,1)";
+    } else {
+      ctx.strokeStyle = stroke.color;
+    }
     ctx.lineWidth = stroke.width;
     ctx.lineCap = "round";
     ctx.lineJoin = "round";
@@ -158,7 +132,6 @@ export default function ClassroomWhiteboard({
     const ctx = canvas.getContext("2d");
     if (!ctx) return;
     ctx.clearRect(0, 0, canvas.width, canvas.height);
-    drawStaffLines(ctx, canvas.width, canvas.height);
   };
 
   // Listen to remote whiteboard events (Always active, even when isLocked is true)
@@ -251,8 +224,16 @@ export default function ClassroomWhiteboard({
     const canvas = canvasRef.current;
     if (!canvas) return null;
     const rect = canvas.getBoundingClientRect();
-    const clientX = "touches" in e ? e.touches[0].clientX : e.clientX;
-    const clientY = "touches" in e ? e.touches[0].clientY : e.clientY;
+    let clientX: number;
+    let clientY: number;
+    if ("touches" in e) {
+      if (!e.touches || e.touches.length === 0) return null;
+      clientX = e.touches[0].clientX;
+      clientY = e.touches[0].clientY;
+    } else {
+      clientX = e.clientX;
+      clientY = e.clientY;
+    }
     const screenX = clientX - rect.left;
     const screenY = clientY - rect.top;
     return {
@@ -294,7 +275,12 @@ export default function ClassroomWhiteboard({
     if (!ctx) return;
 
     ctx.save();
-    ctx.strokeStyle = tool === "eraser" ? "#16201a" : color;
+    if (tool === "eraser") {
+      ctx.globalCompositeOperation = "destination-out";
+      ctx.strokeStyle = "rgba(0,0,0,1)";
+    } else {
+      ctx.strokeStyle = color;
+    }
     ctx.lineWidth = tool === "eraser" ? 22 : strokeWidth;
     ctx.lineCap = "round";
     ctx.lineJoin = "round";
@@ -335,6 +321,7 @@ export default function ClassroomWhiteboard({
         color: tool === "eraser" ? "#16201a" : color,
         width: tool === "eraser" ? 22 : strokeWidth,
         isHighlighter: tool === "highlighter",
+        isEraser: tool === "eraser",
       };
       const payload = JSON.stringify({ type: "stroke", stroke });
       sendWhiteboard(new TextEncoder().encode(payload), { reliable: true });
@@ -369,14 +356,10 @@ export default function ClassroomWhiteboard({
     canvas.width = nextWidth;
     canvas.height = nextHeight;
     const ctx = canvas.getContext("2d");
-    if (ctx) {
-      if (tempCanvas && tempCanvas.width > 0) {
-        ctx.drawImage(tempCanvas, 0, 0, nextWidth, nextHeight);
-      } else {
-        drawStaffLines(ctx, nextWidth, nextHeight);
-      }
+    if (ctx && tempCanvas && tempCanvas.width > 0) {
+      ctx.drawImage(tempCanvas, 0, 0, nextWidth, nextHeight);
     }
-  }, [showStaff, layoutMode, pianoOpen]);
+  }, [layoutMode, pianoOpen]);
 
   // Focus input when typing state activates
   useEffect(() => {
@@ -901,11 +884,12 @@ export default function ClassroomWhiteboard({
 
           <button
             type="button"
+            aria-label="Close whiteboard"
             onClick={onClose}
             style={{
               background: "transparent",
               border: "none",
-              color: "#aaa",
+              color: "#a7b8ae",
               cursor: "pointer",
               padding: 2,
             }}
@@ -916,7 +900,7 @@ export default function ClassroomWhiteboard({
         </div>
       </div>
 
-      {/* Canvas Area with Direct On-Canvas Typing */}
+      {/* Canvas Area with Separate Staff Background Layer and Direct On-Canvas Typing */}
       <div
         style={{
           flex: 1,
@@ -926,6 +910,36 @@ export default function ClassroomWhiteboard({
           overflow: "hidden",
         }}
       >
+        {showStaff && (
+          <svg
+            aria-hidden="true"
+            viewBox="0 0 1000 600"
+            preserveAspectRatio="none"
+            style={{
+              position: "absolute",
+              inset: 0,
+              width: "100%",
+              height: "100%",
+              pointerEvents: "none",
+              zIndex: 1,
+            }}
+          >
+            {[180, 390].map((topY) =>
+              [0, 1, 2, 3, 4].map((lineIdx) => (
+                <line
+                  key={`${topY}-${lineIdx}`}
+                  x1="40"
+                  x2="960"
+                  y1={topY + lineIdx * 20}
+                  y2={topY + lineIdx * 20}
+                  stroke="rgba(255, 255, 255, 0.18)"
+                  strokeWidth="1.5"
+                  vectorEffect="non-scaling-stroke"
+                />
+              ))
+            )}
+          </svg>
+        )}
         <canvas
           ref={canvasRef}
           onMouseDown={handlePointerDown}
@@ -936,6 +950,8 @@ export default function ClassroomWhiteboard({
           onTouchMove={handlePointerMove}
           onTouchEnd={handlePointerUp}
           style={{
+            position: "relative",
+            zIndex: 2,
             width: "100%",
             height: "100%",
             display: "block",

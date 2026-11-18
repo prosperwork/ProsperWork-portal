@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { identity } from "@/lib/supabase/identity";
-import { sameOrigin } from "@/lib/supabase/server";
+import { impersonationBlocked, sameOrigin } from "@/lib/supabase/server";
 import { academySettingsSchema } from "@/lib/academy/settings";
 
 export async function GET() {
@@ -27,6 +27,8 @@ export async function POST(request: Request) {
     const { client, profile } = await identity();
     if (profile?.role !== "super_admin" || profile.status !== "active")
       return NextResponse.json({ error: "Super Admin access is required." }, { status: 403 });
+    const blocked = impersonationBlocked(profile);
+    if (blocked) return blocked;
     const input = z.object({ revision: z.number().int().positive(), settings: academySettingsSchema }).strict().safeParse(await request.json());
     if (!input.success) return NextResponse.json({ error: "Check the values and allowed ranges." }, { status: 400 });
     const { data, error } = await client.rpc("pw_save_settings", { p_revision: input.data.revision, p_settings: input.data.settings });

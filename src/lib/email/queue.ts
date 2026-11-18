@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { provisioningClient } from "@/lib/supabase/server";
 import { deliverEmail } from "@/lib/email/transport.mjs";
+import { fetchPublicAcademyConfig } from "@/lib/academy/catalogs";
 
 export interface QueueEmailParams {
   id?: string;
@@ -33,7 +34,9 @@ export async function sendOrQueueEmail(params: QueueEmailParams): Promise<{
   };
 
   try {
-    await deliverEmail(job, params.appUrl);
+    const adminClient = provisioningClient();
+    const config = await fetchPublicAcademyConfig(adminClient).catch(() => null);
+    await deliverEmail(job, params.appUrl, config?.emails);
     return { delivered: true, queued: false };
   } catch (err: any) {
     const errorMsg = err instanceof Error ? err.message : String(err);
@@ -108,8 +111,21 @@ export async function processQueuedComplaintEmails(appUrl: string): Promise<{
       return stats;
     }
 
+    const academyConfig = await fetchPublicAcademyConfig(adminClient);
+
     for (let i = 0; i < pending.length; i++) {
       const item = pending[i];
+
+      // Atomically claim the queued row with leased_at so crashed jobs are reclaimed by pw_claim_emails
+      const leaseId = randomUUID();
+      const { data: claimed } = await adminClient
+        .from("pw_emails")
+        .update({ status: "sending", lease_id: leaseId, leased_at: new Date().toISOString() })
+        .eq("id", item.id)
+        .eq("status", "queued")
+        .select("id")
+        .maybeSingle();
+      if (!claimed) continue;
 
       // Introduce a 5-second pacing gap between emails to respect Spacemail flood protection
       if (i > 0) {
@@ -122,11 +138,11 @@ export async function processQueuedComplaintEmails(appUrl: string): Promise<{
         payload.targetEmail ||
         payload.parentEmail ||
         payload.email ||
-        "support@prosperworkmusic.com";
+        academyConfig.emails.support;
 
       const job = {
         id: item.id,
-        lease_id: randomUUID(),
+        lease_id: leaseId,
         category: "complaints",
         email: targetEmail,
         subject: item.subject,
@@ -135,7 +151,7 @@ export async function processQueuedComplaintEmails(appUrl: string): Promise<{
       };
 
       try {
-        await deliverEmail(job, appUrl);
+        await deliverEmail(job, appUrl, academyConfig.emails);
         await adminClient
           .from("pw_emails")
           .update({
@@ -143,14 +159,14 @@ export async function processQueuedComplaintEmails(appUrl: string): Promise<{
             sent_at: new Date().toISOString(),
             last_error: null,
           })
-          .eq("id", item.id);
+          .eq("id", item.id)
+          .eq("lease_id", leaseId);
         stats.sent++;
       } catch (sendErr: any) {
         stats.failed++;
         const nextAttempts = (item.attempts || 0) + 1;
         const errMsg = sendErr instanceof Error ? sendErr.message : String(sendErr);
 
-        // Stagger retry with jitter (15 to 30 mins) so emails never wake up at the exact same instant
         const staggerMinutes = 15 + Math.floor(Math.random() * 15);
         await adminClient
           .from("pw_emails")
@@ -160,7 +176,8 @@ export async function processQueuedComplaintEmails(appUrl: string): Promise<{
             scheduled_at: new Date(Date.now() + staggerMinutes * 60 * 1000).toISOString(),
             last_error: errMsg,
           })
-          .eq("id", item.id);
+          .eq("id", item.id)
+          .eq("lease_id", leaseId);
 
         // If throttled by server rate limits, stop processing remaining items in this batch immediately
         if (

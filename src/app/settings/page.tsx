@@ -2,7 +2,11 @@
 
 import { useCallback, useEffect, useState, type FormEvent } from "react";
 import { Link2, Mail, RefreshCw, Save, ShieldCheck, Check, AlertTriangle } from "lucide-react";
+import { readJson } from "@/lib/academy/web-client";
+import { DEFAULT_ACADEMY_EMAILS, type AcademyEmails } from "@/lib/academy/catalogs";
 import FinanceSettings from "./FinanceSettings";
+import RolePermissionsSettings from "./RolePermissionsSettings";
+import CatalogSettings from "./CatalogSettings";
 
 type Settings = {
   standardMinutes: number;
@@ -16,6 +20,9 @@ type Settings = {
   advanceEligibility: "not_configured" | "owner_selected" | "previous_period_verified" | "disabled";
   vacationAutoApprove: boolean;
   adminParentQuota: number;
+  inactivityTimeoutMinutes: number;
+  defaultTimezone: string;
+  emails: AcademyEmails;
 };
 type SettingsResponse = {
   profile: { role: string; name: string };
@@ -25,21 +32,61 @@ type SettingsResponse = {
 };
 type EmailMessage = { id: string; category: string; status: string; subject: string; created_at: string; sent_at: string | null; attempts: number };
 type SmtpTest = { status: "queued" | "sending" | "sent" | "failed" | "cancelled"; created_at: string; sent_at: string | null };
-type NumberKey = "standardMinutes" | "trialMinutes" | "coverMinutes" | "rescheduleNoticeHours" | "adminConcurrentClasses" | "joinBeforeHours" | "joinAfterHours" | "adminParentQuota";
+type NumberKey = "standardMinutes" | "trialMinutes" | "coverMinutes" | "rescheduleNoticeHours" | "adminConcurrentClasses" | "joinBeforeHours" | "joinAfterHours" | "adminParentQuota" | "inactivityTimeoutMinutes";
 
 const numericFields: { key: NumberKey; title: string; detail: string; min: number; max: number; suffix: string }[] = [
-  { key: "standardMinutes", title: "Standard lesson", detail: "Normally one hour; 45–60 minutes. Staff schedule individual agreed extensions separately.", min: 45, max: 60, suffix: "min" },
-  { key: "trialMinutes", title: "Trial lesson", detail: "Normal trial length: 45–60 minutes.", min: 45, max: 60, suffix: "min" },
-  { key: "coverMinutes", title: "Cover lesson", detail: "Normal cover length: 45–60 minutes.", min: 45, max: 60, suffix: "min" },
-  { key: "rescheduleNoticeHours", title: "Reschedule notice", detail: "Minimum notice families should give; at least two hours.", min: 2, max: 72, suffix: "hrs" },
-  { key: "adminConcurrentClasses", title: "Admin concurrent classes", detail: "The document allows two or three simultaneous classes.", min: 2, max: 3, suffix: "classes" },
+  { key: "standardMinutes", title: "Standard lesson", detail: "Default duration for standard lessons (1–180 minutes).", min: 1, max: 180, suffix: "min" },
+  { key: "trialMinutes", title: "Trial lesson", detail: "Default duration for trial lessons (1–180 minutes).", min: 1, max: 180, suffix: "min" },
+  { key: "coverMinutes", title: "Cover lesson", detail: "Default duration for substitute cover lessons (1–180 minutes).", min: 1, max: 180, suffix: "min" },
+  { key: "rescheduleNoticeHours", title: "Reschedule notice", detail: "Minimum notice families should give before rescheduling.", min: 0, max: 72, suffix: "hrs" },
+  { key: "adminConcurrentClasses", title: "Admin concurrent classes", detail: "Maximum simultaneous classes per assigned administrator.", min: 1, max: 20, suffix: "classes" },
   { key: "joinBeforeHours", title: "Early room access", detail: "How early the lesson room may open.", min: 0, max: 2, suffix: "hrs" },
   { key: "joinAfterHours", title: "Room close buffer", detail: "How long the room remains available after start.", min: 5, max: 6, suffix: "hrs" },
   { key: "adminParentQuota", title: "Parent count before PAY bonus", detail: "Threshold for the admin PAY bonus; it never caps or blocks parent access.", min: 0, max: 1000, suffix: "parents" },
+  { key: "inactivityTimeoutMinutes", title: "Session inactivity timeout", detail: "Auto sign-out duration after idle time across the portal (15–480 minutes).", min: 15, max: 480, suffix: "min" },
 ];
 
+const emailFields: { key: keyof AcademyEmails; label: string }[] = [
+  { key: "admissions", label: "Admissions inbox" },
+  { key: "complaints", label: "Complaints & support inbox" },
+  { key: "support", label: "Student support fallback" },
+  { key: "fees", label: "Fees & billing inbox" },
+  { key: "info", label: "General info inbox" },
+];
+
+function hydrateSettings(raw: Partial<Settings> | undefined): Settings {
+  return {
+    standardMinutes: raw?.standardMinutes ?? 60,
+    trialMinutes: raw?.trialMinutes ?? 45,
+    coverMinutes: raw?.coverMinutes ?? 60,
+    rescheduleNoticeHours: raw?.rescheduleNoticeHours ?? 2,
+    adminConcurrentClasses: raw?.adminConcurrentClasses ?? 3,
+    joinBeforeHours: raw?.joinBeforeHours ?? 1,
+    joinAfterHours: raw?.joinAfterHours ?? 5,
+    payrollWeekAnchor: raw?.payrollWeekAnchor ?? "not_configured",
+    advanceEligibility: raw?.advanceEligibility ?? "not_configured",
+    vacationAutoApprove: Boolean(raw?.vacationAutoApprove),
+    adminParentQuota: raw?.adminParentQuota ?? 0,
+    inactivityTimeoutMinutes: raw?.inactivityTimeoutMinutes ?? 60,
+    defaultTimezone: raw?.defaultTimezone || "Africa/Lagos",
+    emails: {
+      ...DEFAULT_ACADEMY_EMAILS,
+      ...(raw?.emails || {}),
+    },
+  };
+}
+
 const label = (value: string) => value.replace(/_/g, " ").replace(/\b\w/g, letter => letter.toUpperCase());
-async function readJson(response: Response) { return response.json().catch(() => ({})); }
+
+function isValidIanaTimezone(tz: string): boolean {
+  if (!tz || !tz.trim()) return false;
+  try {
+    new Intl.DateTimeFormat("en", { timeZone: tz.trim() });
+    return true;
+  } catch {
+    return false;
+  }
+}
 
 export default function SettingsPage() {
   const [data, setData] = useState<SettingsResponse | null>(null);
@@ -59,13 +106,15 @@ export default function SettingsPage() {
     setLoading(true); setError(""); setNotice(""); setDenied(false);
     try {
       const response = await fetch("/api/settings", { credentials: "include", cache: "no-store" });
-      const result = await readJson(response);
+      const result = await readJson<Partial<SettingsResponse> & { error?: string }>(response);
       if (response.status === 401) { window.location.assign("/login"); return false; }
       if (!response.ok) {
         if (response.status === 403) setDenied(true);
         throw new Error(result.error || (response.status === 403 ? "Settings are restricted to the academy owner." : "Settings could not be loaded."));
       }
-      setData(result as SettingsResponse); setDraft(result.settings as Settings);
+      const hydrated = hydrateSettings(result.settings);
+      setData({ ...(result as SettingsResponse), settings: hydrated });
+      setDraft(hydrated);
       if (result.profile?.role !== "super_admin") setDenied(true);
       return true;
     } catch (cause) { setError(cause instanceof Error ? cause.message : "Settings could not be loaded."); return false; }
@@ -76,7 +125,7 @@ export default function SettingsPage() {
     setEmailLoading(true); setMessageError("");
     try {
       const response = await fetch("/api/email", { credentials: "include", cache: "no-store" });
-      const result = await readJson(response);
+      const result = await readJson<{ messages?: EmailMessage[]; smtpTest?: SmtpTest | null; error?: string }>(response);
       if (!response.ok) throw new Error(result.error || "Delivery log is unavailable.");
       setMessages(Array.isArray(result.messages) ? result.messages : []);
       setSmtpTest(result.smtpTest ?? null);
@@ -113,10 +162,13 @@ export default function SettingsPage() {
     setSaving(true); setError(""); setNotice("");
     try {
       const response = await fetch("/api/settings", { method: "POST", credentials: "include", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ revision: data.revision, settings: draft }) });
-      const result = await readJson(response);
+      const result = await readJson<{ ok?: boolean; error?: string }>(response);
       if (response.status === 409) { await load(); setError(result.error || "These settings changed elsewhere. The latest saved values have been reloaded."); return; }
       if (!response.ok || result.ok !== true) throw new Error(result.error || "The save was not confirmed.");
       const refreshed = await load();
+      if (typeof window !== "undefined") {
+        window.dispatchEvent(new CustomEvent("pw-academy-config-updated"));
+      }
       if (!refreshed) {
         setNotice("");
         setError("The save was accepted, but the latest saved values could not be confirmed. Reload settings to verify.");
@@ -130,7 +182,7 @@ export default function SettingsPage() {
     setTesting(true); setError(""); setNotice("");
     try {
       const response = await fetch("/api/email/test", { method: "POST", credentials: "include", headers: { "Content-Type": "application/json" }, body: "{}" });
-      const result = await readJson(response);
+      const result = await readJson<{ ok?: boolean; error?: string }>(response);
       if (!response.ok || result.ok !== true) throw new Error(result.error || "Verification could not be confirmed.");
       setNotice("Verification email accepted for delivery to your verified owner address.");
       await loadEmail();
@@ -156,11 +208,27 @@ export default function SettingsPage() {
                 <div className="ps-fields">{numericFields.slice(0, 7).map(field => <label className="ps-number" key={field.key}><span className="ps-number-copy"><strong>{field.title}</strong><small>{field.detail}</small></span><span className="ps-number-input"><input type="number" min={field.min} max={field.max} step="1" required value={draft[field.key]} onChange={event => setNumber(field.key, event.target.value)} aria-label={field.title} /><small>{field.suffix}</small></span></label>)}</div>
                 <div className="ps-note"><span><strong>Student room window</strong> Current rule allows access up to {draft.joinBeforeHours} hour{draft.joinBeforeHours === 1 ? "" : "s"} before class and keeps the room open for {draft.joinAfterHours} hours after its start.</span></div>
               </section>
-              <section className="ps-card ps-setting-group" aria-labelledby="staffing-rules"><header className="ps-card-head"><div><h2 id="staffing-rules">Staffing &amp; family access</h2></div></header>
+              <section className="ps-card ps-setting-group" aria-labelledby="staffing-rules"><header className="ps-card-head"><div><h2 id="staffing-rules">Staffing, session &amp; routing defaults</h2></div></header>
                 <label className="ps-number ps-quota"><span className="ps-number-copy"><strong>{numericFields[7].title}</strong><small>{numericFields[7].detail}</small></span><span className="ps-number-input"><input type="number" min={0} max={1000} step="1" required value={draft.adminParentQuota} onChange={event => setNumber("adminParentQuota", event.target.value)} aria-label="Admin parent quota" /><small>parents</small></span></label>
+                <label className="ps-number"><span className="ps-number-copy"><strong>{numericFields[8].title}</strong><small>{numericFields[8].detail}</small></span><span className="ps-number-input"><input type="number" min={15} max={480} step="1" required value={draft.inactivityTimeoutMinutes} onChange={event => setNumber("inactivityTimeoutMinutes", event.target.value)} aria-label="Session inactivity timeout" /><small>min</small></span></label>
+                <div className="ps-routing-grid">
+                  <label className="ps-finance-field">Default academy timezone
+                    <input type="text" required maxLength={100} value={draft.defaultTimezone} onChange={event => setDraft(current => current ? { ...current, defaultTimezone: event.target.value } : current)} placeholder="Africa/Lagos" />
+                    {!isValidIanaTimezone(draft.defaultTimezone) && (
+                      <small style={{ color: "#dc2626", marginTop: "4px", display: "block" }}>
+                        Enter a valid IANA timezone (e.g. Africa/Lagos, Europe/London).
+                      </small>
+                    )}
+                  </label>
+                  {emailFields.map((ef) => (
+                    <label className="ps-finance-field" key={ef.key}>{ef.label}
+                      <input type="email" required maxLength={254} value={draft.emails[ef.key]} onChange={event => setDraft(current => current ? { ...current, emails: { ...current.emails, [ef.key]: event.target.value } } : current)} />
+                    </label>
+                  ))}
+                </div>
                 <div className="ps-rule-row"><span><strong>Vacation payroll delegation</strong><small>When enabled, Finance submissions are automatically approved under your recorded authorization. Disable it to require your review of every batch.</small></span><label className="ps-switch"><input type="checkbox" checked={draft.vacationAutoApprove} onChange={event => setDraft(current => current ? { ...current, vacationAutoApprove: event.target.checked } : current)} /><span aria-hidden="true" /><b>{draft.vacationAutoApprove ? "On" : "Off"}</b></label></div>
               </section>
-               <div className="ps-form-actions"><button className="ps-primary" type="submit" disabled={saving || !changed}>{saving ? <><RefreshCw size={15} className="ps-spin" />Saving…</> : <><Save size={15} />Save changes</>}</button></div>
+               <div className="ps-form-actions"><button className="ps-primary" type="submit" disabled={saving || !changed || !isValidIanaTimezone(draft.defaultTimezone)}>{saving ? <><RefreshCw size={15} className="ps-spin" />Saving…</> : <><Save size={15} />Save changes</>}</button></div>
             </div>
             <aside className="ps-stack">
               <section className="ps-card ps-setting-group" aria-labelledby="payroll-heading"><header className="ps-card-head"><div><h2 id="payroll-heading">Payroll foundations</h2></div></header>
@@ -181,7 +249,9 @@ export default function SettingsPage() {
           {messageError ? <div className="ps-log-state error" role="alert">{messageError}</div> : messages.length === 0 ? <div className="ps-log-state">No delivery records are available yet.</div> : <div className="ps-table-wrap"><table><thead><tr><th>Message</th><th>Category</th><th>Status</th><th>Created</th><th>Sent</th><th>Attempts</th></tr></thead><tbody>{messages.map(item => <tr key={item.id}><td>{item.subject || "Email message"}</td><td>{label(item.category)}</td><td><span className={`ps-status-pill ${item.status === "sent" ? "sent" : ""}`}>{label(item.status)}</span></td><td>{dateLabel(item.created_at)}</td><td>{item.sent_at ? dateLabel(item.sent_at) : "—"}</td><td>{item.attempts}</td></tr>)}</tbody></table></div>}
         </section>
       </>}
-      {data&&<FinanceSettings role={data.profile.role}/>}
+      {data && <RolePermissionsSettings role={data.profile.role} />}
+      {data && <CatalogSettings role={data.profile.role} />}
+      {data && <FinanceSettings role={data.profile.role} />}
       <footer className="ps-footer"><span>ProsperWork · Music Concepts</span><span>Private academy operations</span></footer>
     </div>
   </main>;

@@ -388,10 +388,10 @@ export default function LearningPage() {
       if (pendingBoardPostRef.current === pendingPost)
         pendingBoardPostRef.current = null;
       savingRef.current = false;
-      if (dirtyRef.current && !conflictRef.current) {
+      if (mountedRef.current && dirtyRef.current && !conflictRef.current) {
         if (saveTimer.current) clearTimeout(saveTimer.current);
         saveTimer.current = setTimeout(() => {
-          void saveRef.current();
+          if (mountedRef.current) void saveRef.current();
         }, 800);
       }
     }
@@ -413,21 +413,23 @@ export default function LearningPage() {
   useEffect(() => {
     if (!data) return;
     let cancelled = false;
-    let channel: { unsubscribe: () => Promise<unknown> } | null = null;
+    let client: ReturnType<typeof createBrowserClient> | null = null;
+    let channel: ReturnType<ReturnType<typeof createBrowserClient>["channel"]> | null = null;
     const connect = async () => {
       setConnection("connecting");
       try {
-        const client = createBrowserClient(
+        const browserClient = createBrowserClient(
           process.env.NEXT_PUBLIC_SUPABASE_URL!,
           process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
         );
+        client = browserClient;
         const { data: authData, error: authError } =
-          await client.auth.getSession();
+          await browserClient.auth.getSession();
         if (authError) throw authError;
         if (authData.session?.access_token)
-          await client.realtime.setAuth(authData.session.access_token);
+          await browserClient.realtime.setAuth(authData.session.access_token);
         if (cancelled) return;
-        let liveChannel = client.channel(
+        let liveChannel = browserClient.channel(
           `pw-learning-live-${selectedLessonId || "resources"}`
         );
         if (selectedLessonId)
@@ -505,6 +507,10 @@ export default function LearningPage() {
               void load(true);
             } else if (status === "CLOSED") setConnection("disconnected");
           });
+        if (cancelled && channel) {
+          void browserClient.removeChannel(channel);
+          channel = null;
+        }
       } catch {
         if (!cancelled) setConnection("error");
       }
@@ -512,7 +518,11 @@ export default function LearningPage() {
     void connect();
     return () => {
       cancelled = true;
-      if (channel) void channel.unsubscribe();
+      if (client && channel) {
+        void client.removeChannel(channel);
+      } else if (channel) {
+        void channel.unsubscribe();
+      }
     };
   }, [data?.profile.id, load, selectedLessonId]);
 
