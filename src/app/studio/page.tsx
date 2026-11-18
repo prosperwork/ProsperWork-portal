@@ -264,15 +264,16 @@ export default function StudioPage() {
   }, []);
 
   const role = roleKey(data?.profile.role ?? "");
+  const perms = useMemo(() => new Set(data?.profile.permissions ?? []), [data?.profile?.permissions]);
   const isActive = data?.profile.status.trim().toLowerCase() === "active";
   const isOwner = role === "owner" || role === "super_admin";
   const isQualityControl =
-    role === "qc" || role === "quality_control" || role === "quality_assurance";
-  const isTeacher = role === "teacher";
-  const isHeadAdmin = role === "head_admin" || role === "headadmin";
+    role === "qc" || role === "quality_control" || role === "quality_assurance" || perms.has("reports.learning");
+  const isTeacher = role === "teacher" || data?.profile.department === "Music Education" || role.includes("teacher") || perms.has("workspace.learning");
+  const isHeadAdmin = role === "head_admin" || role === "headadmin" || perms.has("workspace.management");
   const isAdmin =
-    role === "admin" || role === "administrator" || isHeadAdmin || isOwner;
-  const isStaff = isAdmin || isTeacher || isQualityControl;
+    role === "admin" || role === "administrator" || isHeadAdmin || isOwner || perms.has("workspace.studio");
+  const isStaff = !["parent", "guardian", "student", "family"].includes(role);
   const isFamily = [
     "parent",
     "guardian",

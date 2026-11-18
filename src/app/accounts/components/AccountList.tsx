@@ -139,7 +139,7 @@ export default function AccountList({
       ) : (
         <div className="pw-account-list">
           {visibleAccounts.map((account) => {
-            const isOwner = account.role === "super_admin";
+            const isOwner = account.role === "super_admin" || account.role === "owner";
             return (
               <article
                 className={`pw-account-row ${isOwner ? "is-owner" : ""}`}

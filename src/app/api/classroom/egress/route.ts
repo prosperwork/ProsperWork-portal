@@ -94,7 +94,7 @@ export async function POST(request: Request) {
     }
 
     if (input.action === "stop") {
-      if (profile.role !== "super_admin") {
+      if (profile.role !== "super_admin" && profile.role !== "owner") {
         if (!input.lessonId) {
           return NextResponse.json({ error: "lessonId is required to stop recording." }, { status: 400 });
         }
@@ -122,7 +122,7 @@ export async function POST(request: Request) {
     }
 
     // action === "list"
-    if (profile.role !== "super_admin") {
+    if (profile.role !== "super_admin" && profile.role !== "owner") {
       if (!input.lessonId) {
         return NextResponse.json({ error: "Specify a lessonId to list classroom recordings." }, { status: 400 });
       }

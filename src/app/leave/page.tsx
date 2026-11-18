@@ -90,12 +90,13 @@ export default function LeavePage() {
   useEffect(() => { void load(); }, [load]);
 
   const role = roleKey(data?.profile.role ?? "");
+  const perms = useMemo(() => new Set(data?.profile.permissions ?? []), [data?.profile?.permissions]);
   const isActive = data?.profile.status.trim().toLowerCase() === "active";
-  const isHR = role === "hr";
-  const isHead = role === "head" || role === "head_admin";
   const isOwner = role === "owner" || role === "super_admin";
+  const isHR = role === "hr" || perms.has("workspace.hiring") || perms.has("workspace.leave");
+  const isHead = role === "head" || role === "head_admin" || perms.has("workspace.management");
   const isHeadOwner = isHead || isOwner;
-  const isManager = isHR || isHeadOwner;
+  const isManager = isHR || isHeadOwner || perms.has("workspace.leave");
   const canRequestOwn = Boolean(isActive && isStaffRole(role));
   const canRequestForOthers = Boolean(isActive && isManager);
   const deviceTimezone = typeof Intl !== "undefined" ? Intl.DateTimeFormat().resolvedOptions().timeZone || "device local time" : "device local time";
@@ -215,26 +216,36 @@ export default function LeavePage() {
   };
 
   const peopleForCover = (leave: StaffLeave) => {
-    const absenceRole = roleKey(staffById.get(leave.staff_id)?.role ?? "");
-    const permitted = absenceRole === "teacher"
-      ? new Set(["teacher", "qc", "quality_control"])
-      : absenceRole === "admin" ? new Set(["admin", "head", "head_admin"]) : new Set<string>();
-    return (data?.directory ?? []).filter(person => person.id !== leave.staff_id && person.status.trim().toLowerCase() === "active" && permitted.has(roleKey(person.role)));
+    const absentStaff = staffById.get(leave.staff_id);
+    const absenceRole = roleKey(absentStaff?.role ?? "");
+    const isEducator = absenceRole === "teacher" || absentStaff?.department === "Music Education" || absenceRole.includes("teacher");
+    return (data?.directory ?? []).filter(person => {
+      if (person.id === leave.staff_id || person.status.trim().toLowerCase() !== "active") return false;
+      const pRole = roleKey(person.role);
+      if (isEducator) {
+        return pRole === "teacher" || pRole === "qc" || pRole === "quality_control" || person.department === "Music Education" || pRole.includes("teacher");
+      }
+      return pRole === "admin" || pRole === "head" || pRole === "head_admin" || (person.department !== "Music Education" && pRole !== "parent" && pRole !== "student");
+    });
   };
 
   const coverPlans = (leave: StaffLeave) => {
-    if (!data || !["teacher", "admin"].includes(roleKey(staffById.get(leave.staff_id)?.role ?? ""))) return [];
-    const absentRole = roleKey(staffById.get(leave.staff_id)?.role ?? "");
+    if (!data) return [];
+    const absentStaff = staffById.get(leave.staff_id);
+    const absentRole = roleKey(absentStaff?.role ?? "");
+    const isEducator = absentRole === "teacher" || absentStaff?.department === "Music Education" || absentRole.includes("teacher");
     return data.students.filter(student =>
       student.payload.status.trim().toLowerCase() === "active" &&
-      (absentRole === "teacher" ? student.teacher_id === leave.staff_id : student.admin_id === leave.staff_id)
+      (isEducator ? student.teacher_id === leave.staff_id : student.admin_id === leave.staff_id)
     );
   };
 
   const coverGroupKey = (leave: StaffLeave, studentId: string) => {
     const student = data?.students.find(row => row.id === studentId);
-    const absentRole = roleKey(staffById.get(leave.staff_id)?.role ?? "");
-    return absentRole === "admin" ? `${leave.id}:parent:${student?.parent_id ?? studentId}` : `${leave.id}:student:${studentId}`;
+    const absentStaff = staffById.get(leave.staff_id);
+    const absentRole = roleKey(absentStaff?.role ?? "");
+    const isEducator = absentRole === "teacher" || absentStaff?.department === "Music Education" || absentRole.includes("teacher");
+    return !isEducator ? `${leave.id}:parent:${student?.parent_id ?? studentId}` : `${leave.id}:student:${studentId}`;
   };
   const selectedCover = (leave: StaffLeave, studentId: string) => {
     const groupKey = coverGroupKey(leave, studentId);
@@ -324,15 +335,17 @@ export default function LeavePage() {
                   {visibleLeaves.length ? <div className="leave-card-body">{visibleLeaves.map(leave => {
                     const own = leave.staff_id === data.profile.id;
                     const maySeeReason = own || isManager;
-                    const staffRole = roleKey(staffById.get(leave.staff_id)?.role ?? "");
+                    const absentStaff = staffById.get(leave.staff_id);
+                    const staffRole = roleKey(absentStaff?.role ?? "");
+                    const isEducator = staffRole === "teacher" || absentStaff?.department === "Music Education" || staffRole.includes("teacher");
                     const affected = coverPlans(leave);
                     const assignedCovers = data.covers.filter(cover => cover.leave_id === leave.id);
                     const eligibleCoverIds = new Set(peopleForCover(leave).map(person => person.id));
                     const validAssignedCovers = assignedCovers.filter(cover => eligibleCoverIds.has(cover.cover_id));
                     const coveredStudentIds = new Set(validAssignedCovers.map(cover => cover.student_id));
-                    const needsCoverPlan = ["teacher", "admin"].includes(staffRole);
+                    const needsCoverPlan = isEducator || staffRole === "admin" || staffRole === "head_admin" || absentStaff?.department === "Administration";
                     const parentGroups = Array.from(new Set(affected.map(student => student.parent_id)));
-                    const sharedAdminCoversConsistent = staffRole !== "admin" || parentGroups.every(parentId => {
+                    const sharedAdminCoversConsistent = isEducator || parentGroups.every(parentId => {
                       const siblings = affected.filter(student => student.parent_id === parentId);
                       return new Set(validAssignedCovers.filter(cover => siblings.some(student => student.id === cover.student_id)).map(cover => cover.cover_id)).size <= 1;
                     });

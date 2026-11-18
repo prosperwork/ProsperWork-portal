@@ -179,21 +179,26 @@ export default function WorkflowsPage() {
   // --------------------------------------------------------------------------
   const profile = data?.profile;
   const role = profile?.role as Role;
+  const perms = useMemo(() => new Set(profile?.permissions ?? []), [profile?.permissions]);
+  const isOwner = role === "super_admin" || (role as string) === "owner";
   const isFamily = role === "parent" || role === "student";
-  const isTeacher = role === "teacher";
+  const isTeacher = role === "teacher" || profile?.department === "Music Education" || (typeof role === "string" && role.includes("teacher")) || perms.has("workspace.learning");
   const isQC = role === "qc";
   const canTeachLesson = (id: string) =>
     isTeacher || (isQC && qcAssignedLessonIds.includes(id));
-  const isReviewer = isTeacher || role === "super_admin";
-  const canSeeReceipts = !!role && receiptRoles.includes(role);
+  const isReviewer = isTeacher || isOwner || perms.has("workspace.curriculum") || perms.has("workspace.homework");
+  const canSeeReceipts = isOwner || perms.has("workspace.finance") || perms.has("workspace.documents") || (!!role && receiptRoles.includes(role));
   const showPrimaryStack =
     (!isHomeworkRoute && canSeeReceipts) ||
     isReviewer ||
     (isFamily && isHomeworkRoute);
   const isFinalApprover =
+    isOwner ||
+    perms.has("workspace.workflows") ||
+    perms.has("workspace.operations") ||
+    perms.has("workspace.schedule") ||
     role === "admin" ||
     role === "head_admin" ||
-    role === "super_admin" ||
     role === "general_manager";
 
   const assignedHomework = useMemo(

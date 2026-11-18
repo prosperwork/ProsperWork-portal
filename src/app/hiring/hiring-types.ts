@@ -7,6 +7,7 @@ export type HiringProfile = {
   status: string;
   timezone: string;
   email?: string;
+  permissions?: string[];
 };
 
 export type HiringHandoff = {

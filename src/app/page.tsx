@@ -367,22 +367,45 @@ export default function HomePage() {
   }, [role, profile?.id]);
 
   const superAdmin = role === "super_admin";
+  const userPerms = useMemo(
+    () => new Set(profile?.permissions ?? []),
+    [profile?.permissions]
+  );
+  const hasPerm = (perm: string) => superAdmin || userPerms.has(perm);
+
   const financeAccess =
-    superAdmin || role === "general_manager" || role === "finance";
+    superAdmin ||
+    role === "general_manager" ||
+    role === "finance" ||
+    hasPerm("workspace.finance") ||
+    hasPerm("workspace.payroll");
   const adminAccess =
     superAdmin ||
     role === "general_manager" ||
     role === "head_admin" ||
-    role === "admin";
+    role === "admin" ||
+    hasPerm("workspace.management") ||
+    hasPerm("workspace.students") ||
+    hasPerm("workspace.accounts");
   const teacherAccess =
     role === "teacher" ||
     superAdmin ||
     role === "general_manager" ||
-    role === "head_admin";
-  const curriculumAccess = teacherAccess || role === "qc";
+    role === "head_admin" ||
+    hasPerm("workspace.learning") ||
+    hasPerm("workspace.schedule");
+  const curriculumAccess =
+    teacherAccess ||
+    role === "qc" ||
+    hasPerm("workspace.curriculum");
   const parentAccess = role === "parent" || role === "student";
   const canManage =
-    superAdmin || role === "general_manager" || role === "head_admin";
+    superAdmin ||
+    role === "general_manager" ||
+    role === "head_admin" ||
+    hasPerm("workspace.management") ||
+    hasPerm("workspace.settings");
+  const hasPayrollMgmt = superAdmin || hasPerm("workspace.payroll");
   const activeStudent =
     data.students.find((student) => student.id === selectedStudentId) ||
     data.students[0];
@@ -1082,9 +1105,9 @@ export default function HomePage() {
       <section className="card section-card">
         <SectionTitle
           title={
-            role === "teacher"
-              ? "Your private earnings wallet"
-              : "Verified-attendance payroll"
+            hasPayrollMgmt
+              ? "Verified-attendance payroll"
+              : "Your private earnings wallet"
           }
           detail="Salary amounts come from approved rates, exact course starts and immutable attendance—not manually typed lesson counts."
         />
@@ -1094,7 +1117,7 @@ export default function HomePage() {
           Finance-to-owner approval.
         </p>
         <a className="btn primary" href="/payroll">
-          Open {role === "teacher" ? "my earnings wallet" : "payroll workbench"}{" "}
+          Open {hasPayrollMgmt ? "payroll workbench" : "my earnings wallet"}{" "}
           <ChevronRight size={15} />
         </a>
       </section>

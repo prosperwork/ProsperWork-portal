@@ -34,7 +34,7 @@ export default function CatalogSettings({ role }: { role: string }) {
   const [notice, setNotice] = useState("");
   const { confirm, ConfirmDialog } = useConfirmModal();
 
-  if (role !== "super_admin") return null;
+  if (role !== "super_admin" && role !== "owner") return null;
 
   const meta = CATALOG_META.find((c) => c.key === activeCatalog) || CATALOG_META[0];
   const currentItems = allByCatalog(activeCatalog);

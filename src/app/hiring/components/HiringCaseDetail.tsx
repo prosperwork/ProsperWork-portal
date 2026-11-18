@@ -893,7 +893,13 @@ export default function HiringCaseDetail({
             <h3 id="handoff-action-heading">Finalize employment handoff</h3>
             <span>
               Assigned supervisor:{" "}
-              {roleLabel(selectedCase.desired_role === "teacher" ? "qc" : "hr")}
+              {roleLabel(
+                ["teacher", "qc"].includes(selectedCase.desired_role) ||
+                  selectedCase.desired_role.includes("teacher") ||
+                  selectedCase.desired_role.includes("tutor")
+                  ? "qc"
+                  : "hr"
+              )}
             </span>
           </div>
           <div className="hire-callout warning">

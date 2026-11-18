@@ -29,7 +29,7 @@ export async function POST(request: Request) {
       const { profile } = await identity();
       const blocked = impersonationBlocked(profile);
       if (blocked) return blocked;
-      if (profile?.role === "super_admin" && profile.status === "active") {
+      if ((profile?.role === "super_admin" || profile?.role === "owner") && profile.status === "active") {
         isAuthorized = true;
       }
     } catch {

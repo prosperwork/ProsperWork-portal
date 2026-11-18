@@ -92,25 +92,27 @@ export default function OperationsPage() {
   const role = data?.profile.role ?? "";
   const profileId = data?.profile.id ?? "";
   const isActive = data?.profile.status === "active";
-  const isOwner = role === "super_admin";
-  const isHead = role === "head_admin";
-  const isAdmin = role === "admin";
-  const isFinance = role === "finance";
-  const isTeacher = role === "teacher";
-  const isQc = role === "qc";
-  const isSales = role === "sales_marketing";
-  const isSocial = role === "social_media" || isOwner;
+  const isOwner = role === "super_admin" || role === "owner";
+  const perms = useMemo(() => new Set(data?.profile.permissions ?? []), [data?.profile?.permissions]);
 
-  const canBilling = isOwner || isFinance;
-  const canSchedule = isOwner || isHead || isAdmin || isTeacher || isQc;
-  const canAvailability = isOwner || isTeacher || isQc || isAdmin || isHead;
-  const canReadQuality = isOwner || isHead || isQc || isTeacher;
-  const canObserve = isOwner || isQc;
-  const canReadLeads = isOwner || isHead || isSales;
-  const canTrial = isOwner || isHead || isSales;
-  const canAssignLeads = isOwner || isHead;
-  const canConvert = isOwner || isHead;
-  const canSeeEvents = isOwner || isHead || isFinance || isAdmin;
+  const isHead = role === "head_admin" || perms.has("workspace.management");
+  const isAdmin = role === "admin" || perms.has("workspace.operations") || perms.has("workspace.schedule");
+  const isFinance = role === "finance" || perms.has("workspace.finance");
+  const isTeacher = role === "teacher" || data?.profile.department === "Music Education" || role.includes("teacher") || perms.has("workspace.learning");
+  const isQc = role === "qc" || perms.has("reports.learning");
+  const isSales = role === "sales_marketing" || perms.has("workspace.leads");
+  const isSocial = role === "social_media" || isOwner || perms.has("workspace.curriculum");
+
+  const canBilling = isOwner || isFinance || perms.has("workspace.finance");
+  const canSchedule = isOwner || isHead || isAdmin || isTeacher || isQc || perms.has("workspace.schedule");
+  const canAvailability = isOwner || isTeacher || isQc || isAdmin || isHead || perms.has("workspace.schedule");
+  const canReadQuality = isOwner || isHead || isQc || isTeacher || perms.has("reports.learning");
+  const canObserve = isOwner || isQc || perms.has("reports.learning");
+  const canReadLeads = isOwner || isHead || isSales || perms.has("workspace.leads");
+  const canTrial = isOwner || isHead || isSales || perms.has("workspace.leads");
+  const canAssignLeads = isOwner || isHead || perms.has("workspace.leads");
+  const canConvert = isOwner || isHead || perms.has("workspace.leads");
+  const canSeeEvents = isOwner || isHead || isFinance || isAdmin || perms.has("workspace.operations");
 
   const views = useMemo(() => {
     const list: { id: OperationsView; title: string }[] = [];
@@ -159,7 +161,11 @@ export default function OperationsPage() {
     () =>
       (data?.staff ?? []).filter(
         (person) =>
-          ["teacher", "qc"].includes(person.role) && person.status === "active"
+          (person.department === "Music Education" ||
+            ["teacher", "qc"].includes(person.role) ||
+            person.role.includes("teacher") ||
+            person.role.includes("tutor")) &&
+          person.status === "active"
       ),
     [data?.staff]
   );
@@ -167,7 +173,10 @@ export default function OperationsPage() {
     () =>
       (data?.staff ?? []).filter(
         (person) =>
-          ["admin", "head_admin"].includes(person.role) &&
+          (["admin", "head_admin"].includes(person.role) ||
+            (person.department !== "Music Education" &&
+              person.role !== "parent" &&
+              person.role !== "student")) &&
           person.status === "active"
       ),
     [data?.staff]
@@ -176,7 +185,10 @@ export default function OperationsPage() {
     () =>
       (data?.staff ?? []).filter(
         (person) =>
-          person.role === "sales_marketing" && person.status === "active"
+          (person.role === "sales_marketing" ||
+            person.role.includes("sales") ||
+            person.role.includes("marketing")) &&
+          person.status === "active"
       ),
     [data?.staff]
   );

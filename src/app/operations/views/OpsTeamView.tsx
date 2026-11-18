@@ -159,9 +159,9 @@ export default function OpsTeamView({
                     {data.staff
                       .filter(
                         (person) =>
-                          ["teacher", "qc", "admin", "head_admin"].includes(
-                            person.role
-                          ) && ["active", "on_leave"].includes(person.status)
+                          person.role !== "parent" &&
+                          person.role !== "student" &&
+                          ["active", "on_leave"].includes(person.status)
                       )
                       .map((person) => (
                         <option key={person.id} value={person.id}>
@@ -408,7 +408,11 @@ export default function OpsTeamView({
                   {data.staff
                     .filter(
                       (person) =>
-                        person.role === "teacher" && person.status === "active"
+                        (person.department === "Music Education" ||
+                          ["teacher", "qc"].includes(person.role) ||
+                          person.role.includes("teacher") ||
+                          person.role.includes("tutor")) &&
+                        person.status === "active"
                     )
                     .map((person) => (
                       <option key={person.id} value={person.id}>

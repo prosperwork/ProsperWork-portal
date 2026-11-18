@@ -54,7 +54,7 @@ export function handleActionModalSubmit({
       adminName: data.staff.find((s) => s.id === values.adminName || s.name === values.adminName)?.name || values.adminName || "Academy Administration",
       timezone: values.timezone,
       consent: values.consent === "true",
-      rank: "Novice",
+      rank: values.rank || "Novice",
       songsDone: [],
       songsToDo: [],
       status: "active",

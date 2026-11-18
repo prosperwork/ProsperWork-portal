@@ -62,14 +62,24 @@ export function getFields(
     .filter((s) => s.status === "active")
     .map((s) => ({ value: s.id, label: s.name }));
   const teacherChoices = data.staff
-    .filter((s) => ["teacher", "qc"].includes(s.role) && s.status === "active")
+    .filter(
+      (s) =>
+        (["teacher", "qc"].includes(s.role) ||
+          s.department === "Music Education" ||
+          s.role.includes("teacher") ||
+          s.role.includes("tutor") ||
+          s.role.includes("instructor")) &&
+        s.status === "active" &&
+        s.role !== "parent" &&
+        s.role !== "student"
+    )
     .map((s) => ({ value: s.name, label: s.name }));
   const adminChoices = data.staff
     .filter(
       (s) =>
-        ["admin", "head_admin", "super_admin", "general_manager"].includes(
-          s.role
-        ) && s.status === "active"
+        (["admin", "head_admin", "super_admin", "general_manager"].includes(s.role) ||
+          (s.department !== "Music Education" && s.role !== "parent" && s.role !== "student")) &&
+        s.status === "active"
     )
     .map((s) => ({
       value: s.name,

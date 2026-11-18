@@ -85,7 +85,14 @@ export default function FamiliesView({
   }, [approvingStudent, approvalBusy]);
 
   const activeTeachers = data.staff.filter(
-    (s) => s.role === "teacher" && s.status === "active"
+    (s) =>
+      (["teacher", "qc"].includes(s.role) ||
+        s.department === "Music Education" ||
+        s.role.includes("teacher") ||
+        s.role.includes("tutor")) &&
+      s.status === "active" &&
+      s.role !== "parent" &&
+      s.role !== "student"
   );
 
   const pendingReviewStudents = studentsVisible.filter(
@@ -115,7 +122,7 @@ export default function FamiliesView({
           studentId: approvingStudent.id,
           teacherName,
           teacherId: teacherStaff?.id,
-          adminName: data.staff.find((s) => s.role === "admin")?.name,
+          adminName: data.staff.find((s) => ["admin", "head_admin", "super_admin", "general_manager"].includes(s.role) || (s.department !== "Music Education" && s.role !== "parent" && s.role !== "student"))?.name,
         }),
       });
       const json = await res.json();
@@ -388,10 +395,7 @@ export default function FamiliesView({
                         academy channels.
                       </span>
                     </div>
-                    {(parentAccess ||
-                      superAdmin ||
-                      role === "general_manager" ||
-                      role === "head_admin") && (
+                    {(parentAccess || adminAccess) && (
                       <button
                         className={`toggle ${selected.consent ? "on" : ""}`}
                         aria-label={`Toggle consent for ${selected.name}`}

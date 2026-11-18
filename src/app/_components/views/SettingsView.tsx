@@ -3,6 +3,7 @@
 import { ShieldCheck } from "lucide-react";
 import { niceDate, roles, SectionTitle } from "../../_lib/portal-formatters";
 import { legacyWorkspaceAccess } from "../../_lib/portal-navigation";
+import { useRoles } from "@/lib/academy/use-academy-config";
 import type { AcademyData } from "@/lib/types";
 
 export default function SettingsView({
@@ -21,6 +22,22 @@ export default function SettingsView({
   superAdmin: boolean;
   reload: () => Promise<void>;
 }) {
+  const { roles: dbRoles } = useRoles();
+  const displayRoles =
+    dbRoles.length > 0
+      ? dbRoles.map((r) => ({
+          id: r.code,
+          label: r.label,
+          permissionsCount: r.permissions.length,
+        }))
+      : roles.map((r) => ({
+          id: r.id,
+          label: r.label,
+          permissionsCount: Object.values(legacyWorkspaceAccess).filter(
+            (viewRoles) => viewRoles.includes(r.id)
+          ).length,
+        }));
+
   const ruleItems: {
     key: keyof typeof rules;
     title: string;
@@ -85,16 +102,12 @@ export default function SettingsView({
               title="Access model"
               detail="Authenticated, account-scoped access"
             />
-            {roles.map((item) => (
+            {displayRoles.map((item) => (
               <div className="metric-row" key={item.id}>
                 <span>{item.label}</span>
                 <strong>
-                  {
-                    Object.values(legacyWorkspaceAccess).filter((viewRoles) =>
-                      viewRoles.includes(item.id)
-                    ).length
-                  }{" "}
-                  views
+                  {item.permissionsCount}{" "}
+                  {item.permissionsCount === 1 ? "capability" : "capabilities"}
                 </strong>
               </div>
             ))}

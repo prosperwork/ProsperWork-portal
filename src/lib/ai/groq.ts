@@ -156,8 +156,14 @@ export async function generateAcademyChatResponse(params: AcademyChatParams): Pr
   }
 
   // Filter manual knowledge to only sections authorized for the user's role
+  const isFamily = params.role === "parent" || params.role === "student";
+  const isOwner = params.role === "super_admin" || params.role === "owner";
   const permittedSections = manualSections.filter(
-    section => !section.roles?.length || section.roles.includes(params.role)
+    (section) =>
+      !section.roles?.length ||
+      isOwner ||
+      section.roles.includes(params.role) ||
+      (!isFamily && section.roles.some((r) => r !== "parent" && r !== "student"))
   );
 
   const knowledgeSummary = permittedSections
@@ -169,7 +175,7 @@ export async function generateAcademyChatResponse(params: AcademyChatParams): Pr
     .join("\n\n");
 
   const permittedWorkspaces = portalWorkspaces.filter((w) => {
-    if (params.role === "super_admin") return true;
+    if (isOwner) return true;
     if (params.permissions && w.permission) {
       return params.permissions.includes(w.permission);
     }

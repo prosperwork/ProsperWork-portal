@@ -68,4 +68,4 @@ export interface FamilyChild {
   consent: boolean;
   rank: string;
 }
-export interface FamilyResponse{profile:{id:string;name:string;role:string;status:string;timezone?:string};pinConfigured:boolean;kidMode:boolean;children:FamilyChild[];avatarFileId:string|null;}
+export interface FamilyResponse{profile:{id:string;name:string;role:string;department?:string;permissions?:string[];status:string;timezone?:string};pinConfigured:boolean;kidMode:boolean;children:FamilyChild[];avatarFileId:string|null;}

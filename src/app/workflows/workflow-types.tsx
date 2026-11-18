@@ -1,7 +1,14 @@
 import type { HomeworkItem, Lesson, Payment, Role } from "@/lib/types";
 export type { HomeworkItem, Lesson, Payment, Role };
 
-export type Profile = { id: string; name: string; role: Role; status: string };
+export type Profile = {
+  id: string;
+  name: string;
+  role: Role;
+  status: string;
+  department?: string;
+  permissions?: string[];
+};
 
 export type WorkflowHomeworkItem = HomeworkItem & { feedback?: string };
 

@@ -27,7 +27,7 @@ export async function GET(){
     series,
     pauses,
     students,
-    staff: staff.map(({ id, name, role, status, timezone }) => ({ id, name, role, status, timezone })),
+    staff: staff.map(({ id, name, role, status, timezone, department }) => ({ id, name, role, status, timezone, department })),
     referrals,
     credits,
     media,

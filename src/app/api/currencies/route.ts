@@ -10,13 +10,13 @@ export async function GET(){
  const r=await client.from("pw_currencies").select("code,name,symbol,enabled").order("code");if(r.error)return reply({error:"Currency catalog unavailable"},503);
  const financial = profile.role === "super_admin" || await hasPermission(client, profile, "workspace.finance", { allowOnLeave: true });
  const fx=financial?await loadAllRecords(client,"pw_fx_rates","id,currency,date,rate",{sort:"date"}):{data:[],error:null};
- const rules=profile.role==="super_admin"?await client.from("pw_finance_rules").select("tax_percent,finance_profit,referral_percent").single():{data:null,error:null};
+ const rules=(profile.role==="super_admin"||profile.role==="owner")?await client.from("pw_finance_rules").select("tax_percent,finance_profit,referral_percent").single():{data:null,error:null};
  if(fx.error||rules.error)return reply({error:"Financial settings unavailable"},503);
  return reply({currencies:r.data,reportingCurrency:"NGN",rates:fx.data,financeRules:rules.data});}catch{return reply({error:"Currency catalog unavailable"},503);}
 }
 export async function POST(req:NextRequest){
  if(!sameOrigin(req))return reply({error:"Invalid origin"},403);
- try{const{client,profile}=await identity();if(profile?.role!=="super_admin"||profile.status!=="active")return reply({error:"Owner only"},403);const blocked=impersonationBlocked(profile);if(blocked)return blocked;
+ try{const{client,profile}=await identity();if((profile?.role!=="super_admin"&&profile?.role!=="owner")||profile.status!=="active")return reply({error:"Owner only"},403);const blocked=impersonationBlocked(profile);if(blocked)return blocked;
  const p=currencySetting.safeParse(await req.json());if(!p.success)return reply({error:p.error.issues[0].message},400);
  const r=await client.rpc("pw_currency_action",{p_data:p.data});if(r.error)return reply({error:"Currency update blocked. Check the required fields and do not disable the reporting base."},409);return reply(r.data);
  }catch{return reply({error:"Currency service unavailable"},503);}

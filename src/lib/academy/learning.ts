@@ -18,7 +18,7 @@ export interface LessonRecording {
 }
 
 export interface LearningResponse {
-  profile:{id:string;name:string;role:string;status:string;timezone:string};
+  profile:{id:string;name:string;role:string;status:string;timezone:string;permissions?:string[]};
   lessons:{id:string;studentId:string;studentName:string;teacherName:string;teacherId:string;title:string;startsAt:string;studentTimezone:string;notes:string;nextTopics:string;status:string}[];
   boards:LiveBoard[]; resources:{payload:LearningResource;revision:number}[];
   recordings?: LessonRecording[];

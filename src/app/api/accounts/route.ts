@@ -35,7 +35,7 @@ export async function POST(request: Request) {
 
     // Impersonation / View As User Action (Read-Only)
     if (body?.action === "view_as") {
-      if (profile.role !== "super_admin") return NextResponse.json({ error: "Owner access required for impersonation." }, { status: 403 });
+      if (profile.role !== "super_admin" && profile.role !== "owner") return NextResponse.json({ error: "Owner access required for impersonation." }, { status: 403 });
       const targetId = String(body.targetId || "");
       if (!/^[0-9a-f-]{36}$/i.test(targetId) || targetId === profile.id) {
         return NextResponse.json({ error: "Invalid account identifier." }, { status: 400 });
@@ -43,7 +43,7 @@ export async function POST(request: Request) {
       const { data: targetUser, error: targetErr } = await admin.from("pw_profiles")
         .select("id,name,role,email").eq("id", targetId).single();
       if (targetErr || !targetUser) return NextResponse.json({ error: "Account not found." }, { status: 404 });
-      if (targetUser.role === "super_admin") {
+      if (targetUser.role === "super_admin" || targetUser.role === "owner") {
         return NextResponse.json({ error: "Super Admin accounts cannot be impersonated." }, { status: 403 });
       }
 
@@ -100,7 +100,7 @@ export async function POST(request: Request) {
     }
 
     // All remaining mutations require Super Admin authority and must NOT run during read-only View-As mode
-    if (profile.role !== "super_admin") {
+    if (profile.role !== "super_admin" && profile.role !== "owner") {
       return NextResponse.json({ error: "Owner (Super Admin) access is required to modify, invite, or delete accounts." }, { status: 403 });
     }
     const cookieStore = await cookies();
@@ -115,7 +115,7 @@ export async function POST(request: Request) {
 
       const { data: target, error: targetError } = await admin.from("pw_profiles").select("id,name,email,role,status").eq("id", targetId).single();
       if (targetError || !target) return NextResponse.json({ error: "Account not found." }, { status: 404 });
-      if (target.role === "super_admin") return NextResponse.json({ error: "Owner accounts cannot be deleted through this workflow." }, { status: 403 });
+      if (target.role === "super_admin" || target.role === "owner") return NextResponse.json({ error: "Owner accounts cannot be deleted through this workflow." }, { status: 403 });
 
       const reason = String(body.reason || "Permanent purge requested by Super Admin").slice(0, 500);
       const { data: purgeResult, error: purgeError } = await admin.rpc("pw_purge_account", {
@@ -149,7 +149,7 @@ export async function POST(request: Request) {
 
     if (body?.action === "invite") {
       const parsed = accountSchema.safeParse(body.account);
-      if (!parsed.success || parsed.data.role === "super_admin") {
+      if (!parsed.success || parsed.data.role === "super_admin" || parsed.data.role === "owner") {
         return NextResponse.json({ error: "Check the invitation details. Additional owner access requires a separate approval." }, { status: 400 });
       }
       const account = parsed.data;
@@ -222,7 +222,7 @@ export async function POST(request: Request) {
       if (!/^[0-9a-f-]{36}$/i.test(targetId)) return NextResponse.json({ error: "Invalid account identifier." }, { status: 400 });
       const { data: target, error: targetError } = await admin.from("pw_profiles").select("id,name,email,role").eq("id", targetId).single();
       if (targetError || !target || !target.email) return NextResponse.json({ error: "Account not found or missing email." }, { status: 404 });
-      if (target.role === "super_admin") return NextResponse.json({ error: "Owner invitations cannot be resent through this workflow." }, { status: 403 });
+      if (target.role === "super_admin" || target.role === "owner") return NextResponse.json({ error: "Owner invitations cannot be resent through this workflow." }, { status: 403 });
 
       const redirectTo = publicAppUrl("/auth/confirm?next=/reset-password&reason=invite").href;
       const linkResult = await admin.auth.admin.generateLink({
@@ -267,7 +267,7 @@ export async function POST(request: Request) {
     }
     const { data: target, error: targetError } = await admin.from("pw_profiles").select("id,name,email,role,status").eq("id", parsed.data.id).single();
     if (targetError || !target) return NextResponse.json({ error: "Account not found." }, { status: 404 });
-    if (target.role === "super_admin") return NextResponse.json({ error: "Owner status requires a separate safeguarded workflow." }, { status: 403 });
+    if (target.role === "super_admin" || target.role === "owner") return NextResponse.json({ error: "Owner status requires a separate safeguarded workflow." }, { status: 403 });
     const previousStatus = target.status;
     const { error } = await admin.rpc("pw_set_account", { actor: profile.id, target: parsed.data.id, new_status: parsed.data.status });
     if (error) throw error;

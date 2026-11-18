@@ -87,6 +87,7 @@ export type Staff = {
   name: string;
   role: string;
   status: string;
+  department?: string;
 };
 
 export type Course = {
@@ -119,7 +120,7 @@ export type RateDraft = {
 };
 
 export type PayrollData = {
-  profile: { id: string | number; name: string; role: string; status: string };
+  profile: { id: string | number; name: string; role: string; status: string; permissions?: string[] };
   rulesConfigured: boolean;
   preview: null | {
     payDate: string;
@@ -184,14 +185,22 @@ export function dateLabel(value?: string | null) {
 }
 
 export function isOwnerRole(role: string) {
-  return role === "super_admin";
+  return role === "super_admin" || role === "owner";
 }
 
-export function isPayrollRole(role: string) {
-  return role === "finance" || isOwnerRole(role);
+export function isPayrollRole(role: string, permissions?: string[]) {
+  if (role === "super_admin" || role === "owner" || role === "finance") return true;
+  if (Array.isArray(permissions)) {
+    return permissions.includes("workspace.payroll") || permissions.includes("workspace.finance");
+  }
+  return false;
 }
 
-export function isHRRole(role: string) {
-  return role === "hr" || role === "qc";
+export function isHRRole(role: string, permissions?: string[]) {
+  if (role === "hr" || role === "qc" || role === "super_admin" || role === "head_admin") return true;
+  if (Array.isArray(permissions)) {
+    return permissions.includes("workspace.hiring") || permissions.includes("workspace.people");
+  }
+  return false;
 }
 

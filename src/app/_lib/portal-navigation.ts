@@ -27,7 +27,7 @@ export const legacyWorkspaceRoutes = {
   curriculum: { href: "/curriculum", permission: "workspace.curriculum", roles: ["super_admin", "general_manager", "head_admin", "qc", "teacher", "social_media"] },
   learning: { href: "/learning", permission: "workspace.learning", roles: ["super_admin", "general_manager", "head_admin", "admin", "qc", "teacher", "parent", "student"] },
   reports: { href: "/reports", permission: "workspace.reports", roles: ["super_admin", "general_manager", "head_admin", "hr", "qc", "finance"] },
-  settings: { href: "/settings", permission: "workspace.settings", roles: ["super_admin"] },
+  settings: { href: "/settings", permission: "workspace.settings", roles: ["super_admin", "owner"] },
 } satisfies Record<string, { href: string; permission: string; roles: Role[] }>;
 
 export type LegacyWorkspaceView = keyof typeof legacyWorkspaceRoutes;
@@ -43,7 +43,7 @@ export function hasWorkspaceAccess(
   profile: { role: Role; permissions?: string[] } | null | undefined,
 ): boolean {
   if (!item || !profile) return false;
-  if (profile.role === "super_admin") return true;
+  if (profile.role === "super_admin" || profile.role === "owner") return true;
   if (Array.isArray(profile.permissions) && item.permission) {
     return profile.permissions.includes(item.permission);
   }

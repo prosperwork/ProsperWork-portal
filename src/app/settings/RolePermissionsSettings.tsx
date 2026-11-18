@@ -88,7 +88,7 @@ export default function RolePermissionsSettings({ role }: { role: string }) {
     return activeDraft.permissions.some((p) => !origSet.has(p));
   }, [activeDraft, originalRole]);
 
-  if (role !== "super_admin") return null;
+  if (role !== "super_admin" && role !== "owner") return null;
 
   function selectRole(r: RoleRow) {
     if (activeDraft?.code === r.code) return;

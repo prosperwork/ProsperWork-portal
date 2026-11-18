@@ -10,6 +10,7 @@ export type ManagementStaffOption = {
   name: string;
   role: string;
   status: string;
+  department?: string;
 };
 
 export default function EmergencyCoverModal({
@@ -148,12 +149,17 @@ export default function EmergencyCoverModal({
                   .filter(
                     (s) =>
                       s.status === "active" &&
-                      ["teacher", "qc"].includes(s.role) &&
+                      (["teacher", "qc"].includes(s.role) ||
+                        s.department === "Music Education" ||
+                        s.role.includes("teacher") ||
+                        s.role.includes("tutor")) &&
+                      s.role !== "parent" &&
+                      s.role !== "student" &&
                       s.name !== lesson.teacherName
                   )
                   .map((s) => (
                     <option key={s.id} value={s.id}>
-                      {s.name} ({s.role === "qc" ? "QC Tutor" : "Teacher"})
+                      {s.name} ({s.role === "qc" ? "QC Tutor" : s.role === "teacher" ? "Teacher" : s.role.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase())})
                     </option>
                   ))}
               </select>
@@ -173,11 +179,12 @@ export default function EmergencyCoverModal({
                   .filter(
                     (s) =>
                       s.status === "active" &&
-                      ["admin", "head_admin", "super_admin"].includes(s.role)
+                      (["admin", "head_admin", "super_admin", "general_manager"].includes(s.role) ||
+                        (s.department !== "Music Education" && s.role !== "parent" && s.role !== "student"))
                   )
                   .map((s) => (
                     <option key={s.id} value={s.id}>
-                      {s.name} ({s.role.replace("_", " ")})
+                      {s.name} ({s.role.replace(/_/g, " ")})
                     </option>
                   ))}
               </select>

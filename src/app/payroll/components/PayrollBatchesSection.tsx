@@ -221,7 +221,7 @@ export default function PayrollBatchesSection({
                 {batch.status === "draft" && (
                   <div className="pr-card-body">
                     <div className="pr-action-row">
-                      {role === "finance" && canSubmitOnDate && (
+                      {(role === "finance" || (payrollAccess && !owner)) && canSubmitOnDate && (
                         <button
                           type="button"
                           className="pr-button"
@@ -243,7 +243,7 @@ export default function PayrollBatchesSection({
                           Submit to owner
                         </button>
                       )}
-                      {role === "finance" && !canSubmitOnDate && (
+                      {(role === "finance" || (payrollAccess && !owner)) && !canSubmitOnDate && (
                         <span className="pr-subtitle">
                           Finance can submit this batch on or after{" "}
                           {dateLabel(batch.pay_date)}.

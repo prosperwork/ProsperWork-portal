@@ -9,7 +9,7 @@ export async function POST(request: Request) {
   if (!sameOrigin(request)) return NextResponse.json({ error: "Invalid request origin." }, { status: 403 });
   try {
     const { client, user, profile } = await identity();
-    if (profile?.role !== "super_admin" || profile.status !== "active" || !user?.email_confirmed_at)
+    if ((profile?.role !== "super_admin" && profile?.role !== "owner") || profile.status !== "active" || !user?.email_confirmed_at)
       return NextResponse.json({ error: "Verified Super Admin access is required." }, { status: 403 });
     const blocked = impersonationBlocked(profile);
     if (blocked) return blocked;

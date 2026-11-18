@@ -64,14 +64,16 @@ export async function GET(request: Request) {
 
     const asStudent = urlObj.searchParams.get("as") === "student" || urlObj.searchParams.get("role") === "student";
     const roleRecord = await fetchRoleRecord(client, profile.role);
-    const isStaff = profile.role === "super_admin" || Boolean(roleRecord?.enabled && roleRecord.is_staff);
+    const isStaff = profile.role === "super_admin" || profile.role === "owner" || Boolean(roleRecord?.enabled && roleRecord.is_staff);
     const hasGrantPerm =
       profile.role === "super_admin" ||
+      profile.role === "owner" ||
       Boolean(roleRecord?.enabled && roleRecord.permissions.includes("classroom.grant_tools"));
 
     // Permission check: Roles with classroom.grant_tools (scoped to assigned admin for regular admin)
     const canGrantAccess = !asStudent && (
       profile.role === "super_admin" ||
+      profile.role === "owner" ||
       (profile.role === "admin" ? hasGrantPerm && profile.id === lessonRow?.admin_id : hasGrantPerm)
     );
 
@@ -116,16 +118,18 @@ export async function POST(request: Request) {
     const requestUrl = new URL(request.url);
     const asStudent = requestUrl.searchParams.get("as") === "student" || requestUrl.searchParams.get("role") === "student" || input.data.asRole === "student";
     const roleRecord = await fetchRoleRecord(client, profile.role);
-    const isStaff = !asStudent && (profile.role === "super_admin" || Boolean(roleRecord?.enabled && roleRecord.is_staff));
+    const isStaff = !asStudent && (profile.role === "super_admin" || profile.role === "owner" || Boolean(roleRecord?.enabled && roleRecord.is_staff));
 
     const { data: lessonRow } = await client.from("pw_lessons").select("admin_id, student_id, payload").eq("id", input.data.lessonId).single();
     const payload = (lessonRow?.payload || {}) as Record<string, unknown>;
 
     const hasGrantPerm =
       profile.role === "super_admin" ||
+      profile.role === "owner" ||
       Boolean(roleRecord?.enabled && roleRecord.permissions.includes("classroom.grant_tools"));
     const canGrantAccess = !asStudent && (
       profile.role === "super_admin" ||
+      profile.role === "owner" ||
       (profile.role === "admin" ? hasGrantPerm && profile.id === lessonRow?.admin_id : hasGrantPerm)
     );
 
@@ -199,9 +203,11 @@ export async function PATCH(request: Request) {
     const roleRecord = await fetchRoleRecord(client, profile.role);
     const hasGrantPerm =
       profile.role === "super_admin" ||
+      profile.role === "owner" ||
       Boolean(roleRecord?.enabled && roleRecord.permissions.includes("classroom.grant_tools"));
     const canGrantAccess =
       profile.role === "super_admin" ||
+      profile.role === "owner" ||
       (profile.role === "admin" ? hasGrantPerm && profile.id === lessonRow.admin_id : hasGrantPerm);
 
     if (!canGrantAccess) {

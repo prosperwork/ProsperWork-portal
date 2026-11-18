@@ -4,7 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } fro
 import { Check, Mail, RefreshCw, Send, Users, X } from "lucide-react";
 import ProfileAvatar from "@/app/_components/ProfileAvatar";
 
-type Profile = { id: string; name?: string; role: string };
+type Profile = { id: string; name?: string; role: string; department?: string; permissions?: string[] };
 type Contact = { id: string; leadId: string | null; guardianId: string | null; email: string; consent: boolean; eligible: boolean; evidence: string | null; changedAt: string | null };
 type Lead = { id: string; name: string; email: string };
 type Campaign = { id: string; subject: string; body: string; status: string; createdAt: string; queued: number; sent: number; failed: number; cancelled: number };
@@ -85,9 +85,10 @@ export default function CommunicationsPage() {
   const role = normalizeRole(snapshot?.profile.role ?? "");
   const isParent = ["parent", "guardian", "family_parent"].includes(role);
   const isOwner = ["super_admin", "owner"].includes(role);
-  const isSales = role === "sales_marketing";
-  const canSend = isOwner || isSales;
-  const canRecordLeadConsent = isOwner || isSales;
+  const perms = useMemo(() => new Set(snapshot?.profile.permissions ?? []), [snapshot?.profile?.permissions]);
+  const isSales = role === "sales_marketing" || perms.has("workspace.communications") || perms.has("workspace.leads");
+  const canSend = isOwner || isSales || perms.has("workspace.communications");
+  const canRecordLeadConsent = isOwner || isSales || perms.has("workspace.communications");
   const contacts = snapshot?.contacts ?? [];
   const leads = snapshot?.leads ?? [];
   const campaigns = snapshot?.campaigns ?? [];

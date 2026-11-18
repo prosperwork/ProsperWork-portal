@@ -7,7 +7,7 @@ import { academySettingsSchema } from "@/lib/academy/settings";
 export async function GET() {
   try {
     const { client, profile } = await identity();
-    if (profile?.role !== "super_admin" || profile.status !== "active")
+    if ((profile?.role !== "super_admin" && profile?.role !== "owner") || profile.status !== "active")
       return NextResponse.json({ error: "Super Admin access is required." }, { status: 403 });
     const { data, error } = await client.from("pw_settings").select("settings,revision").eq("singleton", true).single();
     if (error || !data) return NextResponse.json({ error: "Academy settings are unavailable." }, { status: 503 });
@@ -25,7 +25,7 @@ export async function POST(request: Request) {
   if (!sameOrigin(request)) return NextResponse.json({ error: "Invalid request origin." }, { status: 403 });
   try {
     const { client, profile } = await identity();
-    if (profile?.role !== "super_admin" || profile.status !== "active")
+    if ((profile?.role !== "super_admin" && profile?.role !== "owner") || profile.status !== "active")
       return NextResponse.json({ error: "Super Admin access is required." }, { status: 403 });
     const blocked = impersonationBlocked(profile);
     if (blocked) return blocked;

@@ -33,7 +33,7 @@ export async function GET() {
         fetchPublicAcademyConfig(client),
       ]);
       const permissions =
-        profile.role === "super_admin"
+        profile.role === "super_admin" || profile.role === "owner"
           ? Array.from(new Set([...(roleRecord?.permissions ?? []), ...PERMISSION_CATALOG.map((p) => p.key)]))
           : roleRecord?.enabled
             ? roleRecord.permissions

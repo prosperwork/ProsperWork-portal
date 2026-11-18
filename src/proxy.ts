@@ -84,7 +84,7 @@ export async function proxy(request: NextRequest) {
     } else {
       let targetId = user.id;
       const { data: realUser } = await client.from("pw_profiles").select("id,status,role").eq("id", user.id).single();
-      const verifiedViewAs = realUser?.role === "super_admin" && realUser.status === "active"
+      const verifiedViewAs = (realUser?.role === "super_admin" || realUser?.role === "owner") && realUser.status === "active"
         ? parseViewAsCookie(request.cookies.get("pw_view_as")?.value, user.id)
         : null;
       if (verifiedViewAs) {

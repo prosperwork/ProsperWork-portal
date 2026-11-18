@@ -69,6 +69,8 @@ export type StudioData = {
     id: string;
     name: string;
     role: string;
+    department?: string;
+    permissions?: string[];
     status: string;
     timezone?: string;
   };

@@ -194,7 +194,7 @@ export default function AccountsPage() {
   }
 
   async function applyStatusChange() {
-    if (!statusChange || statusChange.account.role === "super_admin") return;
+    if (!statusChange || statusChange.account.role === "super_admin" || statusChange.account.role === "owner") return;
     setMutationError("");
     setSuccessMessage("");
     setStatusPending(true);

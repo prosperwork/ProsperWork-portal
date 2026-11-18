@@ -57,10 +57,7 @@ export default function PeopleView({
     <>
       <div className="toolbar">
         {searchBar("Find staff, department or status")}
-        {(superAdmin ||
-          role === "general_manager" ||
-          role === "head_admin" ||
-          role === "hr") && (
+        {(canManage || role === "hr") && (
           <button className="btn" onClick={updateTeacherProgress}>
             <Plus size={14} />
             Log recruitment / observation
@@ -196,7 +193,7 @@ export default function PeopleView({
                         <>
                           {person.parentCount !== undefined
                             ? `${person.parentCount} families`
-                            : person.role === "teacher"
+                            : person.role === "teacher" || person.department === "Music Education"
                             ? `${
                                 data.lessons.filter(
                                   (lesson) =>
@@ -233,7 +230,7 @@ export default function PeopleView({
                           >
                             <MessageCircle size={13} />
                           </button>
-                          {role === "super_admin" && (
+                          {(role === "super_admin" || canManage) && (
                             <select
                               aria-label={`Update ${person.name} status`}
                               className="select-mini"

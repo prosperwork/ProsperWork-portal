@@ -108,12 +108,19 @@ export default function HiringPage() {
   }, []);
 
   const role = roleKey(data?.profile.role ?? "");
-  const isOwner = role === "super_admin";
-  const isHR = role === "hr";
+  const perms = useMemo(
+    () => new Set(data?.profile.permissions ?? []),
+    [data?.profile.permissions]
+  );
+  const isOwner = role === "super_admin" || role === "owner";
+  const isHR = role === "hr" || perms.has("workspace.hiring");
   const isQC = role === "qc";
   const isHead = role === "head_admin";
-  const isFinance = role === "finance";
-  const isAdmin = role === "admin";
+  const isFinance =
+    role === "finance" ||
+    perms.has("workspace.finance") ||
+    perms.has("workspace.payroll");
+  const isAdmin = role === "admin" || perms.has("workspace.management");
   const isActive = data?.profile.status === "active";
   const isApplicant = data?.profile.status === "applicant";
   const isManager = isOwner || isHR;
@@ -845,10 +852,19 @@ export default function HiringPage() {
       reviewWhen &&
       !departmentReview
   );
+  const isMusicEducationRole = Boolean(
+    selectedCase &&
+      (selectedCase.desired_role === "teacher" ||
+        selectedCase.desired_role === "qc" ||
+        selectedCase.desired_role.includes("teacher") ||
+        selectedCase.desired_role.includes("tutor") ||
+        selectedCase.desired_role.includes("music") ||
+        selectedCase.desired_role.includes("instructor"))
+  );
   const canRecordAudition = Boolean(
     isActive &&
       reviewerIsCurrent &&
-      selectedCase?.desired_role === "teacher" &&
+      isMusicEducationRole &&
       selectedCase.stage === "interview" &&
       reviewWhen &&
       !auditionReview
@@ -922,7 +938,7 @@ export default function HiringPage() {
       selectedCase.staff_id &&
       selectedCase.accepted_at &&
       trainingVerified &&
-      (selectedCase.desired_role === "teacher"
+      (isMusicEducationRole
         ? isQC && reviewerIsCurrent
         : isHR)
   );

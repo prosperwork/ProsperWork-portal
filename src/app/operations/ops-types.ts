@@ -6,6 +6,9 @@ export type OpsProfile = {
   id: string;
   name: string;
   role: string;
+  roleLabel?: string;
+  department?: string;
+  permissions?: string[];
   status: string;
   timezone: string;
 };
@@ -22,6 +25,8 @@ export type OpsStaff = {
   id: string;
   name: string;
   role: string;
+  department?: string;
+  permissions?: string[];
   status: string;
   timezone: string;
 };

@@ -64,7 +64,7 @@ export async function POST(request: Request) {
     if (input.recipientType === "staff") {
       const { data, error } = await client.from("pw_profiles")
         .select("id,email,role").eq("id", input.recipientId).maybeSingle();
-      if (error || !data || data.role === "super_admin" || ["parent", "student"].includes(data.role)) {
+      if (error || !data || data.role === "super_admin" || data.role === "owner" || ["parent", "student"].includes(data.role)) {
         return NextResponse.json({ error: "This staff contact is unavailable." }, { status: 404 });
       }
       recipientEmail = data.email;

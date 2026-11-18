@@ -30,6 +30,7 @@ type Staff = {
   id: string;
   name: string;
   role: string;
+  department?: string;
   status: string;
   quota: number | null;
   head_admin_id: string | null;
@@ -81,7 +82,7 @@ type ScheduledLesson = {
   payload: Record<string, unknown>;
 };
 type Snapshot = {
-  profile: { id: string; name: string; role: string; status: string };
+  profile: { id: string; name: string; role: string; status: string; permissions?: string[] };
   staff: Staff[];
   items: DeskItem[];
   announcements: Announcement[];
@@ -310,15 +311,22 @@ export default function ManagementPage() {
     label: `${label(item.kind)} · ${item.id.slice(0, 8)} · ${item.status}`,
   }));
   const currentRole = snapshot?.profile.role || "";
-  const ownerActions = currentRole === "super_admin";
-  const managementActions = [
-    "super_admin",
-    "head_admin",
-    "admin",
-    "general_manager",
-    "sales_marketing",
-    "qc",
-  ].includes(currentRole);
+  const perms = useMemo(
+    () => new Set(snapshot?.profile.permissions ?? []),
+    [snapshot?.profile.permissions]
+  );
+  const ownerActions = currentRole === "super_admin" || currentRole === "owner";
+  const managementActions =
+    ownerActions ||
+    [
+      "super_admin",
+      "head_admin",
+      "admin",
+      "general_manager",
+      "sales_marketing",
+      "qc",
+    ].includes(currentRole) ||
+    perms.has("workspace.management");
   const visibleKinds =
     currentRole === "sales_marketing"
       ? ["trial_request", "callback", "nursery", "winback", "exit_feedback"]
@@ -349,7 +357,9 @@ export default function ManagementPage() {
   });
   const hierarchyOptions = staff
     .filter(
-      (person) => person.role === "head_admin" && person.status === "active"
+      (person) =>
+        ["head_admin", "general_manager", "super_admin"].includes(person.role) &&
+        person.status === "active"
     )
     .map((person) => ({ value: person.id, label: person.name }));
   const hasScheduledTrial = (item: DeskItem) =>
@@ -527,7 +537,11 @@ export default function ManagementPage() {
             options: staff
               .filter(
                 (person) =>
-                  person.role === "admin" && person.status === "active"
+                  (person.role === "admin" ||
+                    (person.department !== "Music Education" &&
+                      person.role !== "parent" &&
+                      person.role !== "student")) &&
+                  person.status === "active"
               )
               .map((person) => ({ value: person.id, label: person.name })),
           },
@@ -621,7 +635,13 @@ export default function ManagementPage() {
             type: "select",
             required: true,
             options: activeStaff
-              .filter((person) => ["teacher", "qc"].includes(person.role))
+              .filter(
+                (person) =>
+                  person.department === "Music Education" ||
+                  ["teacher", "qc"].includes(person.role) ||
+                  person.role.includes("teacher") ||
+                  person.role.includes("tutor")
+              )
               .map((person) => ({
                 value: person.id,
                 label: `${person.name}${
@@ -637,9 +657,13 @@ export default function ManagementPage() {
             options: staff
               .filter(
                 (person) =>
-                  ["admin", "head_admin", "super_admin"].includes(
+                  (["admin", "head_admin", "super_admin", "owner"].includes(
                     person.role
-                  ) && person.status === "active"
+                  ) ||
+                    (person.department !== "Music Education" &&
+                      person.role !== "parent" &&
+                      person.role !== "student")) &&
+                  person.status === "active"
               )
               .map((person) => ({ value: person.id, label: person.name })),
           },

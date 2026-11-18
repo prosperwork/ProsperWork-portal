@@ -14,6 +14,7 @@ export default function FinanceSettings({role}:{role:string}){
   catch(e){setError(e instanceof Error?e.message:"Could not save");}finally{setBusy(false);}
  }
  function fx(e:FormEvent<HTMLFormElement>){e.preventDefault();const f=new FormData(e.currentTarget);void save("/api/operations",{action:"fx",currency:f.get("currency"),date:f.get("date"),rate:Number(f.get("rate")),notes:f.get("notes")});}
+  const canManageFinance = role === "super_admin" || role === "owner";
   return <section className="ps-finance-settings" aria-labelledby="finance-settings-heading">
     <header className="ps-finance-heading">
       <h2 id="finance-settings-heading">Currency, conversion and referral settings</h2>
@@ -24,8 +25,8 @@ export default function FinanceSettings({role}:{role:string}){
 
     <section className="ps-finance-subsection" aria-labelledby="currency-catalog-heading">
       <div className="ps-finance-subhead"><div><h3 id="currency-catalog-heading">Currency catalog</h3><p>Select a currency to edit its details.</p></div></div>
-      <div className="ps-currency-list">{currencies.map(c => <button className={`ps-currency-option${editing.code === c.code ? " selected" : ""}`} key={c.code} type="button" onClick={() => setEditing(c)} disabled={role !== "super_admin"} aria-pressed={editing.code === c.code}>{c.code}<span>{c.name}</span><small>{c.enabled ? "Enabled" : "Disabled"}</small></button>)}</div>
-      {role === "super_admin" && <form className="ps-finance-form" onSubmit={e => { e.preventDefault(); void save("/api/currencies", { ...editing, notes: reason }); }}>
+      <div className="ps-currency-list">{currencies.map(c => <button className={`ps-currency-option${editing.code === c.code ? " selected" : ""}`} key={c.code} type="button" onClick={() => setEditing(c)} disabled={!canManageFinance} aria-pressed={editing.code === c.code}>{c.code}<span>{c.name}</span><small>{c.enabled ? "Enabled" : "Disabled"}</small></button>)}</div>
+      {canManageFinance && <form className="ps-finance-form" onSubmit={e => { e.preventDefault(); void save("/api/currencies", { ...editing, notes: reason }); }}>
         <div className="ps-finance-subhead form-heading"><div><h3>{editing.code ? `Edit ${editing.code}` : "Add currency"}</h3><p>Currency changes apply to new agreements only.</p></div><button className="ps-outline" type="button" onClick={() => setEditing({ code: "", name: "", symbol: "", enabled: true })}>New currency</button></div>
         <div className="ps-finance-fields three">
           <label className="ps-finance-field">Three-letter code<input required pattern="[A-Z]{3}" maxLength={3} value={editing.code} onChange={e => setEditing({ ...editing, code: e.target.value.toUpperCase() })} /></label>
@@ -38,7 +39,7 @@ export default function FinanceSettings({role}:{role:string}){
       </form>}
     </section>
 
-    {role === "super_admin" && rules && <section className="ps-finance-subsection" aria-labelledby="finance-rules-heading">
+    {canManageFinance && rules && <section className="ps-finance-subsection" aria-labelledby="finance-rules-heading">
       <form className="ps-finance-form" onSubmit={e => { e.preventDefault(); void save("/api/operations", { action: "finance_settings", taxPercent: Number(rules.tax_percent), financeProfit: rules.finance_profit, referralPercent: Number(rules.referral_percent) }); }}>
         <div className="ps-finance-subhead form-heading"><div><h3 id="finance-rules-heading">Referral and financial rules</h3><p>These controls apply to future referral credits and financial summaries.</p></div></div>
         <div className="ps-finance-fields">

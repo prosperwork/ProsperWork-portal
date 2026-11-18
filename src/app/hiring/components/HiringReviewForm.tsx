@@ -238,8 +238,8 @@ export default function HiringReviewForm({
             <CheckCircle2 size={14} />
             <p>
               Independent passing HR and departmental interviews
-              {selectedCase.desired_role === "teacher"
-                ? ", plus a passing teacher audition,"
+              {["teacher", "qc"].includes(selectedCase.desired_role) || selectedCase.desired_role.includes("teacher") || selectedCase.desired_role.includes("tutor")
+                ? ", plus a passing music audition,"
                 : ""}{" "}
               are present in the saved record.
             </p>

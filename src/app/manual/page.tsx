@@ -31,8 +31,13 @@ export default function ManualPage() {
     if (!role) return [];
     const needle = query.trim().toLowerCase();
     return manualSections.filter((section) => {
+      const isFamily = role === "parent" || role === "student";
+      const isOwner = role === "super_admin" || role === "owner";
       const visibleToRole =
-        !section.roles?.length || section.roles.includes(role as Role);
+        !section.roles?.length ||
+        isOwner ||
+        section.roles.includes(role as Role) ||
+        (!isFamily && section.roles.some((r) => r !== "parent" && r !== "student"));
       const searchable = [
         section.title,
         section.summary,

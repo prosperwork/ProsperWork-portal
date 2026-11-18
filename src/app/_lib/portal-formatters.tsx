@@ -17,9 +17,19 @@ export const roles: { id: Role; label: string }[] = [
   { id: "social_media", label: "Social Media" },
 ];
 
-export const roleNames: Record<Role, string> = Object.fromEntries(
+const baseRoleMap: Record<string, string> = Object.fromEntries(
   roles.map((r) => [r.id, r.label])
-) as Record<Role, string>;
+);
+
+export const roleNames: Record<Role, string> = new Proxy(baseRoleMap, {
+  get(target, prop: string) {
+    if (typeof prop === "string" && prop in target) return target[prop];
+    if (typeof prop === "string" && prop.length > 0) {
+      return prop.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
+    }
+    return "";
+  },
+});
 
 export const titles: Record<AppView, { title: string; sub: string }> = {
   overview: {

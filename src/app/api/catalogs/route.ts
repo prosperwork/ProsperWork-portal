@@ -39,7 +39,7 @@ export async function POST(request: Request) {
   }
   try {
     const { client, profile } = await identity();
-    if (profile?.role !== "super_admin" || profile.status !== "active") {
+    if ((profile?.role !== "super_admin" && profile?.role !== "owner") || profile.status !== "active") {
       return NextResponse.json({ error: "Super Admin access is required to manage catalogs." }, { status: 403 });
     }
     const blocked = impersonationBlocked(profile);

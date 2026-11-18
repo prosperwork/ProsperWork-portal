@@ -8,7 +8,7 @@ type Rules = {
 };
 export type ExtrasStudent = { id: string; payload: Record<string, unknown> };
 export type ExtrasData = {
-  profile: { role: string; id: string; status: string };
+  profile: { role: string; id: string; status: string; department?: string; permissions?: string[] };
   settings: Rules | Rules[] | null;
   files: { id: string; original_name: string; category: string }[];
   referrals: { id: string; lead_id: string; created_at: string }[];
@@ -60,10 +60,11 @@ export default function OperationsExtras({
   const rules = Array.isArray(data.settings) ? data.settings[0] : data.settings;
   const [percent, setPercent] = useState(String(rules?.referral_percent ?? 0));
   const r = data.profile.role,
-    owner = r === "super_admin",
+    owner = r === "super_admin" || r === "owner",
     guardian = ["parent", "student"].includes(r),
-    reviewer = ["super_admin", "qc", "admin", "head_admin"].includes(r),
-    isSocial = r === "social_media" || owner;
+    perms = new Set(data.profile.permissions ?? []),
+    reviewer = owner || perms.has("workspace.curriculum") || perms.has("workspace.management") || ["super_admin", "qc", "admin", "head_admin"].includes(r),
+    isSocial = r === "social_media" || owner || perms.has("workspace.curriculum");
 
   async function submit(body: unknown) {
     const parsed = operationsAction.safeParse(body);

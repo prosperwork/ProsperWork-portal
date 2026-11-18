@@ -110,7 +110,7 @@ export async function POST(request:Request){
       const tRow = await admin.from("pw_profiles").select("id,name,role,status").eq("id", d.teacherId).single();
       const { data: tRole } = await admin.from("pw_roles").select("is_staff,department").eq("code", tRow.data?.role || "").maybeSingle();
       const isTeacher = tRow.data && tRow.data.status === "active" && (
-        ["teacher", "qc", "super_admin"].includes(tRow.data.role) || (tRole?.is_staff && tRole.department === "Music Education")
+        ["teacher", "qc", "super_admin", "owner"].includes(tRow.data.role) || (tRole?.is_staff && tRole.department === "Music Education") || tRow.data.role.includes("teacher") || tRow.data.role.includes("tutor")
       );
       if (!isTeacher) {
         return reply({ error: "Selected teacher must be an active instructor." }, 400);
@@ -126,7 +126,7 @@ export async function POST(request:Request){
       const aRow = await admin.from("pw_profiles").select("id,name,role,status").eq("id", d.adminId).single();
       const { data: aRole } = await admin.from("pw_roles").select("is_staff,department").eq("code", aRow.data?.role || "").maybeSingle();
       const isAdmin = aRow.data && aRow.data.status === "active" && (
-        ["admin", "head_admin", "general_manager", "super_admin"].includes(aRow.data.role) || (aRole?.is_staff && aRole.department !== "Music Education")
+        ["admin", "head_admin", "general_manager", "super_admin", "owner"].includes(aRow.data.role) || (aRole?.is_staff && aRole.department !== "Music Education")
       );
       if (!isAdmin) {
         return reply({ error: "Selected administrator must be an active staff administrator." }, 400);

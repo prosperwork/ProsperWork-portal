@@ -115,7 +115,7 @@ export default function SettingsPage() {
       const hydrated = hydrateSettings(result.settings);
       setData({ ...(result as SettingsResponse), settings: hydrated });
       setDraft(hydrated);
-      if (result.profile?.role !== "super_admin") setDenied(true);
+      if (result.profile?.role !== "super_admin" && result.profile?.role !== "owner") setDenied(true);
       return true;
     } catch (cause) { setError(cause instanceof Error ? cause.message : "Settings could not be loaded."); return false; }
     finally { setLoading(false); }
@@ -134,8 +134,8 @@ export default function SettingsPage() {
   }, []);
 
   useEffect(() => { void load(); }, [load]);
-  useEffect(() => { if (data?.profile.role === "super_admin") void loadEmail(); }, [data, loadEmail]);
-  const owner = data?.profile.role === "super_admin";
+  const owner = data?.profile.role === "super_admin" || data?.profile.role === "owner";
+  useEffect(() => { if (owner) void loadEmail(); }, [owner, loadEmail]);
   const changed = !!data && !!draft && JSON.stringify(data.settings) !== JSON.stringify(draft);
   const smtpStatus = !data?.integrations.smtpConfigured
     ? { detail: "SMTP credentials are not configured.", badge: "Not configured" }

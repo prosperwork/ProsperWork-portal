@@ -171,10 +171,11 @@ export default function FamilyPage() {
   // Academy Support & Complaints State
 
   const role = normalizedRole(family?.profile.role ?? "");
+  const perms = useMemo(() => new Set(family?.profile.permissions ?? []), [family?.profile?.permissions]);
   const active = family?.profile.status.trim().toLowerCase() === "active";
   const isParent = role === "parent";
   const canManageChildren = Boolean(
-    active && (isParent || role === "owner" || role === "super_admin")
+    active && (isParent || role === "owner" || role === "super_admin" || perms.has("workspace.family"))
   );
   const lessonsByStudent = useMemo(() => {
     const grouped = new Map<string, LearningResponse["lessons"]>();

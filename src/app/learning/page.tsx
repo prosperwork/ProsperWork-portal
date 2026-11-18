@@ -98,14 +98,23 @@ export default function LearningPage() {
 
   const role = roleKey(data?.profile.role ?? "");
   const isActive = data?.profile.status.trim().toLowerCase() === "active";
+  const perms = useMemo(
+    () => new Set(data?.profile.permissions ?? []),
+    [data?.profile.permissions]
+  );
   const canManageResources =
     role === "owner" ||
     role === "qc" ||
     role === "quality_control" ||
-    role === "super_admin";
+    role === "super_admin" ||
+    perms.has("workspace.curriculum") ||
+    perms.has("workspace.learning");
   const canEditResources = Boolean(isActive && canManageResources);
   const canReadResources =
-    canManageResources || ["parent", "student", "teacher"].includes(role);
+    canManageResources ||
+    !["parent", "student"].includes(role) ||
+    role === "parent" ||
+    role === "student";
   const selectedLesson = useMemo(
     () =>
       data?.lessons.find((lesson) => lesson.id === selectedLessonId) ?? null,
@@ -124,21 +133,24 @@ export default function LearningPage() {
       (role === "owner" ||
         role === "quality_control" ||
         role === "super_admin" ||
-        (role === "qc" && selectedLesson.teacherId === data.profile.id) ||
-        (role === "teacher" && selectedLesson.teacherId === data.profile.id))
+        perms.has("workspace.curriculum") ||
+        selectedLesson.teacherId === data.profile.id)
   );
 
   const canDownloadRecordings = Boolean(
     data &&
       isActive &&
-      [
+      ([
         "owner",
         "super_admin",
         "head_admin",
         "admin",
         "qc",
         "quality_control",
-      ].includes(role)
+      ].includes(role) ||
+        perms.has("workspace.learning") ||
+        perms.has("workspace.studio") ||
+        perms.has("workspace.curriculum"))
   );
   const visibleResources = useMemo(() => {
     const resources = data?.resources ?? [];

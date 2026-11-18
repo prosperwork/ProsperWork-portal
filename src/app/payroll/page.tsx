@@ -485,9 +485,11 @@ export default function PayrollPage() {
   });
 
   const role = data?.profile.role || "";
-  const payrollAccess = isPayrollRole(role);
+  const perms = data?.profile.permissions ?? [];
+  const payrollAccess = isPayrollRole(role, perms);
   const owner = isOwnerRole(role);
-  const hrAccess = isHRRole(role);
+  const hrAccess = isHRRole(role, perms);
+  const isFinanceTeam = role === "finance" || owner || perms.includes("workspace.finance") || perms.includes("workspace.payroll");
   const payDate = payDateForMonth(month);
 
   const load = useCallback(
@@ -569,7 +571,11 @@ export default function PayrollPage() {
   const activeStaff =
     data?.staff.filter((staff) => staff.status === "active") ?? [];
   const directoryAdmins =
-    data?.staff.filter((staff) => staff.role === "admin") ?? [];
+    data?.staff.filter(
+      (staff) =>
+        ["admin", "head_admin", "general_manager", "super_admin"].includes(staff.role) ||
+        (staff.department !== "Music Education" && staff.role !== "parent" && staff.role !== "student")
+    ) ?? [];
   const selectedPayDateIsFuture =
     new Date(`${payDate}T00:00:00`).getTime() > Date.now();
   const selectedStatement = allHistorical.find(
@@ -1520,7 +1526,7 @@ export default function PayrollPage() {
                       </button>
                     </header>
                     <div className="pr-card-body">
-                      {role === "finance" && (
+                      {isFinanceTeam && (
                         <div className="pr-action-row">
                           <button
                             className="pr-button"
