@@ -37,12 +37,14 @@ export type LessonStatus =
 
 export type LeadStatus =
   | "new"
+  | "called_no_answer"
   | "contacted"
   | "callback"
   | "trial_requested"
   | "trial_booked"
   | "trial_verified"
   | "converted"
+  | "lost"
   | "nursery"
   | "winback";
 

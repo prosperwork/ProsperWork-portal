@@ -4,7 +4,9 @@ import { useState, type ReactNode } from "react";
 import {
   Activity,
   ArrowUpRight,
+  Check,
   CheckCircle2,
+  ChevronDown,
   Clock3,
   Download,
   ExternalLink,
@@ -28,6 +30,71 @@ import {
 } from "../../_lib/portal-formatters";
 import type { FormKind } from "../modals/ActionModal";
 import type { AcademyData, AppView, Lead, Role } from "@/lib/types";
+
+// 6 Pipeline Stages matching user workflow
+const PIPELINE_STAGES: {
+  id: Lead["status"];
+  label: string;
+  pillColor: { bg: string; text: string; border: string; dot: string };
+}[] = [
+  {
+    id: "new",
+    label: "New Lead",
+    pillColor: { bg: "#eff6ff", text: "#1d4ed8", border: "#bfdbfe", dot: "#3b82f6" },
+  },
+  {
+    id: "called_no_answer",
+    label: "Called – No Answer",
+    pillColor: { bg: "#fffbeb", text: "#b45309", border: "#fde68a", dot: "#f59e0b" },
+  },
+  {
+    id: "contacted",
+    label: "Contacted",
+    pillColor: { bg: "#f5f3ff", text: "#6d28d9", border: "#ddd6fe", dot: "#8b5cf6" },
+  },
+  {
+    id: "trial_booked",
+    label: "Trial Booked",
+    pillColor: { bg: "#f0fdf4", text: "#15803d", border: "#bbf7d0", dot: "#22c55e" },
+  },
+  {
+    id: "converted",
+    label: "Converted",
+    pillColor: { bg: "#ecfdf5", text: "#047857", border: "#a7f3d0", dot: "#10b981" },
+  },
+  {
+    id: "lost",
+    label: "Lost",
+    pillColor: { bg: "#f8fafc", text: "#475569", border: "#e2e8f0", dot: "#94a3b8" },
+  },
+];
+
+const getStageDisplay = (status: Lead["status"]) => {
+  if (status === "called_no_answer" || status === "callback") {
+    return PIPELINE_STAGES.find((s) => s.id === "called_no_answer")!;
+  }
+  if (
+    status === "trial_booked" ||
+    status === "trial_requested" ||
+    status === "trial_verified"
+  ) {
+    return PIPELINE_STAGES.find((s) => s.id === "trial_booked")!;
+  }
+  if (status === "lost" || status === "nursery" || status === "winback") {
+    return PIPELINE_STAGES.find((s) => s.id === "lost")!;
+  }
+  const match = PIPELINE_STAGES.find((s) => s.id === status);
+  return match || PIPELINE_STAGES[0];
+};
+
+type PipelineFilterKey =
+  | "all"
+  | "new"
+  | "called_no_answer"
+  | "contacted"
+  | "trial_booked"
+  | "converted"
+  | "lost";
 
 export default function LeadsView({
   data,
@@ -68,11 +135,12 @@ export default function LeadsView({
   notify: (msg: string) => void;
   reload?: () => Promise<void>;
 }) {
-  const [stageFilter, setStageFilter] = useState<Lead["status"] | "all">("all");
+  const [stageFilter, setStageFilter] = useState<PipelineFilterKey>("all");
   const [filterMode, setFilterMode] = useState<
     "all" | "meta" | "ready" | "budget" | "fb" | "ig" | "other"
   >("all");
   const [selectedLead, setSelectedLead] = useState<Lead | null>(null);
+  const [activeDropdownLeadId, setActiveDropdownLeadId] = useState<string | null>(null);
   const [syncingMeta, setSyncingMeta] = useState(false);
 
   const statusButton = (label: string, onClick: () => void, tone = "ghost") => (
@@ -215,10 +283,82 @@ export default function LeadsView({
     return true;
   });
 
+  // Descending sort: latest / newest arrived lead shows first!
+  const sortedLeads = [...searchedLeads].sort((a, b) => {
+    const timeA = a.arrivedAt ? new Date(a.arrivedAt).getTime() : 0;
+    const timeB = b.arrivedAt ? new Date(b.arrivedAt).getTime() : 0;
+    return timeB - timeA;
+  });
+
   const list =
     stageFilter === "all"
-      ? searchedLeads
-      : searchedLeads.filter((lead) => lead.status === stageFilter);
+      ? sortedLeads
+      : sortedLeads.filter((lead) => {
+          if (stageFilter === "new") return lead.status === "new";
+          if (stageFilter === "called_no_answer") {
+            return lead.status === "called_no_answer" || lead.status === "callback";
+          }
+          if (stageFilter === "contacted") return lead.status === "contacted";
+          if (stageFilter === "trial_booked") {
+            return (
+              lead.status === "trial_booked" ||
+              lead.status === "trial_requested" ||
+              lead.status === "trial_verified"
+            );
+          }
+          if (stageFilter === "converted") return lead.status === "converted";
+          if (stageFilter === "lost") {
+            return (
+              lead.status === "lost" ||
+              lead.status === "nursery" ||
+              lead.status === "winback"
+            );
+          }
+          return lead.status === stageFilter;
+        });
+
+  const pipelineTabs: { id: PipelineFilterKey; label: string; count: number }[] = [
+    { id: "all", label: "All Leads", count: searchedLeads.length },
+    {
+      id: "new",
+      label: "New Leads",
+      count: searchedLeads.filter((l) => l.status === "new").length,
+    },
+    {
+      id: "called_no_answer",
+      label: "Called – No Answer",
+      count: searchedLeads.filter(
+        (l) => l.status === "called_no_answer" || l.status === "callback"
+      ).length,
+    },
+    {
+      id: "contacted",
+      label: "Contacted",
+      count: searchedLeads.filter((l) => l.status === "contacted").length,
+    },
+    {
+      id: "trial_booked",
+      label: "Trial Booked",
+      count: searchedLeads.filter(
+        (l) =>
+          l.status === "trial_booked" ||
+          l.status === "trial_requested" ||
+          l.status === "trial_verified"
+      ).length,
+    },
+    {
+      id: "converted",
+      label: "Converted",
+      count: searchedLeads.filter((l) => l.status === "converted").length,
+    },
+    {
+      id: "lost",
+      label: "Lost",
+      count: searchedLeads.filter(
+        (l) => l.status === "lost" || l.status === "nursery" || l.status === "winback"
+      ).length,
+    },
+  ];
 
   const metaCount = data.leads.filter(isMetaLead).length;
   const readyCount = data.leads.filter((l) => parseReadiness(l.readiness)?.type === "ready").length;
@@ -495,34 +635,19 @@ export default function LeadsView({
           role="tablist"
           aria-label="Filter leads by pipeline stage"
         >
-          <button
-            type="button"
-            role="tab"
-            aria-selected={stageFilter === "all"}
-            className={`portal-tab${stageFilter === "all" ? " active" : ""}`}
-            onClick={() => setStageFilter("all")}
-          >
-            All Stages
-            <span className="portal-tab-badge">{searchedLeads.length}</span>
-          </button>
-          {stages.map((stage) => {
-            const count = searchedLeads.filter(
-              (lead) => lead.status === stage
-            ).length;
-            return (
-              <button
-                key={stage}
-                type="button"
-                role="tab"
-                aria-selected={stageFilter === stage}
-                className={`portal-tab${stageFilter === stage ? " active" : ""}`}
-                onClick={() => setStageFilter(stage)}
-              >
-                {stage.replaceAll("_", " ")}
-                <span className="portal-tab-badge">{count}</span>
-              </button>
-            );
-          })}
+          {pipelineTabs.map((tab) => (
+            <button
+              key={tab.id}
+              type="button"
+              role="tab"
+              aria-selected={stageFilter === tab.id}
+              className={`portal-tab${stageFilter === tab.id ? " active" : ""}`}
+              onClick={() => setStageFilter(tab.id)}
+            >
+              {tab.label}
+              <span className="portal-tab-badge">{tab.count}</span>
+            </button>
+          ))}
         </div>
 
         <div className="table-wrap">
@@ -810,65 +935,213 @@ export default function LeadsView({
                       </div>
                     </td>
 
-                    <td>
-                      <Pill>{lead.status.replaceAll("_", " ")}</Pill>
+                    <td style={{ position: "relative" }}>
+                      {/* Move Stage Dropdown matching user workflow & screenshot */}
+                      <div style={{ position: "relative", display: "inline-block" }}>
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setActiveDropdownLeadId((prev) => (prev === lead.id ? null : lead.id));
+                          }}
+                          style={{
+                            display: "inline-flex",
+                            alignItems: "center",
+                            gap: "6px",
+                            padding: "4px 10px",
+                            borderRadius: "9999px",
+                            fontSize: "0.78rem",
+                            fontWeight: 600,
+                            background: getStageDisplay(lead.status).pillColor.bg,
+                            color: getStageDisplay(lead.status).pillColor.text,
+                            border: `1px solid ${getStageDisplay(lead.status).pillColor.border}`,
+                            cursor: "pointer",
+                            whiteSpace: "nowrap",
+                            transition: "all 0.15s ease",
+                            boxShadow: "0 1px 2px rgba(0,0,0,0.03)",
+                          }}
+                          title="Click to move pipeline stage"
+                        >
+                          <span
+                            style={{
+                              width: "6px",
+                              height: "6px",
+                              borderRadius: "50%",
+                              backgroundColor: getStageDisplay(lead.status).pillColor.dot,
+                              display: "inline-block",
+                            }}
+                          />
+                          <span>{getStageDisplay(lead.status).label}</span>
+                          <ChevronDown size={12} style={{ opacity: 0.7 }} />
+                        </button>
+
+                        {/* Move Stage Popover Dropdown matching image */}
+                        {activeDropdownLeadId === lead.id && (
+                          <>
+                            <div
+                              style={{
+                                position: "fixed",
+                                top: 0,
+                                left: 0,
+                                right: 0,
+                                bottom: 0,
+                                zIndex: 998,
+                              }}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setActiveDropdownLeadId(null);
+                              }}
+                            />
+                            <div
+                              style={{
+                                position: "absolute",
+                                top: "calc(100% + 4px)",
+                                left: 0,
+                                zIndex: 999,
+                                background: "#ffffff",
+                                borderRadius: "14px",
+                                boxShadow:
+                                  "0 10px 25px -5px rgba(0, 0, 0, 0.15), 0 8px 10px -6px rgba(0, 0, 0, 0.08), 0 0 0 1px rgba(0, 0, 0, 0.08)",
+                                padding: "8px 6px",
+                                minWidth: "190px",
+                                textAlign: "left",
+                              }}
+                              onClick={(e) => e.stopPropagation()}
+                            >
+                              <div
+                                style={{
+                                  fontSize: "0.72rem",
+                                  fontWeight: 700,
+                                  color: "#94a3b8",
+                                  padding: "4px 10px 6px 10px",
+                                  letterSpacing: "0.02em",
+                                }}
+                              >
+                                Move Stage
+                              </div>
+                              <div style={{ display: "flex", flexDirection: "column", gap: "2px" }}>
+                                {PIPELINE_STAGES.map((s) => {
+                                  const isSelected = getStageDisplay(lead.status).id === s.id;
+                                  return (
+                                    <button
+                                      key={s.id}
+                                      type="button"
+                                      onClick={() => {
+                                        setLeadStatus(lead, s.id);
+                                        setActiveDropdownLeadId(null);
+                                      }}
+                                      style={{
+                                        display: "flex",
+                                        alignItems: "center",
+                                        justifyContent: "space-between",
+                                        padding: "7px 10px",
+                                        borderRadius: "8px",
+                                        fontSize: "0.82rem",
+                                        fontWeight: isSelected ? 600 : 500,
+                                        background: isSelected ? "#eef2ff" : "transparent",
+                                        color: isSelected ? "#4338ca" : "#334155",
+                                        border: "none",
+                                        cursor: "pointer",
+                                        width: "100%",
+                                        textAlign: "left",
+                                        transition: "background 0.12s ease",
+                                      }}
+                                      onMouseEnter={(e) => {
+                                        if (!isSelected) {
+                                          e.currentTarget.style.background = "#f8fafc";
+                                          e.currentTarget.style.color = "#0f172a";
+                                        }
+                                      }}
+                                      onMouseLeave={(e) => {
+                                        if (!isSelected) {
+                                          e.currentTarget.style.background = "transparent";
+                                          e.currentTarget.style.color = "#334155";
+                                        }
+                                      }}
+                                    >
+                                      <span>{s.label}</span>
+                                      {isSelected && (
+                                        <Check
+                                          size={14}
+                                          style={{ color: "#4f46e5", strokeWidth: 2.5 }}
+                                        />
+                                      )}
+                                    </button>
+                                  );
+                                })}
+                              </div>
+                            </div>
+                          </>
+                        )}
+                      </div>
                     </td>
 
                     <td style={{ textAlign: "right" }}>
                       <div className="row-actions" style={{ justifyContent: "flex-end" }}>
-                        {lead.status === "new" &&
-                          statusButton("Contacted", () =>
-                            setLeadStatus(lead, "contacted")
-                          )}
-                        {(lead.status === "contacted" ||
-                          lead.status === "callback") &&
-                          statusButton(
-                            "Request trial",
-                            () => setLeadStatus(lead, "trial_requested"),
-                            "secondary"
-                          )}
-                        {lead.status === "trial_requested" &&
-                          statusButton(
-                            "Book trial",
-                            () => setLeadStatus(lead, "trial_booked"),
-                            "secondary"
-                          )}
-                        {lead.status === "trial_booked" &&
-                          statusButton(
-                            "Trial done",
-                            () => setLeadStatus(lead, "trial_verified"),
-                            "secondary"
-                          )}
-                        {lead.status === "trial_verified" &&
-                          statusButton(
-                            "Convert",
-                            () => setLeadStatus(lead, "converted"),
-                            "secondary"
-                          )}
+                        {lead.status === "new" && (
+                          <button
+                            type="button"
+                            className="btn small primary"
+                            onClick={() => setLeadStatus(lead, "contacted")}
+                          >
+                            Contacted
+                          </button>
+                        )}
+                        {(lead.status === "called_no_answer" || lead.status === "callback") && (
+                          <button
+                            type="button"
+                            className="btn small secondary"
+                            onClick={() => setLeadStatus(lead, "trial_booked")}
+                          >
+                            Book Trial
+                          </button>
+                        )}
+                        {lead.status === "contacted" && (
+                          <button
+                            type="button"
+                            className="btn small secondary"
+                            onClick={() => setLeadStatus(lead, "trial_booked")}
+                          >
+                            Book Trial
+                          </button>
+                        )}
+                        {(lead.status === "trial_booked" ||
+                          lead.status === "trial_requested" ||
+                          lead.status === "trial_verified") && (
+                          <button
+                            type="button"
+                            className="btn small primary"
+                            onClick={() => setLeadStatus(lead, "converted")}
+                          >
+                            Convert
+                          </button>
+                        )}
                         {lead.status === "converted" &&
                           (financeAccess ? (
-                            statusButton("First payment", () => {
-                              changeView("finance");
-                              notify(
-                                "Add the first payment record in Finance."
-                              );
-                            })
+                            <button
+                              type="button"
+                              className="btn small primary"
+                              onClick={() => {
+                                changeView("finance");
+                                notify("Add the first payment record in Finance.");
+                              }}
+                            >
+                              First payment
+                            </button>
                           ) : (
-                            <span className="table-small">
-                              Handoff to Finance
+                            <span className="table-small" style={{ color: "#059669", fontWeight: 600 }}>
+                              Active Student
                             </span>
                           ))}
-                        {!["converted", "winback"].includes(lead.status) &&
-                          statusButton(
-                            lead.status === "nursery" ? "Win-back" : "Nursery",
-                            () =>
-                              setLeadStatus(
-                                lead,
-                                lead.status === "nursery"
-                                  ? "winback"
-                                  : "nursery"
-                              )
-                          )}
+                        {(lead.status === "lost" || lead.status === "nursery" || lead.status === "winback") && (
+                          <button
+                            type="button"
+                            className="btn small ghost"
+                            onClick={() => setLeadStatus(lead, "contacted")}
+                          >
+                            Re-engage
+                          </button>
+                        )}
                       </div>
                     </td>
                   </tr>
@@ -1137,72 +1410,38 @@ export default function LeadsView({
               )}
             </div>
 
-            {/* Quick Status Progression Buttons in Modal */}
+            {/* Move Stage in Modal */}
             <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem" }}>
-              <div style={{ fontSize: "0.75rem", color: "#64748b", textTransform: "uppercase", fontWeight: 700 }}>
-                Advance CRM Pipeline
+              <div style={{ fontSize: "0.75rem", color: "#64748b", textTransform: "uppercase", fontWeight: 700, letterSpacing: "0.03em" }}>
+                Move Stage
               </div>
               <div style={{ display: "flex", gap: "0.4rem", flexWrap: "wrap" }}>
-                {selectedLead.status !== "contacted" && (
-                  <button
-                    type="button"
-                    className="btn small ghost"
-                    onClick={() => {
-                      setLeadStatus(selectedLead, "contacted");
-                      setSelectedLead((prev) => prev ? { ...prev, status: "contacted" } : null);
-                    }}
-                  >
-                    Mark Contacted
-                  </button>
-                )}
-                {selectedLead.status !== "trial_requested" && (
-                  <button
-                    type="button"
-                    className="btn small secondary"
-                    onClick={() => {
-                      setLeadStatus(selectedLead, "trial_requested");
-                      setSelectedLead((prev) => prev ? { ...prev, status: "trial_requested" } : null);
-                    }}
-                  >
-                    Request Trial
-                  </button>
-                )}
-                {selectedLead.status !== "trial_booked" && (
-                  <button
-                    type="button"
-                    className="btn small secondary"
-                    onClick={() => {
-                      setLeadStatus(selectedLead, "trial_booked");
-                      setSelectedLead((prev) => prev ? { ...prev, status: "trial_booked" } : null);
-                    }}
-                  >
-                    Book Trial
-                  </button>
-                )}
-                {selectedLead.status !== "converted" && (
-                  <button
-                    type="button"
-                    className="btn small primary"
-                    onClick={() => {
-                      setLeadStatus(selectedLead, "converted");
-                      setSelectedLead((prev) => prev ? { ...prev, status: "converted" } : null);
-                    }}
-                  >
-                    Convert to Student
-                  </button>
-                )}
-                {selectedLead.status !== "nursery" && selectedLead.status !== "converted" && (
-                  <button
-                    type="button"
-                    className="btn small ghost"
-                    onClick={() => {
-                      setLeadStatus(selectedLead, "nursery");
-                      setSelectedLead((prev) => prev ? { ...prev, status: "nursery" } : null);
-                    }}
-                  >
-                    Move to Nursery
-                  </button>
-                )}
+                {PIPELINE_STAGES.map((s) => {
+                  const isSelected = getStageDisplay(selectedLead.status).id === s.id;
+                  return (
+                    <button
+                      key={s.id}
+                      type="button"
+                      className={`btn small ${isSelected ? "primary" : "ghost"}`}
+                      style={{
+                        display: "inline-flex",
+                        alignItems: "center",
+                        gap: "6px",
+                        background: isSelected ? "#4f46e5" : undefined,
+                        borderColor: isSelected ? "#4f46e5" : undefined,
+                        color: isSelected ? "#ffffff" : undefined,
+                        fontWeight: isSelected ? 700 : 500,
+                      }}
+                      onClick={() => {
+                        setLeadStatus(selectedLead, s.id);
+                        setSelectedLead((prev) => (prev ? { ...prev, status: s.id } : null));
+                      }}
+                    >
+                      {isSelected && <Check size={13} style={{ strokeWidth: 2.5 }} />}
+                      {s.label}
+                    </button>
+                  );
+                })}
               </div>
             </div>
           </div>

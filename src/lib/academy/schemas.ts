@@ -59,7 +59,7 @@ export const recordSchemas = {
 
   leads: z.object({
     id, parentName: name, email: z.string().email().max(254), phone: z.string().max(40), childName: name, instrument: name,
-    source: name, status: z.enum(["new", "contacted", "callback", "trial_requested", "trial_booked", "trial_verified", "converted", "nursery", "winback"]),
+    source: name, status: z.enum(["new", "called_no_answer", "contacted", "callback", "trial_requested", "trial_booked", "trial_verified", "converted", "lost", "nursery", "winback"]),
     arrivedAt: z.string().datetime({ offset: true }), firstResponseAt: z.string().datetime({ offset: true }).optional(), callbackAt: z.string().optional(),
     owner: text, notes: text, referralFrom: text.optional(), preferredSlots: z.array(text).max(10).optional(), teacherName: text.optional(), adminName: text.optional(),
     metaLeadId: z.string().max(100).optional(),
