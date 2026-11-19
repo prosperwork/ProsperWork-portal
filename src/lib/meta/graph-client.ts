@@ -371,12 +371,17 @@ export function normalizeLeadFieldData(
       key.includes("ready") ||
       key.includes("interested") ||
       key.includes("start") ||
-      key.includes("age")
+      key.includes("age") ||
+      key.includes("budget")
     ) {
-      readiness = value;
-      customQuestions[field.name] = value;
+      let cleanVal = value.replace(/_/g, " ").trim();
+      if (cleanVal.endsWith(".")) cleanVal = cleanVal.slice(0, -1);
+      cleanVal = cleanVal.charAt(0).toUpperCase() + cleanVal.slice(1);
+      readiness = cleanVal;
+      customQuestions[field.name] = cleanVal;
     } else {
-      customQuestions[field.name] = value;
+      let cleanVal = value.replace(/_/g, " ").trim();
+      customQuestions[field.name] = cleanVal;
     }
   }
 
@@ -384,8 +389,8 @@ export function normalizeLeadFieldData(
   if (!fullName) {
     fullName = [firstName, lastName].filter(Boolean).join(" ");
   }
-  if (!fullName) {
-    fullName = "ProsperWork Meta Lead";
+  if (!fullName || fullName.includes("<test lead:")) {
+    fullName = fullName.includes("<test lead:") ? "Meta Test Candidate" : "ProsperWork Meta Lead";
   }
 
   // Default platform detection
@@ -456,23 +461,11 @@ export async function ingestMetaLead(
     formName = formRecord.data?.name || `Meta Form ${lead.form_id}`;
   }
 
-  // Build notes detailing custom questions, ad, and form info
-  const noteLines: string[] = [];
-  noteLines.push(`Source: Meta Lead Ads (${normalized.platform === "ig" ? "Instagram" : "Facebook"})`);
-  if (formName) noteLines.push(`Form: ${formName}`);
-  if (lead.campaign_name) noteLines.push(`Campaign: ${lead.campaign_name}`);
-  if (lead.ad_name) noteLines.push(`Ad: ${lead.ad_name}`);
-  if (normalized.readiness) noteLines.push(`Readiness: ${normalized.readiness}`);
+  const noteParts: string[] = [];
+  if (lead.campaign_name) noteParts.push(`Campaign: ${lead.campaign_name}`);
+  if (lead.ad_name) noteParts.push(`Ad: ${lead.ad_name}`);
+  const finalNotes = noteParts.join(" · ") || (formName ? `Form: ${formName}` : "Meta Lead Form");
 
-  const extraKeys = Object.entries(normalized.customQuestions);
-  if (extraKeys.length > 0) {
-    noteLines.push("\nForm Responses:");
-    for (const [q, a] of extraKeys) {
-      noteLines.push(`• ${q}: ${a}`);
-    }
-  }
-
-  const finalNotes = noteLines.join("\n");
   const targetLeadId = `lead_meta_${lead.id}`;
   const arrivedAt = lead.created_time
     ? new Date(lead.created_time).toISOString()

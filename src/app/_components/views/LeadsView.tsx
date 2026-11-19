@@ -4,15 +4,18 @@ import { useState, type ReactNode } from "react";
 import {
   Activity,
   ArrowUpRight,
+  CheckCircle2,
   Clock3,
   Download,
   ExternalLink,
+  HelpCircle,
   MessageCircle,
   Music2,
   PhoneCall,
   RefreshCw,
   Send,
   Timer,
+  XCircle,
 } from "lucide-react";
 import ProfileAvatar from "../ProfileAvatar";
 import { PortalModal } from "../PortalModal";
@@ -66,7 +69,9 @@ export default function LeadsView({
   reload?: () => Promise<void>;
 }) {
   const [stageFilter, setStageFilter] = useState<Lead["status"] | "all">("all");
-  const [platformFilter, setPlatformFilter] = useState<"all" | "fb" | "ig" | "meta" | "other">("all");
+  const [filterMode, setFilterMode] = useState<
+    "all" | "meta" | "ready" | "budget" | "fb" | "ig" | "other"
+  >("all");
   const [selectedLead, setSelectedLead] = useState<Lead | null>(null);
   const [syncingMeta, setSyncingMeta] = useState(false);
 
@@ -109,6 +114,62 @@ export default function LeadsView({
     );
   };
 
+  // Helper to parse readiness intent
+  const parseReadiness = (val?: string) => {
+    if (!val) return null;
+    const lower = val.toLowerCase();
+    if (lower.includes("yes") || lower.includes("ready") || lower.includes("invest")) {
+      return {
+        type: "ready" as const,
+        shortLabel: "Ready to Invest",
+        fullText: val.replace(/_/g, " "),
+        tone: "success",
+      };
+    }
+    if (lower.includes("no") || lower.includes("not_fit") || lower.includes("budget")) {
+      return {
+        type: "budget" as const,
+        shortLabel: "Budget Mismatch",
+        fullText: val.replace(/_/g, " "),
+        tone: "warning",
+      };
+    }
+    if (lower.includes("dummy") || lower.includes("<test lead")) {
+      return {
+        type: "test" as const,
+        shortLabel: "Test Lead",
+        fullText: "Meta Sandbox Submission",
+        tone: "neutral",
+      };
+    }
+    return {
+      type: "other" as const,
+      shortLabel: val.replace(/_/g, " ").slice(0, 24),
+      fullText: val.replace(/_/g, " "),
+      tone: "neutral",
+    };
+  };
+
+  // Clean candidate name
+  const cleanName = (name?: string) => {
+    if (!name) return "ProsperWork Candidate";
+    if (name.includes("<test lead:") || name.toLowerCase().includes("dummy")) {
+      return "Meta Test Candidate";
+    }
+    return name;
+  };
+
+  // Clean question labels for human reading
+  const cleanQuestionLabel = (q: string) => {
+    let clean = q.replace(/_/g, " ").trim();
+    if (clean.toLowerCase().includes("whatsapp")) return "WhatsApp Phone Number";
+    if (clean.toLowerCase().includes("lessons start at")) {
+      return "Budget & Monthly Rate (£45 ~ ₦78,000 / month)";
+    }
+    if (clean.toLowerCase().includes("instrument")) return "Preferred Instrument";
+    return clean.charAt(0).toUpperCase() + clean.slice(1);
+  };
+
   const searchedLeads = data.leads.filter((lead) => {
     const matchesQuery = `${lead.parentName} ${lead.childName} ${lead.instrument} ${lead.source} ${lead.status} ${lead.email} ${lead.phone}`
       .toLowerCase()
@@ -116,12 +177,16 @@ export default function LeadsView({
 
     if (!matchesQuery) return false;
 
-    if (platformFilter === "all") return true;
     const plat = getLeadPlatform(lead);
-    if (platformFilter === "fb") return plat === "fb";
-    if (platformFilter === "ig") return plat === "ig";
-    if (platformFilter === "meta") return isMetaLead(lead);
-    if (platformFilter === "other") return plat === "other" && !isMetaLead(lead);
+    const intent = parseReadiness(lead.readiness);
+
+    if (filterMode === "all") return true;
+    if (filterMode === "meta") return isMetaLead(lead);
+    if (filterMode === "ready") return intent?.type === "ready";
+    if (filterMode === "budget") return intent?.type === "budget";
+    if (filterMode === "fb") return plat === "fb";
+    if (filterMode === "ig") return plat === "ig";
+    if (filterMode === "other") return plat === "other" && !isMetaLead(lead);
     return true;
   });
 
@@ -129,6 +194,12 @@ export default function LeadsView({
     stageFilter === "all"
       ? searchedLeads
       : searchedLeads.filter((lead) => lead.status === stageFilter);
+
+  const metaCount = data.leads.filter(isMetaLead).length;
+  const readyCount = data.leads.filter((l) => parseReadiness(l.readiness)?.type === "ready").length;
+  const budgetCount = data.leads.filter((l) => parseReadiness(l.readiness)?.type === "budget").length;
+  const fbCount = data.leads.filter((l) => getLeadPlatform(l) === "fb").length;
+  const igCount = data.leads.filter((l) => getLeadPlatform(l) === "ig").length;
 
   const respondedLeads = data.leads.filter((lead) => lead.firstResponseAt);
   const avgResponseMinutes = respondedLeads.length
@@ -195,11 +266,9 @@ export default function LeadsView({
       "Email",
       "Status",
       "Instrument",
-      "Preferred / Trial Slots",
-      "Meta Form ID",
       "Campaign",
       "Ad",
-      "Notes / Custom Responses",
+      "Notes",
     ];
 
     const rows = list.map((lead) => {
@@ -214,13 +283,11 @@ export default function LeadsView({
         escapeCsv(lead.arrivedAt),
         escapeCsv(plat === "other" ? lead.source : plat),
         escapeCsv(readiness),
-        escapeCsv(lead.parentName),
+        escapeCsv(cleanName(lead.parentName)),
         escapeCsv(lead.phone),
         escapeCsv(lead.email),
         escapeCsv(lead.status),
         escapeCsv(lead.instrument),
-        escapeCsv(lead.preferredSlots?.join(" · ") || ""),
-        escapeCsv(lead.metaFormId || ""),
         escapeCsv(lead.campaignName || ""),
         escapeCsv(lead.adName || ""),
         escapeCsv(lead.notes || ""),
@@ -292,21 +359,15 @@ export default function LeadsView({
         </div>
         <div className="card stat-card">
           <div className="stat-top">
-            Trials in motion{" "}
+            Ready to Invest{" "}
             <span className="stat-icon">
-              <Music2 size={15} />
+              <CheckCircle2 size={15} color="#059669" />
             </span>
           </div>
-          <div className="stat-value">
-            {
-              data.leads.filter((lead) =>
-                ["trial_requested", "trial_booked", "trial_verified"].includes(
-                  lead.status
-                )
-              ).length
-            }
+          <div className="stat-value" style={{ color: "#065f46" }}>
+            {readyCount}
           </div>
-          <div className="stat-foot">Handoff to teacher and usher</div>
+          <div className="stat-foot">High-intent prospects for trials</div>
         </div>
         <div className="card stat-card">
           <div className="stat-top">
@@ -316,9 +377,9 @@ export default function LeadsView({
             </span>
           </div>
           <div className="stat-value">
-            {data.leads.filter((lead) => isMetaLead(lead)).length}
+            {metaCount}
           </div>
-          <div className="stat-foot">Retrieved via Webhook & API</div>
+          <div className="stat-foot">FB: {fbCount} · IG: {igCount}</div>
         </div>
         <div className="card stat-card">
           <div className="stat-top">
@@ -341,44 +402,65 @@ export default function LeadsView({
       </div>
 
       <section className="card section-card">
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap", gap: "1rem" }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: "0.75rem", marginBottom: "0.75rem" }}>
           <SectionTitle
             title="Enquiries & trial classes"
             detail="Follow-ups, Meta Lead Ad submissions, trial bookings, and CRM handoffs."
           />
-          {/* Quick Platform Filter Pills */}
-          <div style={{ display: "flex", gap: "0.25rem", background: "var(--surface-muted, #f8fafc)", padding: "3px", borderRadius: "8px", border: "1px solid var(--border-color, #e2e8f0)" }}>
+
+          {/* Quick Lead Intent & Source Filter Pills */}
+          <div style={{ display: "flex", gap: "0.25rem", background: "var(--surface-muted, #f8fafc)", padding: "3px", borderRadius: "8px", border: "1px solid var(--border-color, #e2e8f0)", flexWrap: "wrap" }}>
             <button
               type="button"
-              className={`btn small ${platformFilter === "all" ? "primary" : "ghost"}`}
-              style={{ padding: "3px 10px", fontSize: "0.75rem", borderRadius: "6px" }}
-              onClick={() => setPlatformFilter("all")}
+              className={`btn small ${filterMode === "all" ? "primary" : "ghost"}`}
+              style={{ padding: "3px 9px", fontSize: "0.74rem", borderRadius: "6px" }}
+              onClick={() => setFilterMode("all")}
             >
-              All Sources
+              All ({data.leads.length})
             </button>
             <button
               type="button"
-              className={`btn small ${platformFilter === "meta" ? "primary" : "ghost"}`}
-              style={{ padding: "3px 10px", fontSize: "0.75rem", borderRadius: "6px" }}
-              onClick={() => setPlatformFilter("meta")}
+              className={`btn small ${filterMode === "ready" ? "primary" : "ghost"}`}
+              style={{
+                padding: "3px 9px",
+                fontSize: "0.74rem",
+                borderRadius: "6px",
+                background: filterMode === "ready" ? "#059669" : undefined,
+                color: filterMode === "ready" ? "#fff" : "#065f46",
+              }}
+              onClick={() => setFilterMode("ready")}
             >
-              Meta Ads ({data.leads.filter(isMetaLead).length})
+              ✓ Ready to Invest ({readyCount})
             </button>
             <button
               type="button"
-              className={`btn small ${platformFilter === "fb" ? "primary" : "ghost"}`}
-              style={{ padding: "3px 10px", fontSize: "0.75rem", borderRadius: "6px" }}
-              onClick={() => setPlatformFilter("fb")}
+              className={`btn small ${filterMode === "budget" ? "primary" : "ghost"}`}
+              style={{
+                padding: "3px 9px",
+                fontSize: "0.74rem",
+                borderRadius: "6px",
+                background: filterMode === "budget" ? "#d97706" : undefined,
+                color: filterMode === "budget" ? "#fff" : "#92400e",
+              }}
+              onClick={() => setFilterMode("budget")}
             >
-              Facebook
+              ✕ Budget Mismatch ({budgetCount})
             </button>
             <button
               type="button"
-              className={`btn small ${platformFilter === "ig" ? "primary" : "ghost"}`}
-              style={{ padding: "3px 10px", fontSize: "0.75rem", borderRadius: "6px" }}
-              onClick={() => setPlatformFilter("ig")}
+              className={`btn small ${filterMode === "fb" ? "primary" : "ghost"}`}
+              style={{ padding: "3px 9px", fontSize: "0.74rem", borderRadius: "6px" }}
+              onClick={() => setFilterMode("fb")}
             >
-              Instagram
+              Facebook ({fbCount})
+            </button>
+            <button
+              type="button"
+              className={`btn small ${filterMode === "ig" ? "primary" : "ghost"}`}
+              style={{ padding: "3px 9px", fontSize: "0.74rem", borderRadius: "6px" }}
+              onClick={() => setFilterMode("ig")}
+            >
+              Instagram ({igCount})
             </button>
           </div>
         </div>
@@ -395,7 +477,7 @@ export default function LeadsView({
             className={`portal-tab${stageFilter === "all" ? " active" : ""}`}
             onClick={() => setStageFilter("all")}
           >
-            All
+            All Stages
             <span className="portal-tab-badge">{searchedLeads.length}</span>
           </button>
           {stages.map((stage) => {
@@ -422,13 +504,13 @@ export default function LeadsView({
           <table>
             <thead>
               <tr>
-                <th>Arrived / response</th>
-                <th>Family & learner</th>
-                <th>Source & Channel</th>
-                <th>Follow-up & trial detail</th>
+                <th style={{ width: "135px" }}>Arrived</th>
+                <th>Candidate / Learner</th>
+                <th>Channel & Intent</th>
+                <th>Trial & Details</th>
                 <th>Owner & Contact</th>
-                <th>Pipeline</th>
-                <th>Next step</th>
+                <th>Status</th>
+                <th style={{ textAlign: "right" }}>Next Step</th>
               </tr>
             </thead>
             <tbody>
@@ -446,148 +528,208 @@ export default function LeadsView({
 
                 const plat = getLeadPlatform(lead);
                 const hasMeta = isMetaLead(lead);
+                const intent = parseReadiness(lead.readiness);
+                const displayName = cleanName(lead.parentName);
 
                 return (
                   <tr key={lead.id}>
                     <td>
-                      <strong>{niceDate(lead.arrivedAt)}</strong>
-                      <div className="table-small">
-                        {timeAt(lead.arrivedAt)} ·{" "}
-                        {minutes === null
-                          ? "Response due"
-                          : `First reply ${minutes}m`}
+                      <div style={{ fontWeight: 700, fontSize: "0.85rem" }}>
+                        {niceDate(lead.arrivedAt)}
+                      </div>
+                      <div className="table-small" style={{ color: "#64748b" }}>
+                        {timeAt(lead.arrivedAt)}
+                      </div>
+                      <div style={{ marginTop: 3 }}>
+                        {minutes === null ? (
+                          <span style={{ fontSize: "0.68rem", fontWeight: 700, background: "#fef3c7", color: "#92400e", padding: "1px 5px", borderRadius: "4px" }}>
+                            Response due
+                          </span>
+                        ) : (
+                          <span style={{ fontSize: "0.68rem", fontWeight: 600, color: "#166534" }}>
+                            Replied in {minutes}m
+                          </span>
+                        )}
                       </div>
                     </td>
-                    <td>
-                      <div
-                        className="pw-person-inline"
-                        style={{ cursor: "pointer" }}
-                        onClick={() => setSelectedLead(lead)}
-                        title="Click to view complete lead responses and details"
-                      >
-                        <ProfileAvatar name={lead.parentName} size={32} />
-                        <span>
-                          <strong style={{ color: "var(--accent-color, #0f766e)" }}>
-                            {lead.parentName}
-                          </strong>
-                          <small>
-                            {lead.childName} · {lead.instrument}
-                          </small>
-                        </span>
-                      </div>
-                    </td>
-                    <td>
-                      <div style={{ display: "flex", flexDirection: "column", gap: "3px", alignItems: "flex-start" }}>
-                        {plat === "fb" && (
-                          <span
-                            style={{
-                              display: "inline-flex",
-                              alignItems: "center",
-                              gap: 4,
-                              background: "#ebf5ff",
-                              color: "#1877f2",
-                              fontWeight: 600,
-                              fontSize: "0.72rem",
-                              padding: "2px 7px",
-                              borderRadius: "4px",
-                              border: "1px solid #bfdbfe",
-                            }}
-                          >
-                            <span style={{ fontWeight: 800 }}>f</span> Facebook
-                          </span>
-                        )}
-                        {plat === "ig" && (
-                          <span
-                            style={{
-                              display: "inline-flex",
-                              alignItems: "center",
-                              gap: 4,
-                              background: "#fdf2f8",
-                              color: "#db2777",
-                              fontWeight: 600,
-                              fontSize: "0.72rem",
-                              padding: "2px 7px",
-                              borderRadius: "4px",
-                              border: "1px solid #fbcfe8",
-                            }}
-                          >
-                            <span style={{ fontWeight: 800 }}>◎</span> Instagram
-                          </span>
-                        )}
-                        {plat === "other" && (
-                          <span style={{ fontSize: "0.85rem", fontWeight: 500 }}>
-                            {lead.source}
-                          </span>
-                        )}
 
-                        {lead.readiness && (
+                    <td>
+                      <div className="pw-person-inline">
+                        <ProfileAvatar name={displayName} size={34} />
+                        <div>
+                          <div
+                            style={{
+                              fontWeight: 700,
+                              fontSize: "0.92rem",
+                              color: "var(--foreground, #0f172a)",
+                              cursor: "pointer",
+                            }}
+                            onClick={() => setSelectedLead(lead)}
+                            title="Click to view full questionnaire responses"
+                          >
+                            {displayName}
+                          </div>
+                          <div style={{ fontSize: "0.78rem", color: "#0f766e", fontWeight: 600 }}>
+                            {lead.instrument || "Piano"} · {lead.childName && lead.childName !== lead.parentName ? `Child: ${cleanName(lead.childName)}` : "Applicant"}
+                          </div>
+                          <div style={{ fontSize: "0.75rem", color: "#64748b", display: "flex", alignItems: "center", gap: 4, marginTop: 1 }}>
+                            <span>{lead.phone || "No phone"}</span>
+                            {lead.email && <span>· {lead.email}</span>}
+                          </div>
+                        </div>
+                      </div>
+                    </td>
+
+                    <td>
+                      <div style={{ display: "flex", flexDirection: "column", gap: "4px", alignItems: "flex-start" }}>
+                        {/* Channel Badge */}
+                        <div style={{ display: "flex", gap: 4, alignItems: "center", flexWrap: "wrap" }}>
+                          {plat === "fb" && (
+                            <span
+                              style={{
+                                display: "inline-flex",
+                                alignItems: "center",
+                                gap: 3,
+                                background: "#ebf5ff",
+                                color: "#1877f2",
+                                fontWeight: 700,
+                                fontSize: "0.7rem",
+                                padding: "2px 6px",
+                                borderRadius: "4px",
+                                border: "1px solid #bfdbfe",
+                              }}
+                            >
+                              <span style={{ fontWeight: 900 }}>f</span> Facebook
+                            </span>
+                          )}
+                          {plat === "ig" && (
+                            <span
+                              style={{
+                                display: "inline-flex",
+                                alignItems: "center",
+                                gap: 3,
+                                background: "#fdf2f8",
+                                color: "#db2777",
+                                fontWeight: 700,
+                                fontSize: "0.7rem",
+                                padding: "2px 6px",
+                                borderRadius: "4px",
+                                border: "1px solid #fbcfe8",
+                              }}
+                            >
+                              <span style={{ fontWeight: 900 }}>◎</span> Instagram
+                            </span>
+                          )}
+                          {plat === "other" && (
+                            <span style={{ fontSize: "0.75rem", color: "#475569" }}>
+                              {lead.source}
+                            </span>
+                          )}
+
+                          {lead.campaignName && (
+                            <span
+                              style={{
+                                fontSize: "0.68rem",
+                                background: "#f1f5f9",
+                                color: "#475569",
+                                padding: "1px 5px",
+                                borderRadius: "3px",
+                                maxWidth: "120px",
+                                overflow: "hidden",
+                                textOverflow: "ellipsis",
+                                whiteSpace: "nowrap",
+                              }}
+                              title={`Campaign: ${lead.campaignName}`}
+                            >
+                              {lead.campaignName}
+                            </span>
+                          )}
+                        </div>
+
+                        {/* Intent Readiness Pill */}
+                        {intent && (
                           <span
                             style={{
-                              fontSize: "0.68rem",
-                              fontWeight: 600,
-                              color: lead.readiness.toLowerCase().includes("yes") ? "#059669" : "#64748b",
-                              background: lead.readiness.toLowerCase().includes("yes") ? "#ecfdf5" : "#f1f5f9",
-                              padding: "1px 5px",
-                              borderRadius: "3px",
-                              maxWidth: "140px",
-                              overflow: "hidden",
-                              textOverflow: "ellipsis",
-                              whiteSpace: "nowrap",
+                              display: "inline-flex",
+                              alignItems: "center",
+                              gap: 3,
+                              fontSize: "0.7rem",
+                              fontWeight: 700,
+                              padding: "2px 7px",
+                              borderRadius: "4px",
+                              background:
+                                intent.type === "ready"
+                                  ? "#ecfdf5"
+                                  : intent.type === "budget"
+                                  ? "#fffbeb"
+                                  : "#f8fafc",
+                              color:
+                                intent.type === "ready"
+                                  ? "#065f46"
+                                  : intent.type === "budget"
+                                  ? "#92400e"
+                                  : "#475569",
+                              border:
+                                intent.type === "ready"
+                                  ? "1px solid #a7f3d0"
+                                  : intent.type === "budget"
+                                  ? "1px solid #fde68a"
+                                  : "1px solid #e2e8f0",
                             }}
-                            title={`Readiness: ${lead.readiness}`}
+                            title={intent.fullText}
                           >
-                            {lead.readiness}
+                            {intent.type === "ready" ? "✓" : intent.type === "budget" ? "✕" : "•"} {intent.shortLabel}
                           </span>
                         )}
-                        <span className="table-small" style={{ color: "#64748b" }}>
-                          {lead.email}
-                        </span>
                       </div>
                     </td>
+
                     <td>
-                      <div
-                        style={{
-                          maxHeight: "3.5em",
-                          overflow: "hidden",
-                          textOverflow: "ellipsis",
-                          fontSize: "0.85rem",
-                        }}
-                      >
-                        {lead.notes}
-                      </div>
-                      <div className="table-small" style={{ marginTop: 2 }}>
-                        {lead.preferredSlots?.join(" · ") ||
-                          "No preferred trial times yet"}
-                        {lead.callbackAt &&
-                          ` · callback ${niceDate(lead.callbackAt)}`}
-                      </div>
-                    </td>
-                    <td>
-                      <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
-                        <span>{lead.owner}</span>
-                        {hasMeta && (
-                          <button
-                            type="button"
-                            className="icon-btn"
-                            title="Inspect full Meta Lead Ads questionnaire"
-                            onClick={() => setSelectedLead(lead)}
-                            style={{ padding: "2px 4px", fontSize: "0.7rem", color: "#0f766e" }}
-                          >
-                            View
-                          </button>
+                      <div style={{ fontSize: "0.82rem", color: "#334155" }}>
+                        {lead.preferredSlots && lead.preferredSlots.length > 0 ? (
+                          <strong>{lead.preferredSlots.join(" · ")}</strong>
+                        ) : (
+                          <span style={{ color: "#94a3b8" }}>No trial booked yet</span>
                         )}
                       </div>
-                      <div className="row-actions" style={{ marginTop: 5 }}>
+                      <div style={{ marginTop: 3 }}>
+                        <button
+                          type="button"
+                          onClick={() => setSelectedLead(lead)}
+                          style={{
+                            background: "none",
+                            border: "none",
+                            padding: 0,
+                            fontSize: "0.76rem",
+                            color: "#0f766e",
+                            fontWeight: 600,
+                            cursor: "pointer",
+                            textDecoration: "underline",
+                            display: "inline-flex",
+                            alignItems: "center",
+                            gap: 3,
+                          }}
+                        >
+                          View Questionnaire ({hasMeta ? "Meta Form" : "Details"}) →
+                        </button>
+                      </div>
+                    </td>
+
+                    <td>
+                      <div style={{ fontSize: "0.82rem", fontWeight: 600, color: "#334155" }}>
+                        {lead.owner}
+                      </div>
+                      <div className="row-actions" style={{ marginTop: 4, display: "flex", gap: 3 }}>
                         <button
                           className="icon-btn"
-                          aria-label={`Email ${lead.parentName}`}
-                          title={`Send Email to ${lead.email}`}
+                          aria-label={`Email ${displayName}`}
+                          title={`Email ${lead.email}`}
                           onClick={() =>
                             openEmailComposer(
                               "lead",
                               lead.id,
                               lead.email,
-                              lead.parentName
+                              displayName
                             )
                           }
                         >
@@ -595,44 +737,39 @@ export default function LeadsView({
                         </button>
                         <button
                           className="icon-btn"
-                          aria-label={`WhatsApp ${lead.parentName}`}
-                          title={`Send WhatsApp to ${lead.parentName}`}
+                          aria-label={`WhatsApp ${displayName}`}
+                          title={`WhatsApp ${lead.phone}`}
+                          style={{ color: "#059669", fontWeight: 700, fontSize: "0.7rem" }}
                           onClick={() =>
                             openExternal(
                               "whatsapp",
                               lead.phone,
-                              lead.parentName,
-                              `Hello ${lead.parentName}, this is ProsperWork Music Academy regarding ${lead.childName}'s music lessons inquiry. How can we assist you today?`
+                              displayName,
+                              `Hello ${displayName}, this is ProsperWork Music Academy regarding ${lead.childName || "your"}'s music lessons enquiry. How can we assist you today?`
                             )
                           }
                         >
-                          <span
-                            style={{
-                              fontSize: 11,
-                              fontWeight: 700,
-                              color: "#059669",
-                            }}
-                          >
-                            WA
-                          </span>
+                          WA
                         </button>
                         <button
                           className="icon-btn"
-                          aria-label={`Call ${lead.parentName}`}
+                          aria-label={`Call ${displayName}`}
                           title={`Call ${lead.phone}`}
                           onClick={() =>
-                            openExternal("phone", lead.phone, lead.parentName)
+                            openExternal("phone", lead.phone, displayName)
                           }
                         >
-                          <ArrowUpRight size={13} />
+                          <PhoneCall size={12} />
                         </button>
                       </div>
                     </td>
+
                     <td>
                       <Pill>{lead.status.replaceAll("_", " ")}</Pill>
                     </td>
-                    <td>
-                      <div className="row-actions">
+
+                    <td style={{ textAlign: "right" }}>
+                      <div className="row-actions" style={{ justifyContent: "flex-end" }}>
                         {lead.status === "new" &&
                           statusButton("Contacted", () =>
                             setLeadStatus(lead, "contacted")
@@ -672,7 +809,7 @@ export default function LeadsView({
                             })
                           ) : (
                             <span className="table-small">
-                              Handoff to Finance for billing
+                              Handoff to Finance
                             </span>
                           ))}
                         {!["converted", "winback"].includes(lead.status) &&
@@ -696,7 +833,7 @@ export default function LeadsView({
           {!list.length && (
             <Empty
               title="No enquiry matches"
-              detail="Capture a new family enquiry or sync leads from Meta to populate the pipeline."
+              detail="No leads found matching the selected filter criteria."
             />
           )}
         </div>
@@ -706,17 +843,17 @@ export default function LeadsView({
       <PortalModal
         open={Boolean(selectedLead)}
         onClose={() => setSelectedLead(null)}
-        title={selectedLead?.parentName || "Lead Details"}
+        title={cleanName(selectedLead?.parentName)}
         eyebrow={
           selectedLead?.platform === "ig" || selectedLead?.metaPlatform === "ig"
             ? "Meta Lead Ads · Instagram"
             : selectedLead?.platform === "fb" || selectedLead?.metaPlatform === "fb"
             ? "Meta Lead Ads · Facebook"
-            : "Academy Lead"
+            : "Academy CRM Lead"
         }
         subtitle={
           selectedLead
-            ? `Arrived ${niceDate(selectedLead.arrivedAt)} at ${timeAt(selectedLead.arrivedAt)}`
+            ? `Enquiry arrived on ${niceDate(selectedLead.arrivedAt)} at ${timeAt(selectedLead.arrivedAt)}`
             : undefined
         }
         size="lg"
@@ -732,22 +869,23 @@ export default function LeadsView({
                       openExternal(
                         "whatsapp",
                         selectedLead.phone,
-                        selectedLead.parentName,
-                        `Hello ${selectedLead.parentName}, this is ProsperWork Music Academy regarding ${selectedLead.childName}'s music lessons inquiry. How can we assist you today?`
+                        cleanName(selectedLead.parentName),
+                        `Hello ${cleanName(selectedLead.parentName)}, this is ProsperWork Music Academy regarding your music lessons inquiry. How can we assist you today?`
                       );
                     }}
+                    style={{ display: "inline-flex", alignItems: "center", gap: 5, color: "#065f46" }}
                   >
-                    WhatsApp Chat
+                    <span style={{ fontWeight: 800 }}>WA</span> Chat on WhatsApp
                   </button>
                   <button
                     type="button"
                     className="btn small ghost"
                     onClick={() => {
-                      openExternal("phone", selectedLead.phone, selectedLead.parentName);
+                      openExternal("phone", selectedLead.phone, cleanName(selectedLead.parentName));
                     }}
                   >
                     <PhoneCall size={13} style={{ marginRight: 4 }} />
-                    Call
+                    Call Phone
                   </button>
                   <button
                     type="button"
@@ -757,13 +895,13 @@ export default function LeadsView({
                         "lead",
                         selectedLead.id,
                         selectedLead.email,
-                        selectedLead.parentName
+                        cleanName(selectedLead.parentName)
                       );
                       setSelectedLead(null);
                     }}
                   >
                     <Send size={13} style={{ marginRight: 4 }} />
-                    Email
+                    Send Email
                   </button>
                 </>
               )}
@@ -780,51 +918,51 @@ export default function LeadsView({
       >
         {selectedLead && (
           <div style={{ display: "flex", flexDirection: "column", gap: "1.25rem" }}>
-            {/* Lead Status & Core Info Card */}
+            {/* Header Core Overview Card */}
             <div
               style={{
                 display: "grid",
                 gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))",
                 gap: "1rem",
-                padding: "1rem",
+                padding: "1.1rem",
                 borderRadius: "8px",
                 background: "var(--surface-muted, #f8fafc)",
                 border: "1px solid var(--border-color, #e2e8f0)",
               }}
             >
               <div>
-                <div style={{ fontSize: "0.75rem", color: "#64748b", textTransform: "uppercase", fontWeight: 600 }}>
+                <div style={{ fontSize: "0.72rem", color: "#64748b", textTransform: "uppercase", fontWeight: 700 }}>
                   Candidate / Learner
                 </div>
-                <div style={{ fontSize: "1.05rem", fontWeight: 700, marginTop: 2 }}>
-                  {selectedLead.childName || selectedLead.parentName}
+                <div style={{ fontSize: "1.1rem", fontWeight: 800, marginTop: 2, color: "#0f172a" }}>
+                  {cleanName(selectedLead.parentName)}
                 </div>
-                <div style={{ fontSize: "0.85rem", color: "#0f766e", marginTop: 2 }}>
-                  Instrument: {selectedLead.instrument || "Not specified"}
+                <div style={{ fontSize: "0.85rem", color: "#0f766e", fontWeight: 600, marginTop: 2 }}>
+                  Instrument: {selectedLead.instrument || "Piano"}
                 </div>
               </div>
 
               <div>
-                <div style={{ fontSize: "0.75rem", color: "#64748b", textTransform: "uppercase", fontWeight: 600 }}>
+                <div style={{ fontSize: "0.72rem", color: "#64748b", textTransform: "uppercase", fontWeight: 700 }}>
                   Contact Information
                 </div>
-                <div style={{ fontSize: "0.9rem", fontWeight: 600, marginTop: 2 }}>
-                  {selectedLead.phone || "No phone"}
+                <div style={{ fontSize: "0.95rem", fontWeight: 700, marginTop: 2, color: "#0f172a" }}>
+                  {selectedLead.phone || "No phone provided"}
                 </div>
-                <div style={{ fontSize: "0.85rem", color: "#64748b", marginTop: 2 }}>
-                  {selectedLead.email || "No email"}
+                <div style={{ fontSize: "0.82rem", color: "#64748b", marginTop: 2 }}>
+                  {selectedLead.email || "No email provided"}
                 </div>
               </div>
 
               <div>
-                <div style={{ fontSize: "0.75rem", color: "#64748b", textTransform: "uppercase", fontWeight: 600 }}>
-                  Current Status
+                <div style={{ fontSize: "0.72rem", color: "#64748b", textTransform: "uppercase", fontWeight: 700 }}>
+                  Status & Rep
                 </div>
                 <div style={{ marginTop: 4, display: "flex", alignItems: "center", gap: 8 }}>
                   <Pill>{selectedLead.status.replaceAll("_", " ")}</Pill>
-                  <span style={{ fontSize: "0.8rem", color: "#64748b" }}>
-                    Assigned: {selectedLead.owner}
-                  </span>
+                </div>
+                <div style={{ fontSize: "0.78rem", color: "#64748b", marginTop: 3 }}>
+                  Owner: {selectedLead.owner || "Unassigned"}
                 </div>
               </div>
             </div>
@@ -836,16 +974,16 @@ export default function LeadsView({
                   border: "1px solid #bfdbfe",
                   borderRadius: "8px",
                   padding: "1rem",
-                  background: "#f0f9ff",
+                  background: "#eff6ff",
                 }}
               >
                 <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "0.75rem" }}>
-                  <span style={{ fontWeight: 700, fontSize: "0.9rem", color: "#1e40af" }}>
+                  <span style={{ fontWeight: 700, fontSize: "0.88rem", color: "#1e40af" }}>
                     Meta Lead Ads Attribution
                   </span>
                   <span
                     style={{
-                      background: "#1877f2",
+                      background: selectedLead.platform === "ig" || selectedLead.metaPlatform === "ig" ? "#db2777" : "#1877f2",
                       color: "#fff",
                       fontSize: "0.72rem",
                       fontWeight: 700,
@@ -854,20 +992,12 @@ export default function LeadsView({
                     }}
                   >
                     {selectedLead.platform === "ig" || selectedLead.metaPlatform === "ig"
-                      ? "Instagram Lead Form"
-                      : "Facebook Lead Form"}
+                      ? "Instagram Lead Ad"
+                      : "Facebook Lead Ad"}
                   </span>
                 </div>
 
-                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0.75rem", fontSize: "0.82rem" }}>
-                  <div>
-                    <span style={{ color: "#64748b" }}>Meta Lead ID: </span>
-                    <strong style={{ fontFamily: "monospace" }}>{selectedLead.metaLeadId || "—"}</strong>
-                  </div>
-                  <div>
-                    <span style={{ color: "#64748b" }}>Meta Form ID: </span>
-                    <strong style={{ fontFamily: "monospace" }}>{selectedLead.metaFormId || "—"}</strong>
-                  </div>
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0.6rem", fontSize: "0.82rem" }}>
                   {selectedLead.campaignName && (
                     <div>
                       <span style={{ color: "#64748b" }}>Campaign: </span>
@@ -876,10 +1006,18 @@ export default function LeadsView({
                   )}
                   {selectedLead.adName && (
                     <div>
-                      <span style={{ color: "#64748b" }}>Ad Name: </span>
+                      <span style={{ color: "#64748b" }}>Ad Creative: </span>
                       <strong>{selectedLead.adName}</strong>
                     </div>
                   )}
+                  <div>
+                    <span style={{ color: "#64748b" }}>Form ID: </span>
+                    <span style={{ fontFamily: "monospace", fontSize: "0.78rem" }}>{selectedLead.metaFormId || "—"}</span>
+                  </div>
+                  <div>
+                    <span style={{ color: "#64748b" }}>Meta Lead ID: </span>
+                    <span style={{ fontFamily: "monospace", fontSize: "0.78rem" }}>{selectedLead.metaLeadId || "—"}</span>
+                  </div>
                 </div>
               </div>
             )}
@@ -889,37 +1027,56 @@ export default function LeadsView({
               style={{
                 border: "1px solid var(--border-color, #e2e8f0)",
                 borderRadius: "8px",
-                padding: "1rem",
+                padding: "1.1rem",
                 background: "#ffffff",
               }}
             >
-              <div style={{ fontWeight: 700, fontSize: "0.9rem", marginBottom: "0.75rem" }}>
-                Form Responses & Questions
+              <div style={{ fontWeight: 700, fontSize: "0.92rem", marginBottom: "0.85rem", color: "#0f172a" }}>
+                Lead Form Questionnaire Responses
               </div>
 
               {selectedLead.customAnswers && Object.keys(selectedLead.customAnswers).length > 0 ? (
-                <div style={{ display: "flex", flexDirection: "column", gap: "0.6rem" }}>
-                  {Object.entries(selectedLead.customAnswers).map(([question, answer]) => (
-                    <div
-                      key={question}
-                      style={{
-                        padding: "0.6rem 0.75rem",
-                        background: "var(--surface-muted, #f8fafc)",
-                        borderRadius: "6px",
-                        border: "1px solid var(--border-color, #f1f5f9)",
-                      }}
-                    >
-                      <div style={{ fontSize: "0.78rem", color: "#64748b", fontWeight: 600 }}>
-                        {question}
+                <div style={{ display: "flex", flexDirection: "column", gap: "0.75rem" }}>
+                  {Object.entries(selectedLead.customAnswers).map(([rawQuestion, rawAnswer]) => {
+                    const cleanQ = cleanQuestionLabel(rawQuestion);
+                    const answerStr = String(rawAnswer).replace(/_/g, " ");
+                    const isPositive = answerStr.toLowerCase().includes("yes") || answerStr.toLowerCase().includes("ready");
+                    const isNegative = answerStr.toLowerCase().includes("no") || answerStr.toLowerCase().includes("not");
+
+                    return (
+                      <div
+                        key={rawQuestion}
+                        style={{
+                          padding: "0.75rem 0.9rem",
+                          background: isPositive ? "#f0fdf4" : isNegative ? "#fffbeb" : "#f8fafc",
+                          borderRadius: "6px",
+                          border: isPositive ? "1px solid #bbf7d0" : isNegative ? "1px solid #fef3c7" : "1px solid #f1f5f9",
+                        }}
+                      >
+                        <div style={{ fontSize: "0.78rem", color: "#64748b", fontWeight: 700 }}>
+                          {cleanQ}
+                        </div>
+                        <div
+                          style={{
+                            fontSize: "0.95rem",
+                            fontWeight: 700,
+                            color: isPositive ? "#166534" : isNegative ? "#92400e" : "#0f172a",
+                            marginTop: 3,
+                            display: "flex",
+                            alignItems: "center",
+                            gap: 6,
+                          }}
+                        >
+                          {isPositive && <CheckCircle2 size={15} color="#15803d" />}
+                          {isNegative && <XCircle size={15} color="#b45309" />}
+                          <span>{answerStr}</span>
+                        </div>
                       </div>
-                      <div style={{ fontSize: "0.9rem", fontWeight: 600, color: "#0f172a", marginTop: 2 }}>
-                        {String(answer)}
-                      </div>
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
               ) : (
-                <div style={{ whiteSpace: "pre-wrap", fontSize: "0.85rem", color: "#334155", background: "#f8fafc", padding: "0.75rem", borderRadius: "6px" }}>
+                <div style={{ fontSize: "0.85rem", color: "#64748b", background: "#f8fafc", padding: "0.75rem", borderRadius: "6px" }}>
                   {selectedLead.notes || "No custom form questionnaire responses recorded."}
                 </div>
               )}
@@ -927,8 +1084,8 @@ export default function LeadsView({
 
             {/* Quick Status Progression Buttons in Modal */}
             <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem" }}>
-              <div style={{ fontSize: "0.75rem", color: "#64748b", textTransform: "uppercase", fontWeight: 600 }}>
-                Advance Pipeline Stage
+              <div style={{ fontSize: "0.75rem", color: "#64748b", textTransform: "uppercase", fontWeight: 700 }}>
+                Advance CRM Pipeline
               </div>
               <div style={{ display: "flex", gap: "0.4rem", flexWrap: "wrap" }}>
                 {selectedLead.status !== "contacted" && (
@@ -967,18 +1124,6 @@ export default function LeadsView({
                     Book Trial
                   </button>
                 )}
-                {selectedLead.status !== "trial_verified" && (
-                  <button
-                    type="button"
-                    className="btn small secondary"
-                    onClick={() => {
-                      setLeadStatus(selectedLead, "trial_verified");
-                      setSelectedLead((prev) => prev ? { ...prev, status: "trial_verified" } : null);
-                    }}
-                  >
-                    Verify Trial Completed
-                  </button>
-                )}
                 {selectedLead.status !== "converted" && (
                   <button
                     type="button"
@@ -989,6 +1134,18 @@ export default function LeadsView({
                     }}
                   >
                     Convert to Student
+                  </button>
+                )}
+                {selectedLead.status !== "nursery" && selectedLead.status !== "converted" && (
+                  <button
+                    type="button"
+                    className="btn small ghost"
+                    onClick={() => {
+                      setLeadStatus(selectedLead, "nursery");
+                      setSelectedLead((prev) => prev ? { ...prev, status: "nursery" } : null);
+                    }}
+                  >
+                    Move to Nursery
                   </button>
                 )}
               </div>
