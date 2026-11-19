@@ -232,6 +232,44 @@ export default function LeadsView({
     sendWhatsAppConfirmation: true,
   });
   const [bookingTrialLoading, setBookingTrialLoading] = useState(false);
+  const [generatingMeetApi, setGeneratingMeetApi] = useState(false);
+
+  const handleGenerateMeetViaApi = async () => {
+    if (!trialBookingLead) return;
+    setGeneratingMeetApi(true);
+    try {
+      const startsAt = trialForm.date && trialForm.time
+        ? new Date(`${trialForm.date}T${trialForm.time}:00`).toISOString()
+        : new Date(Date.now() + 86400000).toISOString();
+
+      const candidate = trialForm.childName || trialBookingLead.parentName || "Candidate";
+      const res = await fetch("/api/integrations/google/meet", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          summary: `Trial Assessment: ${candidate} (${trialForm.instrument || "Piano"})`,
+          startsAt,
+          durationMinutes: 45,
+          attendeeEmails: trialBookingLead.email ? [trialBookingLead.email] : [],
+        }),
+      });
+
+      const json = await res.json();
+      if (res.ok && json.meetUrl) {
+        setTrialForm((prev) => ({ ...prev, meetUrl: json.meetUrl }));
+        notify("Real Google Meet room generated via Google Calendar API!");
+      } else {
+        notify(
+          json.error ||
+            "Google Calendar API failed. Please create a meeting via meet.google.com/new or use Inbuilt Video Studio."
+        );
+      }
+    } catch {
+      notify("Failed to connect to Google API. Use 'Create on Google Meet' or Inbuilt Studio.");
+    } finally {
+      setGeneratingMeetApi(false);
+    }
+  };
 
   const openTrialBookingModal = (lead: Lead) => {
     const tomorrow = new Date();
@@ -2891,27 +2929,50 @@ export default function LeadsView({
                     }}
                   />
                   {trialForm.classroomProvider === "google_meet" && (
-                    <a
-                      href="https://meet.google.com/new"
-                      target="_blank"
-                      rel="noreferrer"
-                      className="btn small"
-                      style={{
-                        padding: "7px 11px",
-                        fontSize: "0.75rem",
-                        display: "inline-flex",
-                        alignItems: "center",
-                        gap: 4,
-                        background: "#1a73e8",
-                        color: "#ffffff",
-                        textDecoration: "none",
-                        whiteSpace: "nowrap",
-                      }}
-                      title="Open Google Meet in a new tab to create an instant active room"
-                    >
-                      <ExternalLink size={12} />
-                      Create on Google Meet ↗
-                    </a>
+                    <div style={{ display: "flex", gap: 5, flexShrink: 0 }}>
+                      <button
+                        type="button"
+                        disabled={generatingMeetApi}
+                        className="btn small"
+                        style={{
+                          padding: "7px 11px",
+                          fontSize: "0.75rem",
+                          display: "inline-flex",
+                          alignItems: "center",
+                          gap: 4,
+                          background: "#059669",
+                          color: "#ffffff",
+                          whiteSpace: "nowrap",
+                        }}
+                        onClick={handleGenerateMeetViaApi}
+                        title="Call Google Calendar API to generate a Google Meet room"
+                      >
+                        <RotateCcw size={12} className={generatingMeetApi ? "animate-spin" : ""} />
+                        {generatingMeetApi ? "Connecting..." : "Generate via API"}
+                      </button>
+                      <a
+                        href="https://meet.google.com/new"
+                        target="_blank"
+                        rel="noreferrer"
+                        className="btn small ghost"
+                        style={{
+                          padding: "7px 11px",
+                          fontSize: "0.75rem",
+                          display: "inline-flex",
+                          alignItems: "center",
+                          gap: 4,
+                          color: "#1a73e8",
+                          borderColor: "#93c5fd",
+                          background: "#eff6ff",
+                          textDecoration: "none",
+                          whiteSpace: "nowrap",
+                        }}
+                        title="Open Google Meet in a new tab to create an instant active room"
+                      >
+                        <ExternalLink size={12} />
+                        meet.google.com/new ↗
+                      </a>
+                    </div>
                   )}
                 </div>
                 <div style={{ fontSize: "0.70rem", color: "#64748b", marginTop: 4 }}>
