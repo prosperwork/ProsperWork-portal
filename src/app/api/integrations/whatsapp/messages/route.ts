@@ -127,8 +127,8 @@ export async function POST(request: NextRequest) {
           const updated = {
             ...p,
             force_next_welcome_reply: true,
-            status: body.resetLeadStage !== false ? "new" : p.status,
-            firstResponseAt: body.resetLeadStage !== false ? null : p.firstResponseAt,
+            status: body.resetLeadStage === true ? "new" : p.status,
+            firstResponseAt: body.resetLeadStage === true ? null : p.firstResponseAt,
           };
           await db
             .from("pw_leads")

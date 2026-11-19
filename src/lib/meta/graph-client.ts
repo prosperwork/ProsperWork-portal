@@ -502,27 +502,42 @@ export async function ingestMetaLead(
     ? new Date(lead.created_time).toISOString()
     : new Date().toISOString();
 
-  // 3. Upsert into pw_leads (our standard academy CRM table)
+  // 3. Check for existing lead record to preserve pipeline stage, owner assignment & modifications
+  const { data: existingLead } = await db
+    .from("pw_leads")
+    .select("payload")
+    .or(`id.eq.${targetLeadId},meta_lead_id.eq.${lead.id}`)
+    .maybeSingle();
+
+  const existingPayload = (existingLead?.payload as any) || null;
+
+  // Upsert into pw_leads (preserving stage progression, owner, and notes)
   const leadPayload = {
     id: targetLeadId,
-    parentName: normalized.fullName,
-    childName: normalized.childName || normalized.fullName,
-    email: normalized.email,
-    phone: normalized.phone,
-    instrument: normalized.instrument || "Piano",
+    parentName: existingPayload?.parentName || normalized.fullName,
+    childName: existingPayload?.childName || normalized.childName || normalized.fullName,
+    email: existingPayload?.email || normalized.email,
+    phone: existingPayload?.phone || normalized.phone,
+    instrument: existingPayload?.instrument || normalized.instrument || "Piano",
     source: normalized.platform === "ig" ? "Meta - Instagram" : "Meta - Facebook",
-    status: "new",
-    arrivedAt,
-    owner: "Unassigned",
-    notes: finalNotes,
+    status: existingPayload?.status || "new",
+    arrivedAt: existingPayload?.arrivedAt || arrivedAt,
+    firstResponseAt: existingPayload?.firstResponseAt || null,
+    owner: existingPayload?.owner || "Unassigned",
+    notes: existingPayload?.notes || finalNotes,
     metaLeadId: lead.id,
     metaFormId: lead.form_id,
     metaPlatform: normalized.platform,
     platform: normalized.platform,
-    readiness: normalized.readiness,
+    readiness: existingPayload?.readiness || normalized.readiness,
     campaignName: lead.campaign_name,
     adName: lead.ad_name,
-    customAnswers: normalized.customQuestions,
+    customAnswers: {
+      ...(normalized.customQuestions || {}),
+      ...(existingPayload?.customAnswers || {}),
+    },
+    ...(existingPayload?.intake_complete ? { intake_complete: true } : {}),
+    force_next_welcome_reply: Boolean(existingPayload?.force_next_welcome_reply),
   };
 
   const leadInsert = await db.from("pw_leads").upsert(
