@@ -972,27 +972,6 @@ export default function LearningPage() {
           </button>
         </div>
 
-        <div
-          className={`learn-status ${
-            connection === "live"
-              ? "live"
-              : connection === "error" || connection === "disconnected"
-              ? "issue"
-              : ""
-          }`}
-          role="status"
-          aria-live="polite"
-        >
-          <i />{" "}
-          {connection === "live"
-            ? "Live updates connected"
-            : connection === "connecting"
-            ? "Connecting to live updates…"
-            : connection === "disconnected"
-            ? "Live updates disconnected"
-            : "Live updates unavailable"}
-        </div>
-
         {data && !isActive && (
           <p className="learn-readonly-notice" role="status">
             Profile status: {data.profile.status}. Boards and curriculum are
