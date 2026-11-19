@@ -78,6 +78,19 @@ export async function GET(request: NextRequest) {
     const pricing = settings.pricing || null;
     const schoolPhone = settings.schoolPhone || process.env.WHATSAPP_DISPLAY_PHONE || "";
 
+    let manualTakeover = false;
+    if (leadId) {
+      const { data: leadRow } = await db
+        .from("pw_leads")
+        .select("payload")
+        .eq("id", leadId)
+        .maybeSingle();
+      if (leadRow?.payload) {
+        const p = leadRow.payload as any;
+        manualTakeover = Boolean(p.manual_takeover || p.ai_disabled);
+      }
+    }
+
     return NextResponse.json({
       messages: messages || [],
       phoneConfigured: Boolean(getMetaConfig().whatsAppPhoneNumberId),
@@ -85,6 +98,7 @@ export async function GET(request: NextRequest) {
       instruments,
       pricing,
       schoolPhone,
+      manualTakeover,
     });
   } catch (err) {
     return NextResponse.json(
@@ -127,6 +141,8 @@ export async function POST(request: NextRequest) {
           const updated = {
             ...p,
             force_next_welcome_reply: true,
+            manual_takeover: false,
+            ai_disabled: false,
             status: body.resetLeadStage === true ? "new" : p.status,
             firstResponseAt: body.resetLeadStage === true ? null : p.firstResponseAt,
           };
@@ -138,6 +154,35 @@ export async function POST(request: NextRequest) {
       }
 
       return NextResponse.json({ success: true, rearmed: true });
+    }
+
+    // Handle Manual Toggle of AI (On / Off)
+    if (body.action === "toggle_ai") {
+      const db = provisioningClient();
+      const leadId = body.leadId?.trim();
+      const enable = Boolean(body.enable);
+      if (!leadId) {
+        return NextResponse.json({ error: "leadId is required" }, { status: 400 });
+      }
+      const { data: leadRow } = await db
+        .from("pw_leads")
+        .select("payload")
+        .eq("id", leadId)
+        .maybeSingle();
+
+      if (leadRow?.payload) {
+        const p = leadRow.payload as any;
+        const updated = {
+          ...p,
+          manual_takeover: !enable,
+          ai_disabled: !enable,
+        };
+        await db
+          .from("pw_leads")
+          .update({ payload: updated, updated_at: new Date().toISOString() })
+          .eq("id", leadId);
+      }
+      return NextResponse.json({ success: true, aiEnabled: enable });
     }
 
     // Handle Direct Admin Assignment Action
@@ -190,6 +235,8 @@ export async function POST(request: NextRequest) {
       body: message.trim(),
       leadId: leadId || undefined,
       buttons: Array.isArray(buttons) && buttons.length > 0 ? buttons : undefined,
+      senderName: profile.name || "Administrator",
+      senderType: "manual",
     });
 
     if (!sendRes.success) {
@@ -199,8 +246,8 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // If an owner assignment was requested with this message, update pw_leads
-    if (leadId && assignOwner) {
+    // When a manual person sends a message, permanently disable AI for this lead and update owner if provided
+    if (leadId) {
       const db = provisioningClient();
       const { data: leadRow } = await db
         .from("pw_leads")
@@ -212,7 +259,11 @@ export async function POST(request: NextRequest) {
         const p = leadRow.payload as any;
         const updated = {
           ...p,
-          owner: assignOwner.trim(),
+          manual_takeover: true,
+          ai_disabled: true,
+          manual_contacted_at: new Date().toISOString(),
+          manual_contacted_by: profile.name || "Administrator",
+          ...(assignOwner ? { owner: assignOwner.trim() } : {}),
         };
         await db
           .from("pw_leads")

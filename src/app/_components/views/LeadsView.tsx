@@ -4,6 +4,7 @@ import { useEffect, useState, type ReactNode } from "react";
 import {
   Activity,
   ArrowUpRight,
+  Bot,
   Calendar,
   CalendarCheck2,
   Check,
@@ -169,11 +170,13 @@ export default function LeadsView({
   const [loadingWhatsApp, setLoadingWhatsApp] = useState(false);
   const [sendingWhatsApp, setSendingWhatsApp] = useState(false);
   const [whatsAppDraft, setWhatsAppDraft] = useState("");
+  const [isManualTakeover, setIsManualTakeover] = useState(false);
 
   const openWhatsAppChat = async (lead: Lead) => {
     setWhatsAppLead(lead);
     setWhatsAppMessages([]);
     setWhatsAppDraft("");
+    setIsManualTakeover(Boolean((lead as any).manual_takeover || (lead as any).ai_disabled));
     setLoadingWhatsApp(true);
     const phone = resolveLeadPhone(lead);
     try {
@@ -183,6 +186,9 @@ export default function LeadsView({
       const json = await res.json();
       if (json.messages) {
         setWhatsAppMessages(json.messages);
+      }
+      if (typeof json.manualTakeover === "boolean") {
+        setIsManualTakeover(json.manualTakeover);
       }
       if (Array.isArray(json.admins) && json.admins.length > 0) {
         setDynamicAdmins(json.admins);
@@ -232,16 +238,22 @@ export default function LeadsView({
       const json = await res.json();
       if (res.ok && json.success) {
         setWhatsAppDraft("");
+        setIsManualTakeover(true);
         notify("WhatsApp message dispatched via Meta Cloud API!");
-        if (assignOwner) {
-          setWhatsAppLead((prev) => (prev ? { ...prev, owner: assignOwner } : null));
-        }
         if (whatsAppLead.status === "new") {
           setLeadStatus(whatsAppLead, "contacted");
-          setWhatsAppLead((prev) =>
-            prev ? { ...prev, status: "contacted", ...(assignOwner ? { owner: assignOwner } : {}) } : null
-          );
         }
+        setWhatsAppLead((prev) =>
+          prev
+            ? {
+                ...prev,
+                status: prev.status === "new" ? "contacted" : prev.status,
+                manual_takeover: true,
+                ai_disabled: true,
+                ...(assignOwner ? { owner: assignOwner } : {}),
+              }
+            : null
+        );
         const refetch = await fetch(
           `/api/integrations/whatsapp/messages?leadId=${encodeURIComponent(whatsAppLead.id)}&phone=${encodeURIComponent(phone)}`
         );
@@ -291,14 +303,19 @@ export default function LeadsView({
           action: "reset",
           phone,
           leadId: whatsAppLead.id,
-          resetLeadStage: true,
+          resetLeadStage: false,
         }),
       });
       const json = await res.json();
       if (res.ok && json.success) {
-        setWhatsAppLead((prev) => (prev ? { ...prev, status: "new" } : null));
+        setIsManualTakeover(false);
+        setWhatsAppLead((prev) =>
+          prev
+            ? { ...prev, force_next_welcome_reply: true, manual_takeover: false, ai_disabled: false }
+            : null
+        );
         notify(
-          "Auto-reply re-armed! Chat history is preserved. Send 'Hello' from this phone to trigger the automated welcome message."
+          "Auto-reply re-armed! AI is re-enabled for this chat. Send a message to trigger the AI intake workflow."
         );
         if (reload) await reload();
       } else {
@@ -1742,19 +1759,64 @@ export default function LeadsView({
                 padding: "8px 12px",
                 borderRadius: "8px",
                 fontSize: "0.8rem",
+                flexWrap: "wrap",
+                gap: "8px",
               }}
             >
-              <div style={{ display: "flex", alignItems: "center", gap: 6, color: "#166534", fontWeight: 600 }}>
-                <span
-                  style={{
-                    width: 8,
-                    height: 8,
-                    borderRadius: "50%",
-                    background: "#22c55e",
-                    boxShadow: "0 0 0 2px #bbf7d0",
-                  }}
-                />
-                Meta WhatsApp Business Cloud API Active (Prosperwork music)
+              <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 6, color: "#166534", fontWeight: 600 }}>
+                  <span
+                    style={{
+                      width: 8,
+                      height: 8,
+                      borderRadius: "50%",
+                      background: "#22c55e",
+                      boxShadow: "0 0 0 2px #bbf7d0",
+                    }}
+                  />
+                  Meta Cloud API Active
+                </div>
+
+                {/* AI vs Human Takeover Badge */}
+                {isManualTakeover ? (
+                  <span
+                    style={{
+                      display: "inline-flex",
+                      alignItems: "center",
+                      gap: 4,
+                      background: "#fef3c7",
+                      border: "1px solid #fde68a",
+                      color: "#92400e",
+                      padding: "2px 8px",
+                      borderRadius: "999px",
+                      fontSize: "0.72rem",
+                      fontWeight: 700,
+                    }}
+                    title="A staff member has messaged this customer. Automated AI replies are paused for this chat."
+                  >
+                    <UserCheck size={12} />
+                    Human Active · AI Paused
+                  </span>
+                ) : (
+                  <span
+                    style={{
+                      display: "inline-flex",
+                      alignItems: "center",
+                      gap: 4,
+                      background: "#e0e7ff",
+                      border: "1px solid #c7d2fe",
+                      color: "#3730a3",
+                      padding: "2px 8px",
+                      borderRadius: "999px",
+                      fontSize: "0.72rem",
+                      fontWeight: 700,
+                    }}
+                    title="AI Auto-Reply & Intake is active. It will pause automatically as soon as a staff member sends a message."
+                  >
+                    <Bot size={12} />
+                    AI Auto-Reply Active
+                  </span>
+                )}
               </div>
               <div style={{ display: "flex", gap: "6px", alignItems: "center", flexWrap: "wrap" }}>
                 <button
@@ -1764,9 +1826,9 @@ export default function LeadsView({
                   style={{
                     fontSize: "0.74rem",
                     padding: "3px 9px",
-                    background: "#e0e7ff",
-                    borderColor: "#c7d2fe",
-                    color: "#4338ca",
+                    background: isManualTakeover ? "#dcfce7" : "#e0e7ff",
+                    borderColor: isManualTakeover ? "#86efac" : "#c7d2fe",
+                    color: isManualTakeover ? "#15803d" : "#4338ca",
                     fontWeight: 700,
                     cursor: resettingChat ? "not-allowed" : "pointer",
                     opacity: resettingChat ? 0.65 : 1,
@@ -1775,10 +1837,10 @@ export default function LeadsView({
                     gap: 5,
                   }}
                   onClick={handleRetriggerAutoReply}
-                  title="Preserves all chat messages and allows the next incoming message from this phone to trigger the automated welcome reply again"
+                  title="Preserves chat history and re-enables AI auto-reply for the next incoming customer message"
                 >
                   <RotateCcw size={12} className={resettingChat ? "spin" : ""} />
-                  {resettingChat ? "Arming..." : "Retrigger Auto-Reply"}
+                  {resettingChat ? "Arming..." : isManualTakeover ? "Re-arm AI Auto-Reply" : "Retrigger Auto-Reply"}
                 </button>
 
                 <button

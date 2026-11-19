@@ -115,6 +115,8 @@ export interface WhatsAppSendMessageParams {
   buttons?: WhatsAppInteractiveButton[];
   headerText?: string;
   footerText?: string;
+  senderName?: string;
+  senderType?: "manual" | "automation" | "ai";
 }
 
 

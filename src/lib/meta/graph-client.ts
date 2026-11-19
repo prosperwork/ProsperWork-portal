@@ -1077,21 +1077,28 @@ export async function sendWhatsAppMessage(params: WhatsAppSendMessageParams): Pr
       return { success: false, error: errMsg };
     }
 
+    const isManual = params.senderType === "manual";
     const waMsgId = data?.messages?.[0]?.id || `out_${Date.now()}`;
 
-    // Record successful outbound message
+    // Record successful outbound message with sender provenance
     await db.from("pw_whatsapp_messages").insert({
       wa_message_id: waMsgId,
       lead_id: params.leadId || null,
       phone_number: cleanTo,
       direction: "outbound",
+      sender_name: params.senderName || (isManual ? "Administrator" : "ProsperWork AI"),
       message_type: params.buttons ? "interactive" : "text",
       body: params.body,
       status: "sent",
-      metadata: { requestBody, responseData: data },
+      metadata: {
+        requestBody,
+        responseData: data,
+        source: params.senderType || "manual",
+        sender: params.senderName || (isManual ? "Staff" : "Automation"),
+      },
     });
 
-    // If attached to a lead that is still "new", advance to "contacted"
+    // Update lead record: advance new to contacted, and if a manual person texted, permanently disable AI
     if (params.leadId) {
       const { data: leadRow } = await db
         .from("pw_leads")
@@ -1101,21 +1108,28 @@ export async function sendWhatsAppMessage(params: WhatsAppSendMessageParams): Pr
 
       if (leadRow?.payload) {
         const payload = leadRow.payload as any;
-        if (payload.status === "new") {
-          const nowIso = new Date().toISOString();
-          const updatedPayload = {
-            ...payload,
-            status: "contacted",
-            firstResponseAt: payload.firstResponseAt || nowIso,
-          };
-          await db
-            .from("pw_leads")
-            .update({
-              payload: updatedPayload,
-              updated_at: nowIso,
-            })
-            .eq("id", params.leadId);
-        }
+        const nowIso = new Date().toISOString();
+        const updatedPayload = {
+          ...payload,
+          status: payload.status === "new" ? "contacted" : payload.status,
+          firstResponseAt: payload.firstResponseAt || nowIso,
+          // If a manual person texted, permanently disable AI for this customer!
+          ...(isManual
+            ? {
+                manual_takeover: true,
+                ai_disabled: true,
+                manual_contacted_at: nowIso,
+                manual_contacted_by: params.senderName || "Staff Member",
+              }
+            : {}),
+        };
+        await db
+          .from("pw_leads")
+          .update({
+            payload: updatedPayload,
+            updated_at: nowIso,
+          })
+          .eq("id", params.leadId);
       }
     }
 
@@ -1278,6 +1292,44 @@ export async function ingestWhatsAppWebhook(payload: any): Promise<{
               body: `Hello ${matchedLeadPayload.parentName || senderName || "there"}! 🎹 We have received your trial booking request for ${matchedLeadPayload.instrument || "lessons"}. An academy director is assigning the best teacher for you and will confirm your lesson time shortly!`,
             }).catch(() => null);
           } else {
+            // Check if human staff has taken over (once a manual person texts, AI is strictly OFF for that customer)
+            const isManualTakeover = Boolean(
+              matchedLeadPayload?.manual_takeover ||
+              matchedLeadPayload?.ai_disabled
+            );
+
+            let hasHumanTexted = isManualTakeover;
+            if (!hasHumanTexted) {
+              const { data: humanOutbound } = await db
+                .from("pw_whatsapp_messages")
+                .select("id")
+                .eq("phone_number", senderPhone)
+                .eq("direction", "outbound")
+                .or("metadata->>source.eq.manual,sender_name.neq.ProsperWork AI Intake,sender_name.neq.ProsperWork Welcome")
+                .not("metadata->>source", "in", '("automation","ai")')
+                .limit(1);
+
+              if (humanOutbound && humanOutbound.length > 0) {
+                hasHumanTexted = true;
+                if (matchedLeadId && matchedLeadPayload && !matchedLeadPayload.manual_takeover) {
+                  matchedLeadPayload = {
+                    ...matchedLeadPayload,
+                    manual_takeover: true,
+                    ai_disabled: true,
+                  };
+                  await db
+                    .from("pw_leads")
+                    .update({ payload: matchedLeadPayload, updated_at: new Date().toISOString() })
+                    .eq("id", matchedLeadId);
+                }
+              }
+            }
+
+            // ONCE A MANUAL PERSON HAS TEXTED THE CUSTOMER, AI IS STRICTLY OFF FOR THAT CUSTOMER!
+            if (hasHumanTexted) {
+              continue;
+            }
+
             // Automated Instant Welcome & Assessment Reply
             const allowForce = Boolean(matchedLeadPayload?.force_next_welcome_reply);
 
@@ -1307,6 +1359,8 @@ export async function ingestWhatsAppWebhook(payload: any): Promise<{
                 to: senderPhone,
                 leadId: matchedLeadId || undefined,
                 body: welcomeMessage,
+                senderType: "automation",
+                senderName: "ProsperWork Welcome",
               }).catch(() => null);
 
               // Disarm force flag on lead if it was active
@@ -1400,6 +1454,8 @@ export async function ingestWhatsAppWebhook(payload: any): Promise<{
                   to: senderPhone,
                   leadId: matchedLeadId || undefined,
                   body: aiResult.replyText,
+                  senderType: "ai",
+                  senderName: "ProsperWork AI Intake",
                 }).catch(() => null);
               }
             }
