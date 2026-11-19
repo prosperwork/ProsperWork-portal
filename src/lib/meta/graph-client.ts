@@ -1263,17 +1263,22 @@ export async function ingestWhatsAppWebhook(payload: any): Promise<{
             }).catch(() => null);
           } else {
             // Automated Instant Welcome & Assessment Reply
-            // Checks if an automated welcome was sent to this customer in the past 24 hours
-            const oneDayAgo = new Date(Date.now() - 24 * 3600 * 1000).toISOString();
-            const { data: recentOutbound } = await db
+            const allowForce = Boolean(matchedLeadPayload?.force_next_welcome_reply);
+
+            // Check if the automated welcome message itself was sent to this customer in the past 6 hours
+            const sixHoursAgo = new Date(Date.now() - 6 * 3600 * 1000).toISOString();
+            const { data: recentWelcome } = await db
               .from("pw_whatsapp_messages")
               .select("id")
               .eq("phone_number", senderPhone)
               .eq("direction", "outbound")
-              .gte("created_at", oneDayAgo)
+              .ilike("body", "%Welcome to ProsperWork Music Academy%")
+              .gte("created_at", sixHoursAgo)
               .limit(1);
 
-            if (!recentOutbound || recentOutbound.length === 0) {
+            const shouldSendWelcome = allowForce || !recentWelcome || recentWelcome.length === 0;
+
+            if (shouldSendWelcome) {
               let rawName = matchedLeadPayload?.parentName || senderName || "there";
               if (rawName.includes("<test") || rawName.toLowerCase().includes("dummy")) {
                 rawName = "there";
@@ -1287,6 +1292,18 @@ export async function ingestWhatsAppWebhook(payload: any): Promise<{
                 leadId: matchedLeadId || undefined,
                 body: welcomeMessage,
               }).catch(() => null);
+
+              // Disarm force flag on lead if it was active
+              if (matchedLeadId && allowForce) {
+                const updated = {
+                  ...matchedLeadPayload,
+                  force_next_welcome_reply: false,
+                };
+                await db
+                  .from("pw_leads")
+                  .update({ payload: updated, updated_at: new Date().toISOString() })
+                  .eq("id", matchedLeadId);
+              }
             }
           }
         }

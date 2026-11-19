@@ -79,31 +79,15 @@ export async function POST(request: NextRequest) {
 
     const body = await request.json().catch(() => ({}));
 
-    // Handle Reset / Test Mode Action
+    // Handle Re-arm / Test Mode Action (Preserves entire chat history!)
     if (body.action === "reset") {
       const db = provisioningClient();
       const rawPhone = body.phone?.trim();
       const cleanPhone = rawPhone ? cleanWhatsAppPhoneNumber(rawPhone) : "";
       const leadId = body.leadId?.trim();
 
-      if (leadId && cleanPhone) {
-        const lastDigits = cleanPhone.slice(-9);
-        await db
-          .from("pw_whatsapp_messages")
-          .delete()
-          .or(`lead_id.eq.${leadId},phone_number.eq.${cleanPhone},phone_number.ilike.%${lastDigits}%`);
-      } else if (cleanPhone) {
-        const lastDigits = cleanPhone.slice(-9);
-        await db
-          .from("pw_whatsapp_messages")
-          .delete()
-          .or(`phone_number.eq.${cleanPhone},phone_number.ilike.%${lastDigits}%`);
-      } else if (leadId) {
-        await db.from("pw_whatsapp_messages").delete().eq("lead_id", leadId);
-      }
-
-      // Reset lead status back to "new" to allow full end-to-end testing
-      if (leadId && body.resetLeadStage !== false) {
+      // Arm force_next_welcome_reply on the lead WITHOUT deleting any messages
+      if (leadId) {
         const { data: leadRow } = await db
           .from("pw_leads")
           .select("payload")
@@ -114,8 +98,9 @@ export async function POST(request: NextRequest) {
           const p = leadRow.payload as any;
           const updated = {
             ...p,
-            status: "new",
-            firstResponseAt: null,
+            force_next_welcome_reply: true,
+            status: body.resetLeadStage !== false ? "new" : p.status,
+            firstResponseAt: body.resetLeadStage !== false ? null : p.firstResponseAt,
           };
           await db
             .from("pw_leads")
@@ -124,7 +109,7 @@ export async function POST(request: NextRequest) {
         }
       }
 
-      return NextResponse.json({ success: true, reset: true });
+      return NextResponse.json({ success: true, rearmed: true });
     }
 
     const { leadId, phone, message, buttons } = body;

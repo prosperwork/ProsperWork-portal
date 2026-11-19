@@ -237,18 +237,10 @@ export default function LeadsView({
 
   const [resettingChat, setResettingChat] = useState(false);
 
-  const handleResetChatForTesting = async () => {
+  const handleRetriggerAutoReply = async () => {
     if (!whatsAppLead || resettingChat) return;
     const phone = resolveLeadPhone(whatsAppLead);
     if (!phone) return;
-
-    if (
-      !confirm(
-        "Reset this conversation for testing? This will clear past chat history and reset the 24-hour window so you can test the incoming automated welcome reply again."
-      )
-    ) {
-      return;
-    }
 
     setResettingChat(true);
     try {
@@ -264,18 +256,16 @@ export default function LeadsView({
       });
       const json = await res.json();
       if (res.ok && json.success) {
-        setWhatsAppMessages([]);
-        setWhatsAppDraft("");
         setWhatsAppLead((prev) => (prev ? { ...prev, status: "new" } : null));
         notify(
-          "Conversation reset! You can now send 'Hello' from this phone to test the automated welcome reply again."
+          "Auto-reply re-armed! Chat history is preserved. Send 'Hello' from this phone to trigger the automated welcome message."
         );
         if (reload) await reload();
       } else {
-        notify(`Reset error: ${json.error || "Failed to reset"}`);
+        notify(`Error: ${json.error || "Failed to arm auto-reply"}`);
       }
     } catch {
-      notify("Network error while resetting conversation.");
+      notify("Network error while arming auto-reply.");
     } finally {
       setResettingChat(false);
     }
@@ -1688,9 +1678,9 @@ export default function LeadsView({
                   style={{
                     fontSize: "0.74rem",
                     padding: "3px 9px",
-                    background: "#fff1f2",
-                    borderColor: "#fecdd3",
-                    color: "#e11d48",
+                    background: "#e0e7ff",
+                    borderColor: "#c7d2fe",
+                    color: "#4338ca",
                     fontWeight: 700,
                     cursor: resettingChat ? "not-allowed" : "pointer",
                     opacity: resettingChat ? 0.65 : 1,
@@ -1698,11 +1688,11 @@ export default function LeadsView({
                     alignItems: "center",
                     gap: 4,
                   }}
-                  onClick={handleResetChatForTesting}
-                  title="Clear past messages and reset 24h window so you can test automated welcome replies repeatedly"
+                  onClick={handleRetriggerAutoReply}
+                  title="Preserves all chat messages and allows the next incoming message from this phone to trigger the automated welcome reply again"
                 >
                   <RefreshCw size={11} className={resettingChat ? "spin" : ""} />
-                  {resettingChat ? "Resetting..." : "🔄 Reset Chat for Testing"}
+                  {resettingChat ? "Arming..." : "🔄 Retrigger Auto-Reply"}
                 </button>
 
                 <button
