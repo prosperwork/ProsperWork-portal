@@ -712,6 +712,7 @@ export interface MetaConversionParams {
   phone?: string;
   instrument?: string;
   status: string;
+  eventName?: "Schedule" | "Purchase" | "Lead" | "SubmitApplication";
   value?: number;
   currency?: string;
   actorId?: string;
@@ -736,21 +737,27 @@ export async function sendMetaConversionEvent(
   }
 
   // Determine standard Meta event name based on pipeline stage
-  let eventName: "Schedule" | "Purchase" | "Lead" | "SubmitApplication" = "Lead";
+  let eventName: "Schedule" | "Purchase" | "Lead" | "SubmitApplication" = params.eventName || "Lead";
   let defaultValue = 0;
   const currency = params.currency || "GBP";
 
-  const st = params.status.toLowerCase();
-  if (st === "trial_booked" || st === "trial_requested" || st === "trial_verified") {
-    eventName = "Schedule"; // Standard Meta event for booked trials / lessons
+  if (!params.eventName) {
+    const st = params.status.toLowerCase();
+    if (st === "trial_booked" || st === "trial_requested" || st === "trial_verified") {
+      eventName = "Schedule"; // Standard Meta event for booked trials / lessons
+      defaultValue = 45.0;
+    } else if (st === "converted") {
+      eventName = "Purchase"; // Standard Meta event for paying enrolled student
+      defaultValue = params.value ?? 45.0;
+    } else if (st === "contacted") {
+      eventName = "Lead"; // Standard Meta event for qualified lead
+    } else {
+      eventName = "Lead";
+    }
+  } else if (params.eventName === "Schedule") {
     defaultValue = 45.0;
-  } else if (st === "converted") {
-    eventName = "Purchase"; // Standard Meta event for paying enrolled student
+  } else if (params.eventName === "Purchase") {
     defaultValue = params.value ?? 45.0;
-  } else if (st === "contacted") {
-    eventName = "Lead"; // Standard Meta event for qualified lead
-  } else {
-    eventName = "Lead";
   }
 
   // Prepare SHA-256 hashed user data for Meta CAPI matching

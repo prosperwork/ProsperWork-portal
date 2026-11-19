@@ -1489,7 +1489,7 @@ export default function LeadsView({
 
       {/* In-App WhatsApp Live Chat Modal */}
       <PortalModal
-        isOpen={Boolean(whatsAppLead)}
+        open={Boolean(whatsAppLead)}
         onClose={() => setWhatsAppLead(null)}
         title={
           whatsAppLead
