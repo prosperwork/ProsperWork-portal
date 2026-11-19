@@ -10,6 +10,7 @@ import {
   Mail,
   RefreshCw,
   Save,
+  Share2,
   Shield,
   ShieldCheck,
   Sliders,
@@ -19,14 +20,16 @@ import { DEFAULT_ACADEMY_EMAILS, type AcademyEmails } from "@/lib/academy/catalo
 import FinanceSettings from "./FinanceSettings";
 import RolePermissionsSettings from "./RolePermissionsSettings";
 import CatalogSettings from "./CatalogSettings";
+import MetaSettings from "./MetaSettings";
 
-type SettingsTab = "general" | "roles" | "catalogs" | "finance" | "email";
+type SettingsTab = "general" | "roles" | "catalogs" | "finance" | "email" | "meta";
 const validTabs: SettingsTab[] = [
   "general",
   "roles",
   "catalogs",
   "finance",
   "email",
+  "meta",
 ];
 
 type Settings = {
@@ -576,6 +579,15 @@ export default function SettingsPage() {
                   <span className="portal-tab-badge">{messages.length}</span>
                 )}
               </button>
+              <button
+                type="button"
+                className={`portal-tab ${
+                  activeTab === "meta" ? "active" : ""
+                }`}
+                onClick={() => selectTab("meta")}
+              >
+                <Share2 size={14} /> Meta Lead Ads
+              </button>
             </nav>
 
             {/* TAB 1: General & Rules */}
@@ -1086,6 +1098,11 @@ export default function SettingsPage() {
                   )}
                 </section>
               </div>
+            )}
+
+            {/* TAB 6: Meta Lead Ads Integration */}
+            {activeTab === "meta" && (
+              <MetaSettings role={data.profile.role} />
             )}
           </>
         )}

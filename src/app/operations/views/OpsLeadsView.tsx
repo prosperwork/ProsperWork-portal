@@ -308,6 +308,27 @@ export default function OpsLeadsView({
                               {text(lead.payload.parentName)} ·{" "}
                               {text(lead.payload.email)}
                             </small>
+                            {(() => {
+                              const plat = String(lead.payload.platform || lead.payload.metaPlatform || "").toLowerCase();
+                              const src = text(lead.payload.source, "").toLowerCase();
+                              const isIg = plat === "ig" || plat === "instagram" || src.includes("instagram");
+                              const isFb = plat === "fb" || plat === "facebook" || src.includes("facebook") || src.includes("meta");
+                              if (isIg) {
+                                return (
+                                  <span style={{ display: "inline-flex", alignItems: "center", gap: 3, background: "#fdf2f8", color: "#db2777", fontWeight: 700, fontSize: "0.68rem", padding: "1px 6px", borderRadius: "4px", border: "1px solid #fbcfe8", marginTop: 2, width: "fit-content" }}>
+                                    ◎ Instagram Lead
+                                  </span>
+                                );
+                              }
+                              if (isFb) {
+                                return (
+                                  <span style={{ display: "inline-flex", alignItems: "center", gap: 3, background: "#ebf5ff", color: "#1877f2", fontWeight: 700, fontSize: "0.68rem", padding: "1px 6px", borderRadius: "4px", border: "1px solid #bfdbfe", marginTop: 2, width: "fit-content" }}>
+                                    f Facebook Lead
+                                  </span>
+                                );
+                              }
+                              return null;
+                            })()}
                           </span>
                         </div>
                         <span className="ops-small">

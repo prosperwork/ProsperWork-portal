@@ -119,6 +119,14 @@ export interface Lead {
   preferredSlots?: string[];
   teacherName?: string;
   adminName?: string;
+  metaLeadId?: string;
+  metaFormId?: string;
+  metaPlatform?: string;
+  platform?: string;
+  readiness?: string;
+  campaignName?: string;
+  adName?: string;
+  customAnswers?: Record<string, string>;
 }
 
 export interface Payment {

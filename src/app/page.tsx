@@ -914,6 +914,7 @@ export default function HomePage() {
         setLeadStatus={setLeadStatus}
         changeView={changeView}
         notify={notify}
+        reload={reload}
       />
     ),
     finance: () => (
