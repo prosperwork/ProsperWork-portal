@@ -13,8 +13,12 @@ export async function GET(){
   if(!canViewOps)return reply({error:"Staff access is required for operations."},403);
   const tables=["pw_billing_contracts","pw_fx_rates","pw_finance_rules","pw_availability","pw_recurring_series","pw_student_pauses","pw_students","pw_profiles","pw_payments","pw_quality_observations","pw_leads","pw_operations_events","pw_referral_requests","pw_referral_credits","pw_media_reviews","pw_files"];
   const rows=await Promise.all(tables.map(t=>loadAllRecords(client,t,"*",{cursor:t==="pw_finance_rules"?"singleton":"id"})));if(rows.some(r=>r.error))return reply({error:"Operations records could not be loaded."},503);
-  const financial=await client.rpc("pw_financial_summary"),quality=await client.rpc("pw_quality_snapshot");
-  if(financial.error||quality.error)return reply({error:"Reports are temporarily unavailable."},503);
+  const [financial, quality] = await Promise.all([
+    client.rpc("pw_financial_summary"),
+    client.rpc("pw_quality_snapshot"),
+  ]);
+  const financialData = Array.isArray(financial.data) ? financial.data : [];
+  const qualityData = Array.isArray(quality.data) ? quality.data : [];
   const [contracts,fx,rules,availability,series,pauses,students,staff,payments,observations,leads,events,referrals,credits,media,files]=rows.map(r=>r.data||[]);
   const today=new Intl.DateTimeFormat("en-CA",{timeZone:profile.timezone,year:"numeric",month:"2-digit",day:"2-digit"}).format(new Date());
   const day=Date.parse(today);
@@ -47,8 +51,8 @@ export async function GET(){
       ageMinutes: Math.max(0, Math.floor((Date.now() - Date.parse(l.payload.arrivedAt)) / 60000)),
       followupAt: l.trial_verified_at ? new Date(Date.parse(l.trial_verified_at) + 86400000).toISOString() : null,
     })),
-    financial: financial.data,
-    quality: quality.data,
+    financial: financialData,
+    quality: qualityData,
     events,
   };
   return reply({ ok: true, data, ...data });
