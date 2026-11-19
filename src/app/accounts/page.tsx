@@ -35,6 +35,10 @@ export default function AccountsPage() {
     next: AccountStatus;
   } | null>(null);
   const [viewAsPendingId, setViewAsPendingId] = useState<string | null>(null);
+  const [accountToDelete, setAccountToDelete] = useState<Account | null>(null);
+  const [deletePending, setDeletePending] = useState(false);
+  const [deleteBlockers, setDeleteBlockers] = useState<string[]>([]);
+  const [deleteReason, setDeleteReason] = useState("");
 
   const startViewAs = async (target: Account) => {
     setViewAsPendingId(String(target.id));
@@ -234,6 +238,41 @@ export default function AccountsPage() {
     }
   }
 
+  const applyPurgeAccount = async () => {
+    if (!accountToDelete) return;
+    setDeletePending(true);
+    setMutationError("");
+    setDeleteBlockers([]);
+    try {
+      const response = await fetch("/api/accounts", {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "delete",
+          id: accountToDelete.id,
+          reason: deleteReason || "Permanent purge requested by Super Admin",
+        }),
+      });
+      const result = await response.json().catch(() => ({}));
+      if (response.status === 409 && result.blockers) {
+        setDeleteBlockers(result.blockers);
+        throw new Error(result.error || "Account deletion blocked by protected records.");
+      }
+      if (!response.ok || result.error || result.ok !== true) {
+        throw new Error(result.error || "Unable to permanently purge account.");
+      }
+      setSuccessMessage(result.message || `${accountToDelete.name} was permanently purged.`);
+      setAccountToDelete(null);
+      setDeleteReason("");
+      await loadAccounts();
+    } catch (err) {
+      setMutationError(err instanceof Error ? err.message : "Purge failed.");
+    } finally {
+      setDeletePending(false);
+    }
+  };
+
   useEffect(() => {
     if (!statusChange) return;
     const onKeyDown = (event: KeyboardEvent) => {
@@ -359,6 +398,12 @@ export default function AccountsPage() {
                 onSelectStatusChange={(account, next) =>
                   setStatusChange({ account, next })
                 }
+                onRequestDelete={(account) => {
+                  setMutationError("");
+                  setDeleteBlockers([]);
+                  setDeleteReason("");
+                  setAccountToDelete(account);
+                }}
               />
             </div>
           </>
@@ -381,6 +426,17 @@ export default function AccountsPage() {
           setMutationError("");
         }}
         onConfirmStatusChange={applyStatusChange}
+        accountToDelete={accountToDelete}
+        deletePending={deletePending}
+        deleteBlockers={deleteBlockers}
+        deleteReason={deleteReason}
+        onDeleteReasonChange={setDeleteReason}
+        onCancelDelete={() => {
+          setAccountToDelete(null);
+          setDeleteBlockers([]);
+          setMutationError("");
+        }}
+        onConfirmDelete={applyPurgeAccount}
       />
     </main>
   );

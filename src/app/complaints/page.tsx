@@ -459,14 +459,7 @@ export default function ComplaintsPage() {
       </div>
 
       {/* Master-Detail Layout - exactly matching FamiliesView */}
-      <div
-        className="grid-main"
-        style={{
-          gridTemplateColumns: "minmax(300px, 380px) 1fr",
-          gap: "18px",
-          alignItems: "start",
-        }}
-      >
+      <div className="complaints-grid-main">
         {/* Left: Ticket Roster */}
         <section className="card section-card">
           <SectionTitle

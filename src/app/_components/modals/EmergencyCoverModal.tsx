@@ -113,11 +113,11 @@ export default function EmergencyCoverModal({
           style={{
             fontSize: 12,
             lineHeight: 1.5,
-            background: "#fff7ed",
-            border: "1px solid #fed7aa",
+            background: "#fef3c7",
+            border: "1px solid #fde68a",
             borderRadius: 8,
             padding: "8px 12px",
-            color: "#9a3412",
+            color: "#92400e",
             marginBottom: 14,
           }}
         >
@@ -218,7 +218,7 @@ export default function EmergencyCoverModal({
               className="btn"
               type="submit"
               disabled={loading || !coverTeacherId || !coverAdminId}
-              style={{ background: "#ea580c", borderColor: "#c2410c" }}
+              style={{ background: "#135b45", borderColor: "#0a2e22", color: "#ffffff" }}
             >
               {loading ? "Assigning cover…" : "Assign Emergency Cover"}
             </button>

@@ -217,8 +217,12 @@ export default function StudioStudentDossier({
                             {event.operation === "plan"
                               ? "planned"
                               : "completed"}{" "}
-                            · {formatDate(event.created_at, timezone)} ·
-                            educator {event.educator_id}
+                            · {formatDate(event.created_at, timezone)} ·{" "}
+                            {event.educator_id === data.profile.id
+                              ? `educator ${data.profile.name}`
+                              : event.educator_id
+                              ? "assigned educator"
+                              : "academy"}
                           </small>
                         ))}
                     </div>

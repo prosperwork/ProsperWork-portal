@@ -323,11 +323,7 @@ export default function LoginPage() {
       ? email.trim().length > 0 && password.length > 0
       : mode === "forgot"
       ? validEmail && resetCooldown === 0
-      : name.trim().length >= 2 &&
-        validEmail &&
-        password.length >= 8 &&
-        confirm === password &&
-        legalAccepted;
+      : name.trim().length >= 2 && validEmail && legalAccepted;
   const panelHeading =
     mode === "login"
       ? ["Welcome back", "Sign in to your ProsperWork account."]

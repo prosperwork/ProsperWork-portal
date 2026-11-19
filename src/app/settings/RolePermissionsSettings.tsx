@@ -74,7 +74,7 @@ export default function RolePermissionsSettings({ role }: { role: string }) {
         activeDraft.code.trim() !== "" ||
         activeDraft.label.trim() !== "" ||
         activeDraft.department !== "General" ||
-        activeDraft.permissions.length > 2
+        JSON.stringify(activeDraft.permissions.slice().sort()) !== JSON.stringify(["workspace.manual", "workspace.overview"].sort())
       );
     }
     if (!originalRole) return false;
@@ -278,10 +278,25 @@ export default function RolePermissionsSettings({ role }: { role: string }) {
           <form className="ps-finance-form" onSubmit={saveRole}>
             <div className="ps-finance-subhead form-heading">
               <div>
-                <h3>
+                <h3 style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
                   {activeDraft.isNew
                     ? "Create custom role"
                     : `Edit role: ${activeDraft.label} (${activeDraft.code})`}
+                  {isDirty && (
+                    <span
+                      style={{
+                        fontSize: "11px",
+                        fontWeight: 700,
+                        padding: "2px 8px",
+                        borderRadius: "12px",
+                        background: "#fef3c7",
+                        color: "#92400e",
+                        border: "1px solid #fde68a",
+                      }}
+                    >
+                      Unsaved changes
+                    </span>
+                  )}
                 </h3>
                 <p>
                   {isOwnerRole
@@ -484,7 +499,7 @@ export default function RolePermissionsSettings({ role }: { role: string }) {
             </div>
 
             <div className="ps-finance-actions">
-              <button className="ps-primary" type="submit" disabled={busy}>
+              <button className="ps-primary" type="submit" disabled={busy || !isDirty}>
                 {busy ? "Saving…" : activeDraft.isNew ? "Create role" : "Save role permissions"}
               </button>
             </div>

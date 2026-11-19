@@ -112,9 +112,10 @@
   font-weight: 750;
 }
 .mw-intro h1 {
-  font: 600 clamp(32px, 5vw, 54px) / 1.03 var(--font-display, inherit);
-  letter-spacing: -0.045em;
-  margin: 9px 0 10px;
+  font: 800 clamp(24px, 2.8vw, 32px) / 1.15 var(--display, sans-serif);
+  letter-spacing: -0.8px;
+  color: #0a2e22;
+  margin: 6px 0 8px;
 }
 .mw-intro p {
   color: var(--mw-muted);

@@ -103,21 +103,21 @@
   height: 0;
 }
 .portal-nav-link {
-  min-height: 37px;
+  min-height: 38px;
   display: flex;
   align-items: center;
   gap: 11px;
-  padding: 0 11px;
+  padding: 0 12px;
   border-radius: 9px;
   color: #c4d9ca;
   text-decoration: none;
-  font-size: 11px;
+  font-size: 13px;
   font-weight: 600;
   transition: background 0.16s, color 0.16s, transform 0.16s;
   flex-shrink: 0;
 }
 .portal-nav-link:hover {
-  background: #ffffff12;
+  background: #ffffff14;
   color: #fff;
   transform: translateX(2px);
 }
@@ -192,12 +192,14 @@
   display: flex;
   align-items: center;
   gap: 8px;
-  color: #819387;
-  font-size: 10px;
+  color: #4b6255;
+  font-size: 12px;
+  font-weight: 500;
 }
 .portal-breadcrumb strong {
-  color: #285843;
-  font-size: 11px;
+  color: #123d2f;
+  font-size: 12.5px;
+  font-weight: 700;
 }
 .portal-account {
   position: relative;
@@ -262,7 +264,7 @@
   height: 100%;
   object-fit: cover;
   object-position: center;
-  transform: scale(1.8);
+  border-radius: 50%;
 }
 .portal-account-chevron {
   position: absolute;
@@ -489,11 +491,17 @@
 }
 .portal-close {
   position: absolute;
-  right: 0;
-  top: 4px;
+  right: 12px;
+  top: 12px;
   border: 0;
-  background: transparent;
+  background: rgba(255, 255, 255, 0.08);
+  border-radius: 8px;
   color: #d9e8dd;
+  width: 44px;
+  height: 44px;
+  display: grid;
+  place-items: center;
+  cursor: pointer;
 }
 .document-page {
   max-width: 1220px;
@@ -737,7 +745,8 @@
   .portal-account {
     gap: 7px;
   }
-  .portal-account-name {
+  .portal-account-name,
+  .portal-account-trigger-identity {
     display: none;
   }
   .portal-signout {
@@ -798,6 +807,42 @@
   .document-table {
     min-width: 660px;
   }
+}
+
+.portal-impersonation-banner {
+  background: #fbf6ec;
+  border-bottom: 1px solid #e8d7b5;
+  color: #5c4314;
+  padding: 10px 20px;
+  font-size: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+  position: relative;
+  z-index: 25;
+}
+.portal-impersonation-banner button {
+  background: #1c7a5d;
+  color: #ffffff;
+  border: 1px solid #135b45;
+  border-radius: 7px;
+  padding: 6px 12px;
+  font-size: 11px;
+  font-weight: 700;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  transition: background 0.15s ease;
+}
+.portal-impersonation-banner button:hover:not(:disabled) {
+  background: #135b45;
+}
+.portal-impersonation-banner button:disabled {
+  opacity: 0.65;
+  cursor: wait;
 }
 @media (prefers-reduced-motion: reduce) {
   .portal-nav-link,

@@ -54,6 +54,10 @@ export default function AccessPendingPage() {
         window.location.replace("/onboarding");
         return;
       }
+      if (data.profile.status === "active") {
+        window.location.replace("/");
+        return;
+      }
       setProfile(data.profile);
       setCheckedAt(new Date());
     } catch (requestError) {

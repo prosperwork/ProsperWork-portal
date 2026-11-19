@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState, type FormEvent } from "react";
-import { Check, X } from "lucide-react";
+import { Check, LoaderCircle, X } from "lucide-react";
 import type { AcademyData, Role } from "@/lib/types";
 import { roles } from "../../_lib/portal-formatters";
 
@@ -485,6 +485,7 @@ export default function ActionModal({
   submitLabel?: string;
 }) {
   const [error, setError] = useState("");
+  const [submitting, setSubmitting] = useState(false);
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key === "Escape") onClose();
@@ -493,7 +494,7 @@ export default function ActionModal({
     return () => window.removeEventListener("keydown", onKeyDown);
   }, [onClose]);
 
-  function submit(event: FormEvent<HTMLFormElement>) {
+  async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const form = new FormData(event.currentTarget);
     const values: Record<string, string> = {};
@@ -533,7 +534,13 @@ export default function ActionModal({
       return;
     }
     setError("");
-    onSubmit(values);
+    try {
+      setSubmitting(true);
+      await Promise.resolve(onSubmit(values));
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Action failed.");
+      setSubmitting(false);
+    }
   }
   return (
     <div
@@ -629,9 +636,13 @@ export default function ActionModal({
             <button type="button" className="btn ghost" onClick={onClose}>
               Cancel
             </button>
-            <button type="submit" className="btn">
-              <Check size={14} />
-              {submitLabel}
+            <button type="submit" className="btn" disabled={submitting}>
+              {submitting ? (
+                <LoaderCircle size={14} className="spin" />
+              ) : (
+                <Check size={14} />
+              )}
+              {submitting ? "Saving…" : submitLabel}
             </button>
           </div>
         </form>

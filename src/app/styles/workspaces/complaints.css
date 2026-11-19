@@ -15,3 +15,16 @@
 .spinning {
   animation: spin-complaints 0.8s linear infinite;
 }
+
+.complaints-grid-main {
+  display: grid;
+  grid-template-columns: minmax(300px, 380px) 1fr;
+  gap: 18px;
+  align-items: start;
+}
+
+@media (max-width: 900px) {
+  .complaints-grid-main {
+    grid-template-columns: 1fr;
+  }
+}

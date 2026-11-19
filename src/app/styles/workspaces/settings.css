@@ -53,7 +53,7 @@
 }
 .ps-brand small {
   color: #718078;
-  font-size: 9px;
+  font-size: 10.5px;
   letter-spacing: 1.1px;
   text-transform: uppercase;
 }
@@ -99,7 +99,7 @@
 .ps-eyebrow,
 .ps-kicker {
   color: var(--ps-leaf);
-  font-size: 9px;
+  font-size: 11px;
   font-weight: 800;
   letter-spacing: 1.35px;
   text-transform: uppercase;
@@ -139,13 +139,13 @@
   border-radius: 11px;
   background: #eff7f1;
   color: var(--ps-green);
-  font-size: 10px;
+  font-size: 12px;
   font-weight: 800;
 }
 .ps-owner-tag small {
   display: block;
   color: #82938a;
-  font-size: 8px;
+  font-size: 10px;
   font-weight: 600;
   margin-top: 3px;
 }
@@ -327,7 +327,7 @@
   margin: 5px 0 4px;
 }
 .ps-card-head p {
-  font-size: 10px;
+  font-size: 12px;
   line-height: 1.45;
   color: var(--ps-muted);
   margin: 0;
@@ -358,11 +358,11 @@
   display: block;
 }
 .ps-number-copy strong {
-  font-size: 10px;
+  font-size: 13px;
   color: #315444;
 }
 .ps-number-copy small {
-  font-size: 9px;
+  font-size: 11px;
   line-height: 1.4;
   color: var(--ps-muted);
   margin-top: 4px;
@@ -374,14 +374,14 @@
   flex: none;
 }
 .ps-number-input input {
-  width: 62px;
-  height: 34px;
+  width: 68px;
+  height: 38px;
   border: 1px solid var(--ps-line);
   border-radius: 8px;
   background: #fffefa;
   color: var(--ps-pine);
-  padding: 0 7px;
-  font-size: 11px;
+  padding: 0 8px;
+  font-size: 13px;
   font-weight: 700;
   text-align: center;
   outline: none;
@@ -392,7 +392,7 @@
   box-shadow: 0 0 0 3px #4493641a;
 }
 .ps-number-input small {
-  font-size: 8px;
+  font-size: 11px;
   color: #85948a;
   width: 31px;
 }
@@ -405,7 +405,7 @@
   border-radius: 9px;
   background: #f1f6f2;
   color: #527460;
-  font-size: 9px;
+  font-size: 11px;
   line-height: 1.5;
 }
 .ps-note svg {
@@ -430,11 +430,11 @@
   display: block;
 }
 .ps-rule-row > span strong {
-  font-size: 10px;
+  font-size: 13px;
   color: #315444;
 }
 .ps-rule-row > span small {
-  font-size: 9px;
+  font-size: 11.5px;
   color: var(--ps-muted);
   margin-top: 4px;
   line-height: 1.4;
@@ -488,7 +488,7 @@
   outline-offset: 2px;
 }
 .ps-switch b {
-  font-size: 9px;
+  font-size: 11px;
   font-weight: 700;
   color: var(--ps-muted);
   min-width: 20px;
@@ -499,18 +499,18 @@
   margin: 13px 0;
 }
 .ps-select-field > span {
-  font-size: 9px;
+  font-size: 12px;
   font-weight: 700;
   color: #50655a;
 }
 .ps-select-field select {
-  height: 37px;
+  height: 38px;
   border: 1px solid var(--ps-line);
   border-radius: 8px;
   background: #fffefa;
   padding: 0 10px;
   color: var(--ps-green);
-  font-size: 10px;
+  font-size: 13px;
   outline: none;
 }
 .ps-caveat {
@@ -520,13 +520,13 @@
   border-radius: 9px;
   background: #f5f5ed;
   color: #777759;
-  font-size: 9px;
+  font-size: 11px;
   line-height: 1.5;
   margin-top: 13px;
 }
 .ps-caveat strong {
   color: #64633e;
-  font-size: 9px;
+  font-size: 11px;
 }
 .ps-muted-icon {
   color: #82948a;
@@ -567,17 +567,17 @@
   display: block;
 }
 .ps-service strong {
-  font-size: 10px;
+  font-size: 13px;
   color: #315444;
 }
 .ps-service small {
-  font-size: 9px;
+  font-size: 11.5px;
   color: var(--ps-muted);
   margin-top: 4px;
 }
 .ps-service em {
   font-style: normal;
-  font-size: 8px;
+  font-size: 11px;
   font-weight: 700;
   color: #718078;
   background: #f0f3f0;
@@ -586,7 +586,7 @@
   white-space: nowrap;
 }
 .ps-service-foot {
-  font-size: 8px;
+  font-size: 11px;
   color: #8d9991;
   line-height: 1.45;
   padding-top: 9px;
@@ -599,7 +599,7 @@
   gap: 12px;
 }
 .ps-form-actions > span {
-  font-size: 9px;
+  font-size: 11px;
   color: var(--ps-muted);
 }
 .ps-primary,
@@ -612,8 +612,9 @@
   border-radius: 9px;
   background: var(--ps-green);
   color: white;
-  padding: 10px 14px;
-  font-size: 10px;
+  padding: 10px 16px;
+  min-height: 38px;
+  font-size: 13px;
   font-weight: 700;
   transition: transform 0.18s, background 0.18s;
 }
@@ -852,7 +853,7 @@
 .ps-finance-subhead p {
   margin: 4px 0 0;
   color: var(--ps-muted);
-  font-size: 9px;
+  font-size: 11.5px;
   line-height: 1.5;
 }
 .ps-currency-list {
@@ -862,16 +863,16 @@
   margin-top: 10px;
 }
 .ps-currency-option {
-  min-height: 33px;
+  min-height: 36px;
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  padding: 5px 9px;
+  padding: 6px 11px;
   border: 1px solid #dce7de;
   border-radius: 18px;
   background: #fffefa;
   color: #315444;
-  font-size: 9px;
+  font-size: 12px;
   font-weight: 800;
 }
 .ps-currency-option span {
@@ -879,11 +880,11 @@
   color: #68796f;
 }
 .ps-currency-option small {
-  padding: 3px 5px;
+  padding: 3px 6px;
   border-radius: 12px;
   background: #edf4ee;
   color: #65796c;
-  font-size: 8px;
+  font-size: 10.5px;
   font-weight: 700;
 }
 .ps-currency-option.selected {
@@ -916,7 +917,7 @@
   gap: 5px;
   min-width: 0;
   color: #50655a;
-  font-size: 9px;
+  font-size: 12px;
   font-weight: 700;
 }
 .ps-finance-field.full,
@@ -927,16 +928,16 @@
 .ps-finance-field :is(input, select, textarea) {
   width: 100%;
   min-width: 0;
-  min-height: 36px;
+  min-height: 38px;
   border: 1px solid var(--ps-line);
   border-radius: 8px;
   background: #fffefa;
-  padding: 8px 10px;
+  padding: 8px 12px;
   color: var(--ps-ink);
-  font: 500 10px var(--body, sans-serif);
+  font: 500 13px var(--body, sans-serif);
 }
 .ps-finance-field textarea {
-  min-height: 68px;
+  min-height: 72px;
   resize: vertical;
   line-height: 1.45;
 }
@@ -950,12 +951,12 @@
   align-items: flex-start;
   gap: 8px;
   color: #52675b;
-  font-size: 9px;
+  font-size: 12px;
   line-height: 1.45;
 }
 .ps-finance-check input {
-  width: 15px;
-  height: 15px;
+  width: 16px;
+  height: 16px;
   flex: none;
   margin: 0;
   accent-color: var(--ps-green);
@@ -963,7 +964,7 @@
 .ps-finance-note {
   margin: 0;
   color: var(--ps-muted);
-  font-size: 9px;
+  font-size: 11px;
   line-height: 1.55;
 }
 .ps-finance-actions {
@@ -1051,7 +1052,7 @@
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  font: 800 11px var(--display, sans-serif);
+  font: 800 13px var(--display, sans-serif);
   color: var(--ps-pine);
 }
 .ps-perm-bulk {
@@ -1061,39 +1062,44 @@
 }
 .ps-perm-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(230px, 1fr));
   gap: 8px 12px;
 }
 .ps-perm-item {
   display: flex;
   align-items: flex-start;
   gap: 8px;
-  padding: 7px 9px;
+  padding: 8px 10px;
   border: 1px solid #e9f0eb;
   border-radius: 8px;
   background: #fafdfb;
   cursor: pointer;
+  transition: border-color 0.15s, background-color 0.15s;
+}
+.ps-perm-item:hover {
+  border-color: #bcdbc6;
+  background: #f2f9f4;
 }
 .ps-perm-item input {
-  width: 14px;
-  height: 14px;
+  width: 15px;
+  height: 15px;
   flex: none;
   margin-top: 2px;
   accent-color: var(--ps-green);
 }
 .ps-perm-item > span {
   display: grid;
-  gap: 2px;
+  gap: 3px;
   min-width: 0;
 }
 .ps-perm-item b {
-  font-size: 10px;
+  font-size: 12.5px;
   font-weight: 700;
   color: var(--ps-pine);
 }
 .ps-perm-item small {
-  font-size: 8.5px;
-  line-height: 1.35;
+  font-size: 11px;
+  line-height: 1.4;
   color: var(--ps-muted);
 }
 .ps-danger-outline {

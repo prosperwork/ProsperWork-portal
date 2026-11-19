@@ -1068,7 +1068,24 @@ export default function FamilyPage() {
                                         lesson.studentTimezone
                                       )}
                                     </span>
-                                    <span style={{ display: "flex", gap: 6 }}>
+                                    <span style={{ display: "flex", gap: 6, alignItems: "center" }}>
+                                      <Link
+                                        href={`/complaints?category=scheduling&lessonId=${encodeURIComponent(lesson.id)}`}
+                                        style={{
+                                          fontSize: "11px",
+                                          color: "#166534",
+                                          textDecoration: "none",
+                                          fontWeight: 600,
+                                          padding: "3px 7px",
+                                          background: "#f0fdf4",
+                                          borderRadius: "5px",
+                                          border: "1px solid #bbf7d0",
+                                          whiteSpace: "nowrap",
+                                        }}
+                                        title={`Request a schedule change or makeup for ${lesson.title}`}
+                                      >
+                                        Reschedule
+                                      </Link>
                                       <Link
                                         href={`/learning?lessonId=${encodeURIComponent(
                                           lesson.id

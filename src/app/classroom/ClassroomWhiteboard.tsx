@@ -419,7 +419,8 @@ export default function ClassroomWhiteboard({
           top: 55,
           left: 20,
           right: "auto",
-          width: 520,
+          width: "min(520px, calc(100vw - 40px))",
+          maxWidth: "calc(100vw - 40px)",
           height: 380,
           zIndex: 100,
         };

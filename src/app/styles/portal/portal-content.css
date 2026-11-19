@@ -410,32 +410,37 @@
 }
 .portal-route-content .stat-grid {
   min-width: 0;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 14px;
   background: transparent;
-  border-top: 1px solid var(--line);
-  border-bottom: 1px solid var(--line);
-  padding: 8px 0;
+  border: none;
+  padding: 0;
   margin-bottom: 22px;
 }
 .portal-route-content .stat-grid .stat-card {
   min-width: 0;
-  border: 0;
-  border-right: 1px solid var(--line);
-  border-radius: 0;
-  box-shadow: none;
-  background: transparent;
-  padding: 9px 18px;
+  background: #ffffff;
+  border: 1px solid #dce7dd;
+  border-radius: 12px;
+  padding: 16px 18px;
+  box-shadow: 0 2px 8px rgba(18, 61, 47, 0.04);
+  transition: transform 0.15s ease, box-shadow 0.15s ease;
 }
-.portal-route-content .stat-grid .stat-card:last-child {
-  border-right: 0;
+.portal-route-content .stat-grid .stat-card:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 4px 14px rgba(18, 61, 47, 0.08);
 }
 .portal-route-content .stat-top {
   min-width: 0;
   overflow-wrap: anywhere;
 }
 .portal-route-content .stat-foot {
-  display: none;
+  display: block;
+  font-size: 11px;
+  color: #5d7366;
+  margin-top: 6px;
+  line-height: 1.4;
 }
 .portal-route-content .section-card {
   padding: 18px 20px;

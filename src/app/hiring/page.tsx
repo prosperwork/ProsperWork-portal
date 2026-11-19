@@ -45,6 +45,7 @@ export default function HiringPage() {
   const [actionError, setActionError] = useState("");
   const [notice, setNotice] = useState("");
   const [selectedCaseId, setSelectedCaseId] = useState("");
+  const [stageFilter, setStageFilter] = useState<string>("all");
 
   const [deviceTimezone, setDeviceTimezone] = useState("device local time");
   const [fileInputRevision, setFileInputRevision] = useState<
@@ -151,8 +152,14 @@ export default function HiringPage() {
     [data, isApplicant]
   );
   const visibleCases = isApplicant ? applicantCases : data?.cases ?? [];
+  const filteredCases = useMemo(() => {
+    if (stageFilter === "all") return visibleCases;
+    return visibleCases.filter((item) => item.stage === stageFilter);
+  }, [visibleCases, stageFilter]);
   const selectedCase =
+    filteredCases.find((item) => item.id === selectedCaseId) ??
     visibleCases.find((item) => item.id === selectedCaseId) ??
+    filteredCases[0] ??
     visibleCases[0] ??
     null;
 
@@ -802,7 +809,7 @@ export default function HiringPage() {
   const reviewOf = (kind: ReviewKind) =>
     currentCaseReviews.find((review) => review.kind === kind) ?? null;
   const reviewWhen = selectedCase?.interview_at
-    ? new Date(selectedCase.interview_at).getTime() <= serverNow.getTime()
+    ? new Date(selectedCase.interview_at).getTime() - 15 * 60 * 1000 <= serverNow.getTime()
     : false;
   const hrReview = reviewOf("hr_interview");
   const departmentReview = reviewOf("department_interview");
@@ -1067,9 +1074,48 @@ export default function HiringPage() {
                           aria-hidden="true"
                         />
                       </div>
-                      {visibleCases.length ? (
+                      {!isApplicant && visibleCases.length > 0 && (
+                        <div
+                          style={{
+                            display: "flex",
+                            gap: "6px",
+                            flexWrap: "wrap",
+                            padding: "8px 14px 10px",
+                            borderBottom: "1px solid #edf1ed",
+                          }}
+                        >
+                          {["all", "applied", "interview", "selected", "ready", "activated", "rejected"].map((stage) => {
+                            const count =
+                              stage === "all"
+                                ? visibleCases.length
+                                : visibleCases.filter((c) => c.stage === stage).length;
+                            if (stage !== "all" && count === 0) return null;
+                            return (
+                              <button
+                                key={stage}
+                                type="button"
+                                onClick={() => setStageFilter(stage)}
+                                style={{
+                                  fontSize: "11px",
+                                  fontWeight: 700,
+                                  padding: "3px 8px",
+                                  borderRadius: "14px",
+                                  border: "1px solid",
+                                  borderColor: stageFilter === stage ? "#1c7a5d" : "#dce8df",
+                                  background: stageFilter === stage ? "#edf6f1" : "#fffefa",
+                                  color: stageFilter === stage ? "#135b45" : "#65796c",
+                                  cursor: "pointer",
+                                }}
+                              >
+                                {stage === "all" ? "All" : titleCase(stage)} ({count})
+                              </button>
+                            );
+                          })}
+                        </div>
+                      )}
+                      {filteredCases.length ? (
                         <div className="hire-list">
-                          {visibleCases.map((candidate) => (
+                          {filteredCases.map((candidate) => (
                             <button
                               type="button"
                               key={candidate.id}

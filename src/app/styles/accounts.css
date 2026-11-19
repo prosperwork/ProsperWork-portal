@@ -476,7 +476,7 @@
   margin: 0;
   overflow: hidden;
   color: var(--pine-950);
-  font: 800 11px/1.3 var(--display);
+  font: 800 13.5px/1.3 var(--display);
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -484,7 +484,7 @@
   margin-top: 4px;
   overflow: hidden;
   color: #728078;
-  font-size: 9px;
+  font-size: 12px;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -496,21 +496,21 @@
   min-width: 0;
 }
 .pw-role-chip {
-  max-width: 120px;
+  max-width: 140px;
   overflow: hidden;
-  border-radius: 4px;
-  padding: 3px 6px;
+  border-radius: 5px;
+  padding: 3px 7px;
   background: #edf4ef;
   color: #557363;
-  font-size: 8px;
+  font-size: 11px;
   font-weight: 700;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 .pw-username {
   overflow: hidden;
-  color: #91a097;
-  font-size: 8px;
+  color: #718078;
+  font-size: 11.5px;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -519,15 +519,15 @@
   align-items: center;
   gap: 4px;
   border-radius: 30px;
-  padding: 3px 6px;
+  padding: 4px 8px;
   background: #f8f0e1;
   color: #99713a;
-  font-size: 8px;
+  font-size: 11px;
   font-weight: 700;
 }
 .pw-owner-badge svg {
-  width: 11px;
-  height: 11px;
+  width: 12px;
+  height: 12px;
 }
 .pw-account-side {
   display: grid;
@@ -539,16 +539,16 @@
   align-items: center;
   gap: 6px;
   border-radius: 20px;
-  padding: 5px 8px;
+  padding: 5px 9px;
   background: #edf4ef;
   color: #537561;
-  font-size: 8px;
+  font-size: 11.5px;
   font-weight: 700;
   white-space: nowrap;
 }
 .pw-status-pill i {
-  width: 6px;
-  height: 6px;
+  width: 7px;
+  height: 7px;
   border-radius: 50%;
   background: #66a17a;
 }
@@ -556,25 +556,43 @@
   background: #e7f3eb;
   color: #367650;
 }
-.pw-status-pill.status-on_leave,
-.pw-status-pill.status-applicant,
+.pw-status-pill.status-active i {
+  background: #276e4c;
+}
+.pw-status-pill.status-applicant {
+  background: #f3e8ff;
+  color: #6b21a8;
+}
+.pw-status-pill.status-applicant i {
+  background: #9333ea;
+}
 .pw-status-pill.status-pending {
-  background: #fbf2e3;
-  color: #8c672d;
+  background: #fef3c7;
+  color: #92400e;
 }
-.pw-status-pill.status-on_leave i,
-.pw-status-pill.status-applicant i,
 .pw-status-pill.status-pending i {
-  background: #c38e3e;
+  background: #d97706;
 }
-.pw-status-pill.status-paused,
+.pw-status-pill.status-on_leave {
+  background: #e0f2fe;
+  color: #0369a1;
+}
+.pw-status-pill.status-on_leave i {
+  background: #0284c7;
+}
+.pw-status-pill.status-paused {
+  background: #f1f5f9;
+  color: #475569;
+}
+.pw-status-pill.status-paused i {
+  background: #64748b;
+}
 .pw-status-pill.status-restricted {
-  background: #f9eae7;
-  color: #9a4b45;
+  background: #ffe4e6;
+  color: #9f1239;
 }
-.pw-status-pill.status-paused i,
 .pw-status-pill.status-restricted i {
-  background: #bd6a5d;
+  background: #e11d48;
 }
 .pw-timezone {
   display: inline-flex;

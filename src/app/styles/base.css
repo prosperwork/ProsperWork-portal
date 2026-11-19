@@ -429,8 +429,8 @@ a.btn.danger {
 }
 .lesson-row {
   display: grid;
-  grid-template-columns: 54px 1fr auto;
-  gap: 13px;
+  grid-template-columns: 78px 1fr auto;
+  gap: 14px;
   align-items: center;
   padding: 12px 0;
   border-top: 1px solid #edf1ed;
@@ -798,24 +798,24 @@ td strong {
   color: var(--muted);
   text-transform: uppercase;
   letter-spacing: 0.7px;
-  font-size: 8px;
+  font-size: 11px;
   font-weight: 700;
   margin-bottom: 5px;
 }
 .profile-field strong {
-  font-size: 11px;
+  font-size: 13px;
   color: var(--pine-900);
 }
 .overlay {
   position: fixed;
   inset: 0;
-  background: rgba(17, 41, 32, 0.42);
-  z-index: 30;
+  background: rgba(10, 46, 34, 0.65);
+  z-index: 1000;
   display: grid;
   place-items: center;
   padding: 18px;
-  -webkit-backdrop-filter: blur(3px);
-  backdrop-filter: blur(3px);
+  -webkit-backdrop-filter: blur(8px);
+  backdrop-filter: blur(8px);
   animation: fadein 0.16s ease-out;
 }
 .modal {
@@ -1398,7 +1398,7 @@ td strong {
     padding: 15px;
   }
   .lesson-row {
-    grid-template-columns: 48px 1fr auto;
+    grid-template-columns: 72px 1fr auto;
     gap: 8px;
   }
   .week-strip {

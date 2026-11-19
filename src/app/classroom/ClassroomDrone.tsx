@@ -210,7 +210,8 @@ export default function ClassroomDrone({
       style={{
         position: "absolute",
         top: 55,
-        right: tunerOpen ? 320 : 18,
+        right: tunerOpen ? "min(320px, calc(100vw - 325px))" : 18,
+        maxWidth: "calc(100vw - 36px)",
         background: "#16201a",
         border: `1px solid ${
           isLocked ? "rgba(255, 177, 66, 0.35)" : "rgba(255, 255, 255, 0.22)"

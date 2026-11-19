@@ -459,23 +459,9 @@ export default function PortalShell({
       )}
       <div className="portal-content">
         {profile?.impersonated && (
-          <div
-            role="status"
-            style={{
-              background: "#fffbeb",
-              borderBottom: "1px solid #fde68a",
-              color: "#92400e",
-              padding: "8px 16px",
-              fontSize: "13px",
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "space-between",
-              gap: "12px",
-              zIndex: 900,
-            }}
-          >
+          <div role="status" className="portal-impersonation-banner">
             <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-              <Eye size={16} color="#d97706" />
+              <Eye size={16} color="#854d0e" />
               <span>
                 <strong>Owner Preview Active:</strong> You are viewing the live
                 portal as <strong>{profile.name}</strong> (
@@ -486,20 +472,6 @@ export default function PortalShell({
               type="button"
               disabled={exitingViewAs}
               onClick={() => void exitViewAs()}
-              style={{
-                background: "#b45309",
-                color: "#ffffff",
-                border: "none",
-                padding: "4px 10px",
-                borderRadius: "6px",
-                fontSize: "12px",
-                fontWeight: 600,
-                cursor: exitingViewAs ? "wait" : "pointer",
-                opacity: exitingViewAs ? 0.7 : 1,
-                display: "flex",
-                alignItems: "center",
-                gap: "4px",
-              }}
             >
               <ArrowLeft size={13} />
               <span>{exitingViewAs ? "Returning..." : "Exit Preview & Return to Owner"}</span>

@@ -1183,7 +1183,7 @@ export default function PayrollPage() {
                   className={`pr-tab ${tab === "onboarding" ? "active" : ""}`}
                   onClick={() => setTab("onboarding")}
                 >
-                  Staff &amp; courses
+                  Adjustments &amp; staff
                 </button>
               </nav>
             )}

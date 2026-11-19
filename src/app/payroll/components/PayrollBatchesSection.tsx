@@ -221,38 +221,32 @@ export default function PayrollBatchesSection({
                 {batch.status === "draft" && (
                   <div className="pr-card-body">
                     <div className="pr-action-row">
-                      {(role === "finance" || (payrollAccess && !owner)) && canSubmitOnDate && (
+                      {(role === "finance" || payrollAccess || owner) && canSubmitOnDate && (
                         <button
                           type="button"
                           className="pr-button"
                           onClick={() =>
                             openDecision(
                               "Submit pay batch for approval?",
-                              "Finance is handing this prepared batch to the owner for approval. Submission does not transfer money.",
+                              "Hand this prepared batch over for final approval and payout. Submission does not transfer money.",
                               {
                                 action: "batch",
                                 id: batch.id,
                                 decision: "submit",
                               },
-                              "Submit to owner",
+                              "Submit batch",
                               false
                             )
                           }
                           disabled={pending}
                         >
-                          Submit to owner
+                          Submit batch
                         </button>
                       )}
-                      {(role === "finance" || (payrollAccess && !owner)) && !canSubmitOnDate && (
+                      {(role === "finance" || payrollAccess || owner) && !canSubmitOnDate && (
                         <span className="pr-subtitle">
-                          Finance can submit this batch on or after{" "}
+                          Batch can be submitted on or after{" "}
                           {dateLabel(batch.pay_date)}.
-                        </span>
-                      )}
-                      {owner && (
-                        <span className="pr-subtitle">
-                          This draft was prepared for Finance; owner approval
-                          becomes available after submission.
                         </span>
                       )}
                     </div>

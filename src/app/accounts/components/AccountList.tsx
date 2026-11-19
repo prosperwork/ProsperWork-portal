@@ -1,5 +1,6 @@
 "use client";
 
+import { Trash2 } from "lucide-react";
 import ProfileAvatar from "@/app/_components/ProfileAvatar";
 import { useRoles } from "@/lib/academy/use-academy-config";
 import {
@@ -39,6 +40,7 @@ export default function AccountList({
   onStartViewAs,
   onResendInvite,
   onSelectStatusChange,
+  onRequestDelete,
 }: AccountListProps) {
   const { roleLabel } = useRoles();
   return (
@@ -263,6 +265,31 @@ export default function AccountList({
                             ))}
                         </select>
                       </label>
+                      {onRequestDelete && (
+                        <button
+                          type="button"
+                          className="pw-text-button"
+                          style={{
+                            padding: "4px 8px",
+                            fontSize: "12px",
+                            fontWeight: 600,
+                            borderRadius: "6px",
+                            border: "1px solid #fecdd3",
+                            background: "#fff1f2",
+                            color: "#9f1239",
+                            cursor: "pointer",
+                            display: "inline-flex",
+                            alignItems: "center",
+                            gap: "4px",
+                            whiteSpace: "nowrap",
+                          }}
+                          onClick={() => onRequestDelete(account)}
+                          title={`Permanently delete or purge account for ${account.name}`}
+                        >
+                          <Trash2 size={12} />
+                          Purge
+                        </button>
+                      )}
                     </>
                   )}
                 </div>

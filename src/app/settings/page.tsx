@@ -213,7 +213,31 @@ export default function SettingsPage() {
                 <label className="ps-number"><span className="ps-number-copy"><strong>{numericFields[8].title}</strong><small>{numericFields[8].detail}</small></span><span className="ps-number-input"><input type="number" min={15} max={480} step="1" required value={draft.inactivityTimeoutMinutes} onChange={event => setNumber("inactivityTimeoutMinutes", event.target.value)} aria-label="Session inactivity timeout" /><small>min</small></span></label>
                 <div className="ps-routing-grid">
                   <label className="ps-finance-field">Default academy timezone
-                    <input type="text" required maxLength={100} value={draft.defaultTimezone} onChange={event => setDraft(current => current ? { ...current, defaultTimezone: event.target.value } : current)} placeholder="Africa/Lagos" />
+                    <input type="text" required maxLength={100} list="iana-timezones" value={draft.defaultTimezone} onChange={event => setDraft(current => current ? { ...current, defaultTimezone: event.target.value } : current)} placeholder="Africa/Lagos" />
+                    <datalist id="iana-timezones">
+                      <option value="Africa/Lagos" />
+                      <option value="Africa/Accra" />
+                      <option value="Africa/Nairobi" />
+                      <option value="Africa/Johannesburg" />
+                      <option value="Africa/Cairo" />
+                      <option value="Europe/London" />
+                      <option value="Europe/Paris" />
+                      <option value="Europe/Berlin" />
+                      <option value="Europe/Dublin" />
+                      <option value="America/New_York" />
+                      <option value="America/Chicago" />
+                      <option value="America/Denver" />
+                      <option value="America/Los_Angeles" />
+                      <option value="America/Toronto" />
+                      <option value="America/Vancouver" />
+                      <option value="Asia/Dubai" />
+                      <option value="Asia/Singapore" />
+                      <option value="Asia/Tokyo" />
+                      <option value="Asia/Kolkata" />
+                      <option value="Australia/Sydney" />
+                      <option value="Pacific/Auckland" />
+                      <option value="UTC" />
+                    </datalist>
                     {!isValidIanaTimezone(draft.defaultTimezone) && (
                       <small style={{ color: "#dc2626", marginTop: "4px", display: "block" }}>
                         Enter a valid IANA timezone (e.g. Africa/Lagos, Europe/London).

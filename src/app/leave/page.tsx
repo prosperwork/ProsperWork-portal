@@ -360,6 +360,30 @@ export default function LeavePage() {
                       {!maySeeReason && <div className="leave-cover-note">Sensitive reason hidden. Covering staff see dates and assignment state only.</div>}
                       {mayPlan && <div className="leave-cover-plan">
                         <div className="leave-section-note"><strong>Portfolio cover planning.</strong> Every active learner owned by this absent Teacher/Admin needs an eligible cover before finalization. Cover capacity is rechecked by the server when Head Admin or Owner finalizes.</div>
+                        {affected.length > 1 && (
+                          <div style={{ display: "flex", gap: "8px", alignItems: "center", marginBottom: "12px", flexWrap: "wrap", background: "#f0fdf4", padding: "8px 12px", borderRadius: "8px", border: "1px solid #bbf7d0" }}>
+                            <span style={{ fontSize: "12px", fontWeight: 700, color: "#166534" }}>Quick Batch Assign:</span>
+                            <select
+                              id={`batch-cover-${leave.id}`}
+                              style={{ fontSize: "12px", padding: "4px 8px", borderRadius: "6px", border: "1px solid #86efac", background: "#ffffff" }}
+                              onChange={(e) => {
+                                const val = e.target.value;
+                                if (!val) return;
+                                affected.forEach((student) => {
+                                  const groupKey = coverGroupKey(leave, student.id);
+                                  setPlanSelections((previous) => ({ ...previous, [groupKey]: val }));
+                                });
+                              }}
+                            >
+                              <option value="">Select one covering staff for all learners</option>
+                              {peopleForCover(leave).map((person) => (
+                                <option value={person.id} key={person.id}>
+                                  {person.name} ({staffLabels[roleKey(person.role)] ?? titleCase(person.role)})
+                                </option>
+                              ))}
+                            </select>
+                          </div>
+                        )}
                         {affected.length ? affected.map(student => {
                           const groupKey = coverGroupKey(leave, student.id);
                           const groupStudents = affected.filter(other => coverGroupKey(leave, other.id) === groupKey);

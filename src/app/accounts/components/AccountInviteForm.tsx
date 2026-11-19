@@ -135,10 +135,35 @@ export default function AccountInviteForm({
             <input
               name="timezone"
               required
+              list="invite-iana-timezones"
               value={timezone}
               onChange={(event) => setTimezone(event.target.value)}
               placeholder="Africa/Lagos"
             />
+            <datalist id="invite-iana-timezones">
+              <option value="Africa/Lagos" />
+              <option value="Africa/Accra" />
+              <option value="Africa/Nairobi" />
+              <option value="Africa/Johannesburg" />
+              <option value="Africa/Cairo" />
+              <option value="Europe/London" />
+              <option value="Europe/Paris" />
+              <option value="Europe/Berlin" />
+              <option value="Europe/Dublin" />
+              <option value="America/New_York" />
+              <option value="America/Chicago" />
+              <option value="America/Denver" />
+              <option value="America/Los_Angeles" />
+              <option value="America/Toronto" />
+              <option value="America/Vancouver" />
+              <option value="Asia/Dubai" />
+              <option value="Asia/Singapore" />
+              <option value="Asia/Tokyo" />
+              <option value="Asia/Kolkata" />
+              <option value="Australia/Sydney" />
+              <option value="Pacific/Auckland" />
+              <option value="UTC" />
+            </datalist>
           </label>
         </div>
         <div className="pw-form-note">
