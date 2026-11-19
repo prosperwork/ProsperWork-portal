@@ -15,6 +15,7 @@ import {
   CreditCard,
   Download,
   ExternalLink,
+  FileText,
   Globe,
   HelpCircle,
   Link2,
@@ -26,6 +27,7 @@ import {
   RotateCcw,
   Send,
   Timer,
+  User,
   UserCheck,
   UserCog,
   Users,
@@ -332,7 +334,7 @@ export default function LeadsView({
       if (trialForm.sendWhatsAppConfirmation && phone) {
         const parentFirst = cleanName(trialBookingLead.parentName).split(" ")[0];
         const childDisp = cleanName(trialForm.childName || trialBookingLead.childName || "your child");
-        const waText = `Hello ${parentFirst}! 🎵 Great news! We have scheduled ${childDisp}'s free 1-on-1 trial assessment for ${trialForm.instrument || "Piano"}:\n\n📅 Date: ${niceDate(startsAt)}\n⏰ Time: ${timeAt(startsAt)} (${trialForm.timezone})\n👨‍🏫 Teacher: ${trialForm.teacherName}\n🔗 Meeting Link: ${trialForm.meetUrl}\n\nOur teacher will be ready in the studio room to welcome you. If you have any questions or need to reschedule, simply reply to this message!`;
+        const waText = `Hello ${parentFirst}! Great news! We have scheduled ${childDisp}'s free 1-on-1 trial assessment for ${trialForm.instrument || "Piano"}:\n\nDate: ${niceDate(startsAt)}\nTime: ${timeAt(startsAt)} (${trialForm.timezone})\nTeacher: ${trialForm.teacherName}\nMeeting Link: ${trialForm.meetUrl}\n\nOur teacher will be ready in the studio room to welcome you. If you have any questions or need to reschedule, simply reply to this message!`;
 
         await fetch("/api/integrations/whatsapp/messages", {
           method: "POST",
@@ -1082,10 +1084,13 @@ export default function LeadsView({
                 borderRadius: "6px",
                 background: filterMode === "ready" ? "#059669" : undefined,
                 color: filterMode === "ready" ? "#fff" : "#065f46",
+                display: "inline-flex",
+                alignItems: "center",
+                gap: 5,
               }}
               onClick={() => setFilterMode("ready")}
             >
-              ✓ Ready to Invest ({readyCount})
+              <Check size={12} /> Ready to Invest ({readyCount})
             </button>
             <button
               type="button"
@@ -1096,10 +1101,13 @@ export default function LeadsView({
                 borderRadius: "6px",
                 background: filterMode === "budget" ? "#d97706" : undefined,
                 color: filterMode === "budget" ? "#fff" : "#92400e",
+                display: "inline-flex",
+                alignItems: "center",
+                gap: 5,
               }}
               onClick={() => setFilterMode("budget")}
             >
-              ✕ Budget Mismatch ({budgetCount})
+              <XCircle size={12} /> Budget Mismatch ({budgetCount})
             </button>
             <button
               type="button"
@@ -1351,7 +1359,7 @@ export default function LeadsView({
                             }}
                             title={intent.fullText}
                           >
-                            {intent.type === "ready" ? "✓" : intent.type === "budget" ? "✕" : "•"} {intent.shortLabel}
+                            {intent.type === "ready" ? <Check size={11} /> : intent.type === "budget" ? <XCircle size={11} /> : null} {intent.shortLabel}
                           </span>
                         )}
                       </div>
@@ -2166,7 +2174,7 @@ export default function LeadsView({
                     if (sendingWhatsApp) return;
                     const parentName = cleanName(whatsAppLead.parentName).split(" ")[0];
                     setWhatsAppDraft(
-                      `Hello ${parentName}! Welcome to ProsperWork Music Academy 🎵\n\nWe received your application and are so excited to help your child start a fun, confidence-building musical journey!\n\nTo match your child with the perfect expert teacher: What is your child's name, how old are they, and which musical instrument would they like to learn?`
+                      `Hello ${parentName}! Welcome to ProsperWork Music Academy.\n\nWe received your application and are so excited to help your child start a fun, confidence-building musical journey!\n\nTo match your child with the perfect expert teacher: What is your child's name, how old are they, and which musical instrument would they like to learn?`
                     );
                   }}
                 >
@@ -2646,8 +2654,8 @@ export default function LeadsView({
         onClose={() => !bookingTrialLoading && setTrialBookingLead(null)}
         title={
           trialBookingLead
-            ? `📅 Book Trial Assessment — ${cleanName(trialBookingLead.parentName)}`
-            : "📅 Book Trial Assessment"
+            ? `Book Trial Assessment — ${cleanName(trialBookingLead.parentName)}`
+            : "Book Trial Assessment"
         }
         subtitle={
           trialBookingLead
@@ -2661,8 +2669,8 @@ export default function LeadsView({
             {/* Child Name & Instrument */}
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0.85rem" }}>
               <div style={{ display: "flex", flexDirection: "column", gap: "4px" }}>
-                <label style={{ fontSize: "0.78rem", fontWeight: 700, color: "#334155" }}>
-                  🧒 Student / Child Name *
+                <label style={{ fontSize: "0.78rem", fontWeight: 700, color: "#334155", display: "inline-flex", alignItems: "center", gap: 5 }}>
+                  <User size={13} /> Student / Child Name *
                 </label>
                 <input
                   type="text"
@@ -2680,8 +2688,8 @@ export default function LeadsView({
               </div>
 
               <div style={{ display: "flex", flexDirection: "column", gap: "4px" }}>
-                <label style={{ fontSize: "0.78rem", fontWeight: 700, color: "#334155" }}>
-                  🎵 Musical Instrument *
+                <label style={{ fontSize: "0.78rem", fontWeight: 700, color: "#334155", display: "inline-flex", alignItems: "center", gap: 5 }}>
+                  <Music2 size={13} /> Musical Instrument *
                 </label>
                 <select
                   required
@@ -2707,8 +2715,8 @@ export default function LeadsView({
             {/* Date, Time & Parent Timezone */}
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0.85rem" }}>
               <div style={{ display: "flex", flexDirection: "column", gap: "4px" }}>
-                <label style={{ fontSize: "0.78rem", fontWeight: 700, color: "#334155" }}>
-                  📅 Assessment Date *
+                <label style={{ fontSize: "0.78rem", fontWeight: 700, color: "#334155", display: "inline-flex", alignItems: "center", gap: 5 }}>
+                  <Calendar size={13} /> Assessment Date *
                 </label>
                 <input
                   type="date"
@@ -2725,8 +2733,8 @@ export default function LeadsView({
               </div>
 
               <div style={{ display: "flex", flexDirection: "column", gap: "4px" }}>
-                <label style={{ fontSize: "0.78rem", fontWeight: 700, color: "#334155" }}>
-                  ⏰ Assessment Time *
+                <label style={{ fontSize: "0.78rem", fontWeight: 700, color: "#334155", display: "inline-flex", alignItems: "center", gap: 5 }}>
+                  <Clock3 size={13} /> Assessment Time *
                 </label>
                 <input
                   type="time"
@@ -2746,8 +2754,8 @@ export default function LeadsView({
             {/* Teacher & Parent Timezone */}
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0.85rem" }}>
               <div style={{ display: "flex", flexDirection: "column", gap: "4px" }}>
-                <label style={{ fontSize: "0.78rem", fontWeight: 700, color: "#334155" }}>
-                  👨‍🏫 Assigned Teacher *
+                <label style={{ fontSize: "0.78rem", fontWeight: 700, color: "#334155", display: "inline-flex", alignItems: "center", gap: 5 }}>
+                  <UserCheck size={13} /> Assigned Teacher *
                 </label>
                 <select
                   required
@@ -2771,8 +2779,8 @@ export default function LeadsView({
               </div>
 
               <div style={{ display: "flex", flexDirection: "column", gap: "4px" }}>
-                <label style={{ fontSize: "0.78rem", fontWeight: 700, color: "#334155" }}>
-                  🌍 Parent / Learner Timezone *
+                <label style={{ fontSize: "0.78rem", fontWeight: 700, color: "#334155", display: "inline-flex", alignItems: "center", gap: 5 }}>
+                  <Globe size={13} /> Parent / Learner Timezone *
                 </label>
                 <select
                   required
@@ -2797,8 +2805,8 @@ export default function LeadsView({
 
             {/* Meeting Link & Classroom Provider */}
             <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
-              <label style={{ fontSize: "0.78rem", fontWeight: 700, color: "#334155" }}>
-                🎥 Classroom / Meeting Room *
+              <label style={{ fontSize: "0.78rem", fontWeight: 700, color: "#334155", display: "inline-flex", alignItems: "center", gap: 5 }}>
+                <Video size={13} /> Classroom / Meeting Room *
               </label>
 
               {/* Provider Selection Cards */}
@@ -2826,11 +2834,10 @@ export default function LeadsView({
                       display: "flex",
                       alignItems: "center",
                       justifyContent: "center",
-                      fontSize: "1.2rem",
                       flexShrink: 0,
                     }}
                   >
-                    🎹
+                    <Video size={16} color="#4338ca" />
                   </div>
                   <div>
                     <div style={{ fontSize: "0.84rem", fontWeight: 700, color: "#1e1b4b" }}>
@@ -2865,11 +2872,10 @@ export default function LeadsView({
                       display: "flex",
                       alignItems: "center",
                       justifyContent: "center",
-                      fontSize: "1.2rem",
                       flexShrink: 0,
                     }}
                   >
-                    🎥
+                    <Link2 size={16} color="#047857" />
                   </div>
                   <div>
                     <div style={{ fontSize: "0.84rem", fontWeight: 700, color: "#064e3b" }}>
@@ -2921,7 +2927,7 @@ export default function LeadsView({
                       title="Generate a new Google Meet link"
                     >
                       <RotateCcw size={12} />
-                      🔄 New Link
+                      New Link
                     </button>
                   )}
                 </div>
@@ -2930,8 +2936,8 @@ export default function LeadsView({
 
             {/* Optional Notes */}
             <div style={{ display: "flex", flexDirection: "column", gap: "4px" }}>
-              <label style={{ fontSize: "0.78rem", fontWeight: 700, color: "#334155" }}>
-                📝 Assessment Notes (Optional)
+              <label style={{ fontSize: "0.78rem", fontWeight: 700, color: "#334155", display: "inline-flex", alignItems: "center", gap: 5 }}>
+                <FileText size={13} /> Assessment Notes (Optional)
               </label>
               <textarea
                 rows={2}
@@ -2970,9 +2976,9 @@ export default function LeadsView({
                 />
                 <label
                   htmlFor="send_wa_check"
-                  style={{ fontSize: "0.78rem", color: "#166534", fontWeight: 600, cursor: "pointer" }}
+                  style={{ fontSize: "0.78rem", color: "#166534", fontWeight: 600, cursor: "pointer", display: "inline-flex", alignItems: "center", gap: 5 }}
                 >
-                  💬 Send instant booking confirmation to parent via WhatsApp ({resolveLeadPhone(trialBookingLead)})
+                  <MessageSquare size={13} /> Send instant booking confirmation to parent via WhatsApp ({resolveLeadPhone(trialBookingLead)})
                 </label>
               </div>
             )}
@@ -3016,7 +3022,8 @@ export default function LeadsView({
                   </>
                 ) : (
                   <>
-                    <span>✅ Confirm & Book Trial</span>
+                    <CalendarCheck2 size={14} />
+                    <span>Confirm & Book Trial</span>
                   </>
                 )}
               </button>
