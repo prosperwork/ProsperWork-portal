@@ -112,7 +112,43 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ success: true, rearmed: true });
     }
 
-    const { leadId, phone, message, buttons } = body;
+    // Handle Direct Admin Assignment Action
+    if (body.action === "assign_owner") {
+      const db = provisioningClient();
+      const leadId = body.leadId?.trim();
+      const owner = body.owner?.trim();
+      if (!leadId || !owner) {
+        return NextResponse.json(
+          { error: "leadId and owner are required." },
+          { status: 400 }
+        );
+      }
+
+      const { data: leadRow } = await db
+        .from("pw_leads")
+        .select("payload")
+        .eq("id", leadId)
+        .maybeSingle();
+
+      if (leadRow?.payload) {
+        const p = leadRow.payload as any;
+        const updated = {
+          ...p,
+          owner,
+        };
+        await db
+          .from("pw_leads")
+          .update({
+            payload: updated,
+            updated_at: new Date().toISOString(),
+          })
+          .eq("id", leadId);
+      }
+
+      return NextResponse.json({ success: true, owner });
+    }
+
+    const { leadId, phone, message, buttons, assignOwner } = body;
 
     if (!phone || !message?.trim()) {
       return NextResponse.json(
@@ -133,6 +169,31 @@ export async function POST(request: NextRequest) {
         { error: sendRes.error || "Failed to send WhatsApp message" },
         { status: 400 }
       );
+    }
+
+    // If an owner assignment was requested with this message, update pw_leads
+    if (leadId && assignOwner) {
+      const db = provisioningClient();
+      const { data: leadRow } = await db
+        .from("pw_leads")
+        .select("payload")
+        .eq("id", leadId)
+        .maybeSingle();
+
+      if (leadRow?.payload) {
+        const p = leadRow.payload as any;
+        const updated = {
+          ...p,
+          owner: assignOwner.trim(),
+        };
+        await db
+          .from("pw_leads")
+          .update({
+            payload: updated,
+            updated_at: new Date().toISOString(),
+          })
+          .eq("id", leadId);
+      }
     }
 
     return NextResponse.json({

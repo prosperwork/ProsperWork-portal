@@ -4,11 +4,14 @@ import { useEffect, useState, type ReactNode } from "react";
 import {
   Activity,
   ArrowUpRight,
+  Calendar,
+  CalendarCheck2,
   Check,
   CheckCheck,
   CheckCircle2,
   ChevronDown,
   Clock3,
+  CreditCard,
   Download,
   ExternalLink,
   HelpCircle,
@@ -17,8 +20,12 @@ import {
   Music2,
   PhoneCall,
   RefreshCw,
+  RotateCcw,
   Send,
   Timer,
+  UserCheck,
+  UserCog,
+  Users,
   XCircle,
 } from "lucide-react";
 import ProfileAvatar from "../ProfileAvatar";
@@ -186,7 +193,8 @@ export default function LeadsView({
 
   const handleSendWhatsApp = async (
     customText?: string,
-    buttons?: Array<{ id: string; title: string }>
+    buttons?: Array<{ id: string; title: string }>,
+    assignOwner?: string
   ) => {
     if (!whatsAppLead) return;
     const phone = resolveLeadPhone(whatsAppLead);
@@ -207,15 +215,21 @@ export default function LeadsView({
           phone,
           message: textToSend,
           buttons,
+          assignOwner: assignOwner || undefined,
         }),
       });
       const json = await res.json();
       if (res.ok && json.success) {
         setWhatsAppDraft("");
         notify("WhatsApp message dispatched via Meta Cloud API!");
+        if (assignOwner) {
+          setWhatsAppLead((prev) => (prev ? { ...prev, owner: assignOwner } : null));
+        }
         if (whatsAppLead.status === "new") {
           setLeadStatus(whatsAppLead, "contacted");
-          setWhatsAppLead((prev) => (prev ? { ...prev, status: "contacted" } : null));
+          setWhatsAppLead((prev) =>
+            prev ? { ...prev, status: "contacted", ...(assignOwner ? { owner: assignOwner } : {}) } : null
+          );
         }
         const refetch = await fetch(
           `/api/integrations/whatsapp/messages?leadId=${encodeURIComponent(whatsAppLead.id)}&phone=${encodeURIComponent(phone)}`
@@ -234,6 +248,18 @@ export default function LeadsView({
       setSendingWhatsApp(false);
     }
   };
+
+  // Admin Handover State
+  const [showAdminHandover, setShowAdminHandover] = useState(false);
+  const [selectedAdminName, setSelectedAdminName] = useState("Stephen Matthew");
+  const [customAdminName, setCustomAdminName] = useState("");
+  const [selectedAdminPhone, setSelectedAdminPhone] = useState("+234 703 192 6969");
+  const [assignAsOwner, setAssignAsOwner] = useState(true);
+
+  const effectiveAdminName =
+    selectedAdminName === "Custom"
+      ? customAdminName.trim() || "Administrator"
+      : selectedAdminName;
 
   const [resettingChat, setResettingChat] = useState(false);
 
@@ -1686,19 +1712,19 @@ export default function LeadsView({
                     opacity: resettingChat ? 0.65 : 1,
                     display: "inline-flex",
                     alignItems: "center",
-                    gap: 4,
+                    gap: 5,
                   }}
                   onClick={handleRetriggerAutoReply}
                   title="Preserves all chat messages and allows the next incoming message from this phone to trigger the automated welcome reply again"
                 >
-                  <RefreshCw size={11} className={resettingChat ? "spin" : ""} />
-                  {resettingChat ? "Arming..." : "🔄 Retrigger Auto-Reply"}
+                  <RotateCcw size={12} className={resettingChat ? "spin" : ""} />
+                  {resettingChat ? "Arming..." : "Retrigger Auto-Reply"}
                 </button>
 
                 <button
                   type="button"
                   className="btn small ghost"
-                  style={{ fontSize: "0.75rem", padding: "2px 8px", color: "#065f46" }}
+                  style={{ fontSize: "0.75rem", padding: "2px 8px", color: "#065f46", display: "inline-flex", alignItems: "center", gap: 4 }}
                   onClick={() => {
                     const phone = resolveLeadPhone(whatsAppLead);
                     if (phone) {
@@ -1711,13 +1737,13 @@ export default function LeadsView({
                     }
                   }}
                 >
-                  Open in WhatsApp Web <ExternalLink size={11} style={{ marginLeft: 3 }} />
+                  Open in WhatsApp Web <ExternalLink size={11} />
                 </button>
               </div>
             </div>
 
             {/* Quick Action Automated Response Chips */}
-            <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+            <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
               <div style={{ fontSize: "0.72rem", color: "#64748b", fontWeight: 700, textTransform: "uppercase" }}>
                 Quick Action Prompts
               </div>
@@ -1737,17 +1763,18 @@ export default function LeadsView({
                     opacity: sendingWhatsApp ? 0.6 : 1,
                     display: "inline-flex",
                     alignItems: "center",
-                    gap: 4,
+                    gap: 5,
                   }}
                   onClick={() => {
                     if (sendingWhatsApp) return;
                     const parentName = cleanName(whatsAppLead.parentName).split(" ")[0];
                     setWhatsAppDraft(
-                      `Hello ${parentName}! Welcome to ProsperWork Music Academy 🎵\n\nWe received your application and are so excited to help your child start a fun, confidence-building musical journey! To match your child with the perfect expert teacher for their FREE assessment...\n\nWhat musical instrument are they interested in learning, and how old is your child?`
+                      `Hello ${parentName}! Welcome to ProsperWork Music Academy 🎵\n\nWe received your application and are so excited to help your child start a fun, confidence-building musical journey!\n\nTo match your child with the perfect expert teacher: What is your child's name, how old are they, and which musical instrument would they like to learn?`
                     );
                   }}
                 >
-                  👋 Welcome & Assessment Query
+                  <UserCheck size={13} />
+                  Welcome & Assessment
                 </button>
                 <button
                   type="button"
@@ -1764,12 +1791,12 @@ export default function LeadsView({
                     opacity: sendingWhatsApp ? 0.6 : 1,
                     display: "inline-flex",
                     alignItems: "center",
-                    gap: 4,
+                    gap: 5,
                   }}
                   onClick={() => {
                     if (sendingWhatsApp) return;
                     const parentName = cleanName(whatsAppLead.parentName).split(" ")[0];
-                    const promptText = `Hello ${parentName}! 🎹 Would you like to schedule your trial lesson for ${whatsAppLead.instrument || "Piano"} with our director? Tap a button below to confirm:`;
+                    const promptText = `Hello ${parentName}! Would you like to schedule your trial lesson for ${whatsAppLead.instrument || "Piano"} with our director? Tap a button below to confirm:`;
                     handleSendWhatsApp(
                       promptText,
                       [
@@ -1779,8 +1806,8 @@ export default function LeadsView({
                     );
                   }}
                 >
-                  {sendingWhatsApp && <RefreshCw size={11} className="spin" />}
-                  🚀 Trial Booking Prompt with Buttons
+                  {sendingWhatsApp ? <RefreshCw size={11} className="spin" /> : <CalendarCheck2 size={13} />}
+                  Trial Booking Prompt
                 </button>
                 <button
                   type="button"
@@ -1795,16 +1822,20 @@ export default function LeadsView({
                     fontWeight: 600,
                     cursor: sendingWhatsApp ? "not-allowed" : "pointer",
                     opacity: sendingWhatsApp ? 0.6 : 1,
+                    display: "inline-flex",
+                    alignItems: "center",
+                    gap: 5,
                   }}
                   onClick={() => {
                     if (sendingWhatsApp) return;
                     const parentName = cleanName(whatsAppLead.parentName).split(" ")[0];
                     setWhatsAppDraft(
-                      `Hello ${parentName}! 👋 Thank you for enquiring about music lessons with ProsperWork Music Academy. Which days of the week work best for your child's 1-on-1 lesson?`
+                      `Hello ${parentName}! Thank you for enquiring about music lessons with ProsperWork Music Academy. Which days of the week work best for your child's 1-on-1 lesson?`
                     );
                   }}
                 >
-                  📅 Lesson Availability Query
+                  <Calendar size={13} />
+                  Availability Query
                 </button>
                 <button
                   type="button"
@@ -1819,6 +1850,9 @@ export default function LeadsView({
                     fontWeight: 600,
                     cursor: sendingWhatsApp ? "not-allowed" : "pointer",
                     opacity: sendingWhatsApp ? 0.6 : 1,
+                    display: "inline-flex",
+                    alignItems: "center",
+                    gap: 5,
                   }}
                   onClick={() => {
                     if (sendingWhatsApp) return;
@@ -1827,9 +1861,167 @@ export default function LeadsView({
                     );
                   }}
                 >
-                  🎵 Pricing & Monthly Plan
+                  <CreditCard size={13} />
+                  Pricing & Plan
+                </button>
+                <button
+                  type="button"
+                  className="btn small"
+                  disabled={sendingWhatsApp}
+                  style={{
+                    fontSize: "0.76rem",
+                    padding: "3px 9px",
+                    background: showAdminHandover ? "#ccfbf1" : "#f0fdfa",
+                    borderColor: "#5eead4",
+                    color: "#0f766e",
+                    fontWeight: 700,
+                    cursor: sendingWhatsApp ? "not-allowed" : "pointer",
+                    opacity: sendingWhatsApp ? 0.6 : 1,
+                    display: "inline-flex",
+                    alignItems: "center",
+                    gap: 5,
+                  }}
+                  onClick={() => setShowAdminHandover((prev) => !prev)}
+                  title="Refer parent to an administrator and assign admin owner"
+                >
+                  <UserCog size={13} />
+                  Admin Handover
                 </button>
               </div>
+
+              {/* Admin Referral & Handover Assistant Panel */}
+              {showAdminHandover && (
+                <div
+                  style={{
+                    background: "#f0fdfa",
+                    border: "1px solid #99f6e4",
+                    borderRadius: "8px",
+                    padding: "10px 12px",
+                    display: "flex",
+                    flexDirection: "column",
+                    gap: 8,
+                    marginTop: 2,
+                  }}
+                >
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                    <div style={{ fontSize: "0.78rem", fontWeight: 700, color: "#115e59", display: "flex", alignItems: "center", gap: 5 }}>
+                      <UserCog size={14} />
+                      Admin Referral & Handover
+                    </div>
+                    <button
+                      type="button"
+                      className="btn small ghost"
+                      style={{ padding: "1px 6px", fontSize: "0.72rem" }}
+                      onClick={() => setShowAdminHandover(false)}
+                    >
+                      Close
+                    </button>
+                  </div>
+
+                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+                    <div>
+                      <label style={{ fontSize: "0.72rem", color: "#374151", fontWeight: 600, display: "block", marginBottom: 3 }}>
+                        Select Administrator
+                      </label>
+                      <select
+                        value={selectedAdminName}
+                        onChange={(e) => {
+                          const val = e.target.value;
+                          setSelectedAdminName(val);
+                          if (val === "Stephen Matthew") setSelectedAdminPhone("+234 703 192 6969");
+                          else if (val === "ProsperWork Admin") setSelectedAdminPhone("+44 7742 534931");
+                        }}
+                        style={{ width: "100%", padding: "5px 8px", fontSize: "0.78rem", borderRadius: "6px", border: "1px solid #cbd5e1", background: "#fff" }}
+                      >
+                        <option value="Stephen Matthew">Stephen Matthew (+234 703 192 6969)</option>
+                        <option value="ProsperWork Admin">ProsperWork Admin (+44 7742 534931)</option>
+                        <option value="Custom">Custom Administrator...</option>
+                      </select>
+                      {selectedAdminName === "Custom" && (
+                        <input
+                          type="text"
+                          placeholder="Administrator Name"
+                          value={customAdminName}
+                          onChange={(e) => setCustomAdminName(e.target.value)}
+                          style={{ width: "100%", padding: "4px 8px", fontSize: "0.78rem", borderRadius: "6px", border: "1px solid #cbd5e1", marginTop: 4, background: "#fff" }}
+                        />
+                      )}
+                    </div>
+
+                    <div>
+                      <label style={{ fontSize: "0.72rem", color: "#374151", fontWeight: 600, display: "block", marginBottom: 3 }}>
+                        Admin Direct Phone
+                      </label>
+                      <input
+                        type="text"
+                        value={selectedAdminPhone}
+                        onChange={(e) => setSelectedAdminPhone(e.target.value)}
+                        placeholder="+234..."
+                        style={{ width: "100%", padding: "5px 8px", fontSize: "0.78rem", borderRadius: "6px", border: "1px solid #cbd5e1", background: "#fff" }}
+                      />
+                    </div>
+                  </div>
+
+                  {/* Message Preview */}
+                  <div>
+                    <div style={{ fontSize: "0.7rem", color: "#6b7280", fontWeight: 600, marginBottom: 2 }}>
+                      Message Preview:
+                    </div>
+                    <div
+                      style={{
+                        background: "#ffffff",
+                        border: "1px solid #ccfbf1",
+                        borderRadius: "6px",
+                        padding: "6px 8px",
+                        fontSize: "0.76rem",
+                        color: "#1e293b",
+                        lineHeight: 1.4,
+                      }}
+                    >
+                      &ldquo;You will get a message from one of our administrators, {effectiveAdminName}, on {selectedAdminPhone}, or you can send a message directly to {selectedAdminPhone}.&rdquo;
+                    </div>
+                  </div>
+
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 6, paddingTop: 2 }}>
+                    <label style={{ display: "flex", alignItems: "center", gap: 5, fontSize: "0.74rem", color: "#374151", cursor: "pointer", fontWeight: 500 }}>
+                      <input
+                        type="checkbox"
+                        checked={assignAsOwner}
+                        onChange={(e) => setAssignAsOwner(e.target.checked)}
+                      />
+                      Assign {effectiveAdminName} as lead owner in CRM
+                    </label>
+
+                    <div style={{ display: "flex", gap: 6 }}>
+                      <button
+                        type="button"
+                        className="btn small secondary"
+                        style={{ fontSize: "0.74rem", padding: "3px 9px" }}
+                        onClick={() => {
+                          const msg = `You will get a message from one of our administrators, ${effectiveAdminName}, on ${selectedAdminPhone}, or you can send a message directly to ${selectedAdminPhone}.`;
+                          setWhatsAppDraft(msg);
+                          setShowAdminHandover(false);
+                        }}
+                      >
+                        Populate Draft
+                      </button>
+                      <button
+                        type="button"
+                        className="btn small primary"
+                        disabled={sendingWhatsApp}
+                        style={{ fontSize: "0.74rem", padding: "3px 10px", background: "#0f766e", borderColor: "#0d9488" }}
+                        onClick={async () => {
+                          const msg = `You will get a message from one of our administrators, ${effectiveAdminName}, on ${selectedAdminPhone}, or you can send a message directly to ${selectedAdminPhone}.`;
+                          await handleSendWhatsApp(msg, undefined, assignAsOwner ? effectiveAdminName : undefined);
+                          setShowAdminHandover(false);
+                        }}
+                      >
+                        {sendingWhatsApp ? "Sending..." : "Send & Handover"}
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              )}
             </div>
 
             {/* Conversation Feed */}
@@ -1848,12 +2040,14 @@ export default function LeadsView({
             >
               {loadingWhatsApp ? (
                 <div style={{ textAlign: "center", color: "#64748b", margin: "auto", fontSize: "0.85rem" }}>
-                  <RefreshCw size={18} className="animate-spin" style={{ margin: "0 auto 6px auto" }} />
+                  <RefreshCw size={18} className="spin" style={{ margin: "0 auto 6px auto" }} />
                   Loading WhatsApp messages...
                 </div>
               ) : whatsAppMessages.length === 0 ? (
                 <div style={{ textAlign: "center", color: "#64748b", margin: "auto", maxWidth: "340px" }}>
-                  <div style={{ fontSize: "1.8rem", marginBottom: 6 }}>💬</div>
+                  <div style={{ display: "flex", justifyContent: "center", marginBottom: 6 }}>
+                    <MessageCircle size={28} color="#94a3b8" />
+                  </div>
                   <div style={{ fontWeight: 700, fontSize: "0.9rem", color: "#1e293b" }}>
                     No messages sent yet
                   </div>

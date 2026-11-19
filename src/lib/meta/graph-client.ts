@@ -1,5 +1,6 @@
 import { createHash, createHmac, timingSafeEqual } from "node:crypto";
 import { provisioningClient } from "@/lib/supabase/server";
+import { generateSmartWhatsAppAIReply } from "@/lib/ai/whatsapp-auto-reply";
 import type {
   MetaConnectionStatus,
   MetaLead,
@@ -1285,7 +1286,7 @@ export async function ingestWhatsAppWebhook(payload: any): Promise<{
               }
               const cleanFirstName = rawName.trim().split(" ")[0] || "there";
 
-              const welcomeMessage = `Hello ${cleanFirstName}! Welcome to ProsperWork Music Academy 🎵\n\nWe received your application and are so excited to help your child start a fun, confidence-building musical journey! To match your child with the perfect expert teacher for their FREE assessment...\n\nWhat musical instrument are they interested in learning, and how old is your child?`;
+              const welcomeMessage = `Hello ${cleanFirstName}! Welcome to ProsperWork Music Academy 🎵\n\nWe received your application and are so excited to help your child start a fun, confidence-building musical journey!\n\nTo match your child with the perfect expert teacher: What is your child's name, how old are they, and which musical instrument would they like to learn?`;
 
               await sendWhatsAppMessage({
                 to: senderPhone,
@@ -1303,6 +1304,88 @@ export async function ingestWhatsAppWebhook(payload: any): Promise<{
                   .from("pw_leads")
                   .update({ payload: updated, updated_at: new Date().toISOString() })
                   .eq("id", matchedLeadId);
+              }
+            } else {
+              // Customer sent a follow-up reply! Run Strict Admissions Intake AI workflow
+              const { data: pastMsgs } = await db
+                .from("pw_whatsapp_messages")
+                .select("direction, body")
+                .eq("phone_number", senderPhone)
+                .order("created_at", { ascending: false })
+                .limit(6);
+
+              const history = (pastMsgs || [])
+                .reverse()
+                .map((m: any) => ({
+                  role: (m.direction === "outbound" ? "assistant" : "user") as "assistant" | "user",
+                  content: m.body || "",
+                }));
+
+              const aiResult = await generateSmartWhatsAppAIReply({
+                parentName: matchedLeadPayload?.parentName || senderName || undefined,
+                senderPhone,
+                incomingMessage: body,
+                knownStudentName: matchedLeadPayload?.childName || matchedLeadPayload?.customAnswers?.student_name,
+                knownAge: matchedLeadPayload?.customAnswers?.student_age,
+                knownInstrument: matchedLeadPayload?.instrument,
+                leadStage: matchedLeadPayload?.status,
+                intakeComplete: Boolean(matchedLeadPayload?.intake_complete),
+                history,
+              });
+
+              if (aiResult?.replyText) {
+                let shouldUpdateLead = false;
+
+                if (matchedLeadId && matchedLeadPayload) {
+                  if (aiResult.studentName && aiResult.studentName !== matchedLeadPayload.childName) {
+                    matchedLeadPayload.childName = aiResult.studentName;
+                    shouldUpdateLead = true;
+                  }
+
+                  if (aiResult.detectedInstrument && aiResult.detectedInstrument !== matchedLeadPayload.instrument) {
+                    matchedLeadPayload.instrument = aiResult.detectedInstrument;
+                    shouldUpdateLead = true;
+                  }
+
+                  if (aiResult.studentAge || aiResult.studentName || aiResult.detectedInstrument) {
+                    matchedLeadPayload.customAnswers = {
+                      ...(matchedLeadPayload.customAnswers || {}),
+                      ...(aiResult.studentAge ? { student_age: String(aiResult.studentAge) } : {}),
+                      ...(aiResult.studentName ? { student_name: String(aiResult.studentName) } : {}),
+                      ...(aiResult.detectedInstrument ? { instrument: String(aiResult.detectedInstrument) } : {}),
+                    };
+                    shouldUpdateLead = true;
+                  }
+
+                  if (aiResult.isComplete && !matchedLeadPayload.intake_complete) {
+                    matchedLeadPayload.intake_complete = true;
+                    if (matchedLeadPayload.status === "new") {
+                      matchedLeadPayload.status = "contacted";
+                    }
+                    matchedLeadPayload.notes = [
+                      matchedLeadPayload.notes,
+                      `[Intake Completed] Student: ${aiResult.studentName || matchedLeadPayload.childName || "N/A"}, Age: ${aiResult.studentAge || "N/A"}, Instrument: ${aiResult.detectedInstrument || matchedLeadPayload.instrument || "N/A"}`
+                    ].filter(Boolean).join(" | ");
+                    shouldUpdateLead = true;
+                  }
+
+                  if (shouldUpdateLead) {
+                    await db
+                      .from("pw_leads")
+                      .update({
+                        payload: matchedLeadPayload,
+                        updated_at: new Date().toISOString(),
+                      })
+                      .eq("id", matchedLeadId);
+                  }
+                }
+
+                // Send the AI intake reply
+                await sendWhatsAppMessage({
+                  to: senderPhone,
+                  leadId: matchedLeadId || undefined,
+                  body: aiResult.replyText,
+                }).catch(() => null);
               }
             }
           }
