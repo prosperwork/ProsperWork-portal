@@ -309,11 +309,14 @@ export default function LeadsView({
     const cleanId = trialBookingLead.id.replace(/[^a-zA-Z0-9]/g, "").slice(-8);
 
     if (provider === "google_meet") {
+      const existingIsMeet = trialForm.meetUrl && trialForm.meetUrl.includes("meet.google.com");
       setTrialForm((prev) => ({
         ...prev,
         classroomProvider: "google_meet",
-        meetUrl: prev.meetUrl && prev.meetUrl.includes("meet.google.com") ? prev.meetUrl : "",
       }));
+      if (!existingIsMeet) {
+        void handleGenerateMeetViaApi();
+      }
     } else {
       setTrialForm((prev) => ({
         ...prev,
