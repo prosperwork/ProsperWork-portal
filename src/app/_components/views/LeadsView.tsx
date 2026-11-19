@@ -25,7 +25,6 @@ import {
   RefreshCw,
   RotateCcw,
   Send,
-  Sparkles,
   Timer,
   UserCheck,
   UserCog,
@@ -2647,8 +2646,8 @@ export default function LeadsView({
         onClose={() => !bookingTrialLoading && setTrialBookingLead(null)}
         title={
           trialBookingLead
-            ? `Book Trial Assessment — ${cleanName(trialBookingLead.parentName)}`
-            : "Book Trial Assessment"
+            ? `📅 Book Trial Assessment — ${cleanName(trialBookingLead.parentName)}`
+            : "📅 Book Trial Assessment"
         }
         subtitle={
           trialBookingLead
@@ -2663,7 +2662,7 @@ export default function LeadsView({
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0.85rem" }}>
               <div style={{ display: "flex", flexDirection: "column", gap: "4px" }}>
                 <label style={{ fontSize: "0.78rem", fontWeight: 700, color: "#334155" }}>
-                  Student / Child Name *
+                  🧒 Student / Child Name *
                 </label>
                 <input
                   type="text"
@@ -2682,7 +2681,7 @@ export default function LeadsView({
 
               <div style={{ display: "flex", flexDirection: "column", gap: "4px" }}>
                 <label style={{ fontSize: "0.78rem", fontWeight: 700, color: "#334155" }}>
-                  Musical Instrument *
+                  🎵 Musical Instrument *
                 </label>
                 <select
                   required
@@ -2709,7 +2708,7 @@ export default function LeadsView({
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0.85rem" }}>
               <div style={{ display: "flex", flexDirection: "column", gap: "4px" }}>
                 <label style={{ fontSize: "0.78rem", fontWeight: 700, color: "#334155" }}>
-                  Assessment Date *
+                  📅 Assessment Date *
                 </label>
                 <input
                   type="date"
@@ -2727,7 +2726,7 @@ export default function LeadsView({
 
               <div style={{ display: "flex", flexDirection: "column", gap: "4px" }}>
                 <label style={{ fontSize: "0.78rem", fontWeight: 700, color: "#334155" }}>
-                  Assessment Time *
+                  ⏰ Assessment Time *
                 </label>
                 <input
                   type="time"
@@ -2748,7 +2747,7 @@ export default function LeadsView({
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0.85rem" }}>
               <div style={{ display: "flex", flexDirection: "column", gap: "4px" }}>
                 <label style={{ fontSize: "0.78rem", fontWeight: 700, color: "#334155" }}>
-                  Assigned Teacher *
+                  👨‍🏫 Assigned Teacher *
                 </label>
                 <select
                   required
@@ -2773,7 +2772,7 @@ export default function LeadsView({
 
               <div style={{ display: "flex", flexDirection: "column", gap: "4px" }}>
                 <label style={{ fontSize: "0.78rem", fontWeight: 700, color: "#334155" }}>
-                  Parent / Learner Timezone *
+                  🌍 Parent / Learner Timezone *
                 </label>
                 <select
                   required
@@ -2799,7 +2798,7 @@ export default function LeadsView({
             {/* Meeting Link & Classroom Provider */}
             <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
               <label style={{ fontSize: "0.78rem", fontWeight: 700, color: "#334155" }}>
-                Classroom / Meeting Room *
+                🎥 Classroom / Meeting Room *
               </label>
 
               {/* Provider Selection Cards */}
@@ -2814,24 +2813,24 @@ export default function LeadsView({
                     cursor: "pointer",
                     display: "flex",
                     alignItems: "center",
-                    gap: "8px",
+                    gap: "10px",
                     transition: "all 0.15s ease",
                   }}
                 >
                   <div
                     style={{
-                      width: 28,
-                      height: 28,
+                      width: 32,
+                      height: 32,
                       borderRadius: "6px",
-                      background: "#6366f1",
+                      background: "#e0e7ff",
                       display: "flex",
                       alignItems: "center",
                       justifyContent: "center",
-                      color: "#fff",
+                      fontSize: "1.2rem",
                       flexShrink: 0,
                     }}
                   >
-                    <Video size={15} />
+                    🎹
                   </div>
                   <div>
                     <div style={{ fontSize: "0.84rem", fontWeight: 700, color: "#1e1b4b" }}>
@@ -2853,24 +2852,24 @@ export default function LeadsView({
                     cursor: "pointer",
                     display: "flex",
                     alignItems: "center",
-                    gap: "8px",
+                    gap: "10px",
                     transition: "all 0.15s ease",
                   }}
                 >
                   <div
                     style={{
-                      width: 28,
-                      height: 28,
+                      width: 32,
+                      height: 32,
                       borderRadius: "6px",
-                      background: "#059669",
+                      background: "#dcfce7",
                       display: "flex",
                       alignItems: "center",
                       justifyContent: "center",
-                      color: "#fff",
+                      fontSize: "1.2rem",
                       flexShrink: 0,
                     }}
                   >
-                    <Sparkles size={15} />
+                    🎥
                   </div>
                   <div>
                     <div style={{ fontSize: "0.84rem", fontWeight: 700, color: "#064e3b" }}>
@@ -2921,8 +2920,8 @@ export default function LeadsView({
                       }
                       title="Generate a new Google Meet link"
                     >
-                      <Sparkles size={12} />
-                      Regenerate
+                      <RotateCcw size={12} />
+                      🔄 New Link
                     </button>
                   )}
                 </div>
@@ -2932,7 +2931,7 @@ export default function LeadsView({
             {/* Optional Notes */}
             <div style={{ display: "flex", flexDirection: "column", gap: "4px" }}>
               <label style={{ fontSize: "0.78rem", fontWeight: 700, color: "#334155" }}>
-                Assessment Notes (Optional)
+                📝 Assessment Notes (Optional)
               </label>
               <textarea
                 rows={2}
@@ -2973,7 +2972,7 @@ export default function LeadsView({
                   htmlFor="send_wa_check"
                   style={{ fontSize: "0.78rem", color: "#166534", fontWeight: 600, cursor: "pointer" }}
                 >
-                  Send instant booking confirmation to parent via WhatsApp ({resolveLeadPhone(trialBookingLead)})
+                  💬 Send instant booking confirmation to parent via WhatsApp ({resolveLeadPhone(trialBookingLead)})
                 </label>
               </div>
             )}
@@ -3017,8 +3016,7 @@ export default function LeadsView({
                   </>
                 ) : (
                   <>
-                    <CalendarCheck2 size={14} />
-                    <span>Confirm & Book Trial</span>
+                    <span>✅ Confirm & Book Trial</span>
                   </>
                 )}
               </button>
