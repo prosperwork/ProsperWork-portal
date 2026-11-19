@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, type ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import {
   Activity,
   ArrowUpRight,
@@ -465,11 +465,13 @@ export default function LeadsView({
       )
     : null;
 
-  // Manual Meta leads sync action
-  const handleSyncMeta = async () => {
+  // Meta leads sync action (can run manually or silently in background)
+  const handleSyncMeta = async (silent = false) => {
     if (syncingMeta) return;
     setSyncingMeta(true);
-    notify("Connecting to Meta Graph API and synchronizing leads...");
+    if (!silent) {
+      notify("Connecting to Meta Graph API and synchronizing leads...");
+    }
     try {
       const res = await fetch("/api/integrations/meta", {
         method: "POST",
@@ -478,23 +480,62 @@ export default function LeadsView({
       });
       const data = await res.json();
       if (!res.ok) {
-        throw new Error(data.error || "Meta synchronization failed.");
+        if (!silent) {
+          throw new Error(data.error || "Meta synchronization failed.");
+        }
+        return;
       }
-      notify(
-        `Meta sync completed: ${data.inserted || 0} new lead(s) retrieved, ${
-          data.skipped || 0
-        } already up to date.`
-      );
+      if (!silent || (data.inserted && data.inserted > 0)) {
+        notify(
+          `Meta sync: ${data.inserted || 0} new lead(s) retrieved, ${
+            data.skipped || 0
+          } already up to date.`
+        );
+      }
       if (reload) {
         await reload();
       }
     } catch (err: unknown) {
-      const message = err instanceof Error ? err.message : "Sync error";
-      notify(`Meta sync error: ${message}`);
+      if (!silent) {
+        const message = err instanceof Error ? err.message : "Sync error";
+        notify(`Meta sync error: ${message}`);
+      }
     } finally {
       setSyncingMeta(false);
     }
   };
+
+  // Automated Real-Time Background Synchronization:
+  // 1. Instantly reloads view when tab gains focus
+  // 2. Polls local database every 20 seconds for new webhook arrivals
+  // 3. Reconciles with Meta Graph API in the background every 3 minutes
+  useEffect(() => {
+    const handleVisibility = () => {
+      if (document.visibilityState === "visible" && reload) {
+        void reload();
+      }
+    };
+    document.addEventListener("visibilitychange", handleVisibility);
+
+    const dbInterval = setInterval(() => {
+      if (document.visibilityState === "visible" && reload) {
+        void reload();
+      }
+    }, 20000);
+
+    const metaReconcileInterval = setInterval(() => {
+      if (document.visibilityState === "visible" && (adminAccess || role === "sales_marketing")) {
+        void handleSyncMeta(true);
+      }
+    }, 180000);
+
+    return () => {
+      document.removeEventListener("visibilitychange", handleVisibility);
+      clearInterval(dbInterval);
+      clearInterval(metaReconcileInterval);
+    };
+  }, [reload, adminAccess, role]);
+
 
   // CSV Export matching Google Sheet tracker columns
   const handleExportCsv = () => {
@@ -583,20 +624,20 @@ export default function LeadsView({
                 backgroundColor: "#10b981",
               }}
             />
-            Meta 2-Way Sync Active
+            Live Auto-Sync Active
           </span>
 
           {(adminAccess || role === "sales_marketing") && (
             <button
               type="button"
               className="btn small secondary"
-              onClick={handleSyncMeta}
+              onClick={() => handleSyncMeta(false)}
               disabled={syncingMeta}
-              title="Sync newest leads from Meta (Facebook and Instagram)"
+              title="Live background auto-sync is active. Click to force an instant reconciliation with Meta now."
               style={{ display: "inline-flex", alignItems: "center", gap: 6 }}
             >
               <RefreshCw size={13} className={syncingMeta ? "spin" : ""} />
-              {syncingMeta ? "Syncing Meta..." : "Sync Meta Leads"}
+              {syncingMeta ? "Syncing..." : "Sync Now"}
             </button>
           )}
 
