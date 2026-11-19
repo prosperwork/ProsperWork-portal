@@ -547,6 +547,31 @@ export default function LeadsView({
     };
   }, [reload, adminAccess, role]);
 
+  // Live Auto-Refresh for open WhatsApp Chat Modal (polls delivery receipts & new messages every 3.5s)
+  useEffect(() => {
+    if (!whatsAppLead) return;
+    const phone = resolveLeadPhone(whatsAppLead);
+    if (!phone) return;
+
+    const chatPoller = setInterval(async () => {
+      try {
+        const res = await fetch(
+          `/api/integrations/whatsapp/messages?leadId=${encodeURIComponent(
+            whatsAppLead.id
+          )}&phone=${encodeURIComponent(phone)}`
+        );
+        const json = await res.json();
+        if (json.messages && Array.isArray(json.messages)) {
+          setWhatsAppMessages(json.messages);
+        }
+      } catch {
+        // silent polling catch
+      }
+    }, 3500);
+
+    return () => clearInterval(chatPoller);
+  }, [whatsAppLead]);
+
 
   // CSV Export matching Google Sheet tracker columns
   const handleExportCsv = () => {
@@ -1820,11 +1845,22 @@ export default function LeadsView({
                         >
                           <span>{niceDate(msg.created_at)} {timeAt(msg.created_at)}</span>
                           {isOutbound && !isFailed && (
-                            <span title={`Status: ${msg.status}`}>
-                              {msg.status === "read" || msg.status === "delivered" ? (
-                                <CheckCheck size={12} color="#0284c7" />
+                            <span
+                              title={
+                                msg.status === "read"
+                                  ? "Read by recipient"
+                                  : msg.status === "delivered"
+                                  ? "Delivered to recipient device"
+                                  : "Sent to WhatsApp network"
+                              }
+                              style={{ display: "inline-flex", alignItems: "center", marginLeft: 2 }}
+                            >
+                              {msg.status === "read" ? (
+                                <CheckCheck size={14} color="#0284c7" strokeWidth={2.5} />
+                              ) : msg.status === "delivered" ? (
+                                <CheckCheck size={14} color="#64748b" strokeWidth={2} />
                               ) : (
-                                <Check size={12} color="#64748b" />
+                                <Check size={13} color="#64748b" strokeWidth={2} />
                               )}
                             </span>
                           )}
