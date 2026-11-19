@@ -548,7 +548,39 @@ export default function HomePage() {
         ...current.audit,
       ],
     }));
-    notify(`Lead moved to ${status.replace("_", " ")}.`);
+
+    // 2-Way Sync: Fire Meta Conversions API (CAPI) event for ad delivery optimization
+    if (["trial_booked", "converted", "contacted"].includes(status)) {
+      const metaLeadId =
+        lead.metaLeadId ||
+        (lead.id.startsWith("lead_meta_")
+          ? lead.id.replace("lead_meta_", "")
+          : undefined);
+
+      fetch("/api/integrations/meta/conversions", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          leadId: lead.id,
+          metaLeadId,
+          leadName: lead.parentName,
+          email: lead.email,
+          phone: lead.phone,
+          instrument: lead.instrument,
+          status,
+        }),
+      }).catch(() => {
+        // Non-blocking background signal
+      });
+    }
+
+    if (status === "trial_booked") {
+      notify("Lead moved to Trial Booked & Meta ad optimization signal fired.");
+    } else if (status === "converted") {
+      notify("Lead converted to Student & Meta purchase conversion fired.");
+    } else {
+      notify(`Lead moved to ${status.replace("_", " ")}.`);
+    }
   }
 
   async function setPaymentStatus(

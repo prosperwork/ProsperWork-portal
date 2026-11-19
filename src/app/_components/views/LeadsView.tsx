@@ -477,7 +477,33 @@ export default function LeadsView({
     <>
       <div className="toolbar" style={{ flexWrap: "wrap", gap: "0.5rem" }}>
         {searchBar("Search family, child, email, phone or instrument")}
-        <div style={{ display: "flex", gap: "0.4rem", marginLeft: "auto", flexWrap: "wrap" }}>
+        <div style={{ display: "flex", gap: "0.4rem", marginLeft: "auto", flexWrap: "wrap", alignItems: "center" }}>
+          <span
+            style={{
+              display: "inline-flex",
+              alignItems: "center",
+              gap: "5px",
+              fontSize: "0.74rem",
+              fontWeight: 600,
+              color: "#047857",
+              background: "#ecfdf5",
+              border: "1px solid #a7f3d0",
+              padding: "4px 8px",
+              borderRadius: "6px",
+            }}
+            title="Real-time Meta Webhook Ingestion & 2-Way Conversions API (CAPI) Ad Feedback are active"
+          >
+            <span
+              style={{
+                width: "6px",
+                height: "6px",
+                borderRadius: "50%",
+                backgroundColor: "#10b981",
+              }}
+            />
+            Meta 2-Way Sync Active
+          </span>
+
           {(adminAccess || role === "sales_marketing") && (
             <button
               type="button"

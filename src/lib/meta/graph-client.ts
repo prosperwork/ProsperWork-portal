@@ -1,4 +1,4 @@
-import { createHmac, timingSafeEqual } from "node:crypto";
+import { createHash, createHmac, timingSafeEqual } from "node:crypto";
 import { provisioningClient } from "@/lib/supabase/server";
 import type {
   MetaConnectionStatus,
@@ -19,6 +19,8 @@ export function getMetaConfig() {
     pageId: process.env.META_PAGE_ID?.trim() || "",
     accessToken: process.env.META_SYSTEM_USER_ACCESS_TOKEN?.trim() || "",
     portfolioId: process.env.META_BUSINESS_PORTFOLIO_ID?.trim() || "",
+    pixelId: process.env.META_PIXEL_ID?.trim() || "808471361998730",
+    adAccountId: process.env.META_AD_ACCOUNT_ID?.trim() || "act_937170145457887",
     verifyToken: process.env.META_WEBHOOK_VERIFY_TOKEN?.trim() || "",
     graphVersion: process.env.META_GRAPH_API_VERSION?.trim() || "v22.0",
   };
@@ -332,6 +334,7 @@ export function normalizeLeadFieldData(
   let email = "";
   let phone = "";
   let childName = "";
+  let childAge = "";
   let instrument = "";
   let readiness = "";
   const customQuestions: Record<string, string> = {};
@@ -369,6 +372,13 @@ export function normalizeLeadFieldData(
       childName = value;
       customQuestions[field.name] = value;
     } else if (
+      key.includes("age") ||
+      key.includes("how_old") ||
+      key.includes("years_old")
+    ) {
+      childAge = value.replace(/_/g, " ").trim();
+      customQuestions[field.name] = childAge;
+    } else if (
       key.includes("instrument") ||
       key.includes("course") ||
       key.includes("lesson_type")
@@ -379,7 +389,6 @@ export function normalizeLeadFieldData(
       key.includes("ready") ||
       key.includes("interested") ||
       key.includes("start") ||
-      key.includes("age") ||
       key.includes("budget")
     ) {
       let cleanVal = value.replace(/_/g, " ").trim();
@@ -390,6 +399,15 @@ export function normalizeLeadFieldData(
     } else {
       let cleanVal = value.replace(/_/g, " ").trim();
       customQuestions[field.name] = cleanVal;
+    }
+  }
+
+  // Append age to child name if available
+  if (childAge) {
+    if (childName && !childName.includes("Age")) {
+      childName = `${childName} (Age: ${childAge})`;
+    } else if (!childName) {
+      childName = `Child (Age: ${childAge})`;
     }
   }
 
@@ -680,4 +698,156 @@ export async function syncExistingMetaLeads(options: {
     status: resultStatus,
     error: lastError || undefined,
   };
+}
+
+export interface MetaConversionParams {
+  leadId?: string;
+  metaLeadId?: string;
+  leadName?: string;
+  email?: string;
+  phone?: string;
+  instrument?: string;
+  status: string;
+  value?: number;
+  currency?: string;
+  actorId?: string;
+}
+
+/**
+ * Fires an offline/CRM conversion event back to Meta Conversions API (CAPI).
+ * Enables closed-loop Ad Optimization for paying parents & booked trials.
+ */
+export async function sendMetaConversionEvent(
+  params: MetaConversionParams
+): Promise<{ success: boolean; eventsReceived?: number; fbtraceId?: string; error?: string }> {
+  const config = getMetaConfig();
+  const pixelId = config.pixelId || "808471361998730";
+  const accessToken = config.accessToken;
+
+  if (!accessToken || !pixelId) {
+    return {
+      success: false,
+      error: "Meta access token or Pixel ID is not configured.",
+    };
+  }
+
+  // Determine standard Meta event name based on pipeline stage
+  let eventName: "Schedule" | "Purchase" | "Lead" | "SubmitApplication" = "Lead";
+  let defaultValue = 0;
+  const currency = params.currency || "GBP";
+
+  const st = params.status.toLowerCase();
+  if (st === "trial_booked" || st === "trial_requested" || st === "trial_verified") {
+    eventName = "Schedule"; // Standard Meta event for booked trials / lessons
+    defaultValue = 45.0;
+  } else if (st === "converted") {
+    eventName = "Purchase"; // Standard Meta event for paying enrolled student
+    defaultValue = params.value ?? 45.0;
+  } else if (st === "contacted") {
+    eventName = "Lead"; // Standard Meta event for qualified lead
+  } else {
+    eventName = "Lead";
+  }
+
+  // Prepare SHA-256 hashed user data for Meta CAPI matching
+  const userData: Record<string, any> = {};
+
+  if (params.metaLeadId) {
+    userData.lead_id = params.metaLeadId;
+  }
+
+  if (params.email && params.email.includes("@") && !params.email.includes("meta.com")) {
+    userData.em = [createHash("sha256").update(params.email.trim().toLowerCase()).digest("hex")];
+  }
+
+  if (params.phone) {
+    const digitsOnly = params.phone.replace(/[^0-9]/g, "");
+    if (digitsOnly.length >= 7) {
+      userData.ph = [createHash("sha256").update(digitsOnly).digest("hex")];
+    }
+  }
+
+  if (params.leadName) {
+    const parts = params.leadName.trim().split(/\s+/);
+    if (parts[0] && !parts[0].includes("<test")) {
+      userData.fn = [createHash("sha256").update(parts[0].toLowerCase()).digest("hex")];
+    }
+    if (parts.length > 1) {
+      userData.ln = [createHash("sha256").update(parts.slice(1).join(" ").toLowerCase()).digest("hex")];
+    }
+  }
+
+  const payload = {
+    data: [
+      {
+        event_name: eventName,
+        event_time: Math.floor(Date.now() / 1000),
+        action_source: "system_generated",
+        event_source_url: "https://portal.prosperworkmusic.com/leads",
+        user_data: userData,
+        custom_data: {
+          lead_status: params.status,
+          currency,
+          value: params.value ?? defaultValue,
+          content_name: `${params.instrument || "Piano"} Academy ${
+            eventName === "Purchase" ? "Enrollment" : eventName === "Schedule" ? "Trial Booking" : "Follow-up"
+          }`,
+        },
+      },
+    ],
+  };
+
+  try {
+    const res = await fetch(
+      `${GRAPH_BASE_URL}/${config.graphVersion}/${pixelId}/events?access_token=${accessToken}`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      }
+    );
+
+    const result = await res.json().catch(() => null);
+    const db = provisioningClient();
+
+    if (res.ok && result?.events_received) {
+      await db.from("pw_meta_sync_logs").insert({
+        sync_type: "capi_conversion",
+        form_id: params.metaLeadId || null,
+        leads_found: 1,
+        leads_inserted: result.events_received,
+        status: "success",
+        error_message: JSON.stringify({
+          eventName,
+          status: params.status,
+          fbtrace_id: result.fbtrace_id,
+          metaLeadId: params.metaLeadId,
+        }),
+      });
+
+      return {
+        success: true,
+        eventsReceived: result.events_received,
+        fbtraceId: result.fbtrace_id,
+      };
+    } else {
+      const errMsg = result?.error?.message || "Meta CAPI event delivery failed.";
+      await db.from("pw_meta_sync_logs").insert({
+        sync_type: "capi_conversion",
+        form_id: params.metaLeadId || null,
+        leads_found: 1,
+        leads_inserted: 0,
+        status: "failed",
+        error_message: errMsg,
+      });
+
+      return {
+        success: false,
+        error: errMsg,
+      };
+    }
+  } catch (err) {
+    const message = err instanceof Error ? err.message : "CAPI network error";
+    return { success: false, error: message };
+  }
 }

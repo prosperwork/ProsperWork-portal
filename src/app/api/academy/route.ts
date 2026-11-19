@@ -3,6 +3,7 @@ import { identity } from "@/lib/supabase/identity";
 import { impersonationBlocked, sameOrigin } from "@/lib/supabase/server";
 import { academySnapshot, resolveChange } from "@/lib/academy/server-data";
 import { batchSchema } from "@/lib/academy/schemas";
+import { sendMetaConversionEvent } from "@/lib/meta/graph-client";
 
 export const dynamic = "force-dynamic";
 export async function GET() {
@@ -44,6 +45,35 @@ export async function POST(request: Request) {
         : error.code === "PW005" ? "A future class cannot be marked done."
         : "The database rejected this change. Check your permissions and the record's current status.";
       return NextResponse.json({ error: message }, { status: conflict || calendar ? 409 : 403 });
+    }
+
+    // Two-Way Sync: Fire Meta Conversions API (CAPI) events for ad optimization
+    for (const change of parsed.data.changes) {
+      if (change.module === "leads" && change.operation === "update") {
+        const rec = change.record as any;
+        const status = rec?.status;
+        if (["trial_booked", "converted", "contacted"].includes(status)) {
+          const metaLeadId =
+            rec.metaLeadId ||
+            rec.meta_lead_id ||
+            (String(rec.id || "").startsWith("lead_meta_")
+              ? String(rec.id).replace("lead_meta_", "")
+              : undefined);
+
+          if (metaLeadId || rec.source?.toLowerCase().includes("meta")) {
+            sendMetaConversionEvent({
+              leadId: rec.id,
+              metaLeadId,
+              leadName: rec.parentName,
+              email: rec.email,
+              phone: rec.phone,
+              instrument: rec.instrument,
+              status,
+              actorId: profile.id,
+            }).catch(() => {});
+          }
+        }
+      }
     }
     return NextResponse.json(await academySnapshot(client, profile), { headers: { "Cache-Control": "private, no-store" } });
   } catch (error) {
