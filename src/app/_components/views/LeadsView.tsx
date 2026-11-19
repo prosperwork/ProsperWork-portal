@@ -325,7 +325,15 @@ export default function LeadsView({
         trialMeetUrl: trialForm.meetUrl,
       };
 
+      // Update pipeline status to trial_booked and persist trial details & trigger Meta CAPI event
       await setLeadStatus(trialBookingLead, "trial_booked", updatedExtra);
+
+      // Keep open lead modal in sync if viewing this lead
+      setSelectedLead((prev) =>
+        prev && prev.id === trialBookingLead.id
+          ? { ...prev, ...updatedExtra, status: "trial_booked" }
+          : prev
+      );
 
       // Send WhatsApp Confirmation if enabled
       const phone = resolveLeadPhone(trialBookingLead);
@@ -347,7 +355,6 @@ export default function LeadsView({
 
       notify(`Trial assessment booked for ${cleanName(trialForm.childName || trialBookingLead.parentName)} on ${niceDate(startsAt)}!`);
       setTrialBookingLead(null);
-      if (reload) await reload();
     } catch (err: any) {
       notify(err?.message || "Failed to save trial booking. Please try again.");
     } finally {

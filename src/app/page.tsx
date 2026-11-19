@@ -521,8 +521,8 @@ export default function HomePage() {
     notify(`Class marked as ${nextStatus.replace("_", " ")}.`);
   }
 
-  function setLeadStatus(lead: Lead, status: Lead["status"], extraPayload?: Partial<Lead>) {
-    updateData((current) => ({
+  async function setLeadStatus(lead: Lead, status: Lead["status"], extraPayload?: Partial<Lead>): Promise<void> {
+    await updateData((current) => ({
       ...current,
       leads: current.leads.map((item) =>
         item.id === lead.id
@@ -558,21 +558,26 @@ export default function HomePage() {
           ? lead.id.replace("lead_meta_", "")
           : undefined);
 
-      fetch("/api/integrations/meta/conversions", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          leadId: lead.id,
-          metaLeadId,
-          leadName: lead.parentName,
-          email: lead.email,
-          phone: lead.phone,
-          instrument: lead.instrument,
-          status,
-        }),
-      }).catch(() => {
+      const phone = extraPayload?.phone || lead.phone;
+      const instrument = extraPayload?.instrument || lead.instrument;
+
+      try {
+        await fetch("/api/integrations/meta/conversions", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            leadId: lead.id,
+            metaLeadId,
+            leadName: lead.parentName,
+            email: lead.email,
+            phone,
+            instrument,
+            status,
+          }),
+        });
+      } catch {
         // Non-blocking background signal
-      });
+      }
     }
 
     if (status === "trial_booked") {
