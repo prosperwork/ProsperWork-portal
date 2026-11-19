@@ -81,9 +81,42 @@ export interface MetaWebhookEntry {
 }
 
 export interface MetaWebhookPayload {
-  object: "page" | string;
-  entry: MetaWebhookEntry[];
+  object: "page" | "whatsapp_business_account" | string;
+  entry: any[];
 }
+
+export interface WhatsAppMessageRecord {
+  id: string;
+  wa_message_id?: string;
+  lead_id?: string;
+  phone_number: string;
+  direction: "inbound" | "outbound";
+  sender_name?: string;
+  message_type: "text" | "interactive" | "button" | "template" | "image" | "document" | "audio" | "video";
+  body?: string;
+  media_url?: string;
+  interactive_type?: string;
+  selected_button_id?: string;
+  status: "received" | "queued" | "sent" | "delivered" | "read" | "failed";
+  error_message?: string;
+  metadata?: Record<string, any>;
+  created_at: string;
+}
+
+export interface WhatsAppInteractiveButton {
+  id: string;
+  title: string;
+}
+
+export interface WhatsAppSendMessageParams {
+  to: string;
+  body: string;
+  leadId?: string;
+  buttons?: WhatsAppInteractiveButton[];
+  headerText?: string;
+  footerText?: string;
+}
+
 
 export interface MetaConnectionStatus {
   configured: boolean;

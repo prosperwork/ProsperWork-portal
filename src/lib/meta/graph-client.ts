@@ -7,6 +7,8 @@ import type {
   MetaLeadgenForm,
   MetaSyncResult,
   NormalizedLead,
+  WhatsAppMessageRecord,
+  WhatsAppSendMessageParams,
 } from "./meta-types";
 
 /**
@@ -23,6 +25,8 @@ export function getMetaConfig() {
     adAccountId: process.env.META_AD_ACCOUNT_ID?.trim() || "act_937170145457887",
     verifyToken: process.env.META_WEBHOOK_VERIFY_TOKEN?.trim() || "",
     graphVersion: process.env.META_GRAPH_API_VERSION?.trim() || "v22.0",
+    whatsAppPhoneNumberId: process.env.WHATSAPP_PHONE_NUMBER_ID?.trim() || "1438014379400273",
+    whatsAppBusinessAccountId: process.env.WHATSAPP_BUSINESS_ACCOUNT_ID?.trim() || "1759883001963705",
   };
 }
 
@@ -851,3 +855,427 @@ export async function sendMetaConversionEvent(
     return { success: false, error: message };
   }
 }
+
+/**
+ * Normalizes phone numbers to standard E.164 digits for WhatsApp Cloud API.
+ */
+export function cleanWhatsAppPhoneNumber(raw: string): string {
+  if (!raw) return "";
+  let digits = raw.replace(/\D/g, "");
+  if (digits.startsWith("0") && digits.length === 11) {
+    if (digits.startsWith("07")) {
+      digits = "44" + digits.slice(1);
+    } else if (digits.startsWith("08") || digits.startsWith("09")) {
+      digits = "234" + digits.slice(1);
+    }
+  } else if (digits.startsWith("0") && digits.length === 10) {
+    digits = "234" + digits.slice(1);
+  }
+  return digits;
+}
+
+/**
+ * Sends a WhatsApp message (text or interactive buttons) via Meta WhatsApp Business Cloud API.
+ */
+export async function sendWhatsAppMessage(params: WhatsAppSendMessageParams): Promise<{
+  success: boolean;
+  messageId?: string;
+  error?: string;
+}> {
+  const config = getMetaConfig();
+  const phoneId = config.whatsAppPhoneNumberId;
+  const token = config.accessToken;
+
+  if (!phoneId || !token) {
+    return {
+      success: false,
+      error: "WhatsApp Phone Number ID or Meta System User Access Token is not configured.",
+    };
+  }
+
+  const cleanTo = cleanWhatsAppPhoneNumber(params.to);
+  if (!cleanTo || cleanTo.length < 7) {
+    return {
+      success: false,
+      error: `Invalid destination phone number: "${params.to}"`,
+    };
+  }
+
+  let requestBody: any;
+
+  if (params.buttons && params.buttons.length > 0) {
+    requestBody = {
+      messaging_product: "whatsapp",
+      recipient_type: "individual",
+      to: cleanTo,
+      type: "interactive",
+      interactive: {
+        type: "button",
+        body: { text: params.body },
+        action: {
+          buttons: params.buttons.slice(0, 3).map((b) => ({
+            type: "reply",
+            reply: {
+              id: b.id.slice(0, 256),
+              title: b.title.slice(0, 20),
+            },
+          })),
+        },
+      },
+    };
+    if (params.headerText) {
+      requestBody.interactive.header = {
+        type: "text",
+        text: params.headerText.slice(0, 60),
+      };
+    }
+    if (params.footerText) {
+      requestBody.interactive.footer = {
+        text: params.footerText.slice(0, 60),
+      };
+    }
+  } else {
+    requestBody = {
+      messaging_product: "whatsapp",
+      recipient_type: "individual",
+      to: cleanTo,
+      type: "text",
+      text: {
+        preview_url: false,
+        body: params.body,
+      },
+    };
+  }
+
+  try {
+    const res = await fetch(
+      `${GRAPH_BASE_URL}/${config.graphVersion}/${phoneId}/messages`,
+      {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${token}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(requestBody),
+      }
+    );
+
+    const data = await res.json().catch(() => null);
+    const db = provisioningClient();
+
+    if (!res.ok || data?.error) {
+      const errMsg =
+        data?.error?.message ||
+        `Meta WhatsApp API error: HTTP ${res.status}`;
+      const is24hWindow =
+        data?.error?.code === 131047 ||
+        errMsg.toLowerCase().includes("24 hours");
+
+      // Auto-fallback to approved template if 24-hour service window is closed
+      if (is24hWindow) {
+        let recipientName = "there";
+        let instrumentName = "music";
+
+        if (params.leadId) {
+          const { data: leadRow } = await db
+            .from("pw_leads")
+            .select("payload")
+            .eq("id", params.leadId)
+            .maybeSingle();
+          if (leadRow?.payload) {
+            const p = leadRow.payload as any;
+            recipientName = p.parentName?.split(" ")?.[0] || "there";
+            instrumentName = p.instrument || "music";
+          }
+        }
+
+        const templatePayload = {
+          messaging_product: "whatsapp",
+          recipient_type: "individual",
+          to: cleanTo,
+          type: "template",
+          template: {
+            name: "prosperwork_lead_intro",
+            language: { code: "en_GB" },
+            components: [
+              {
+                type: "body",
+                parameters: [
+                  { type: "text", text: recipientName },
+                  { type: "text", text: instrumentName },
+                ],
+              },
+            ],
+          },
+        };
+
+        const tRes = await fetch(
+          `${GRAPH_BASE_URL}/${config.graphVersion}/${phoneId}/messages`,
+          {
+            method: "POST",
+            headers: {
+              Authorization: `Bearer ${token}`,
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify(templatePayload),
+          }
+        );
+
+        const tData = await tRes.json().catch(() => null);
+        if (tRes.ok && tData?.messages?.[0]?.id) {
+          const tMsgId = tData.messages[0].id;
+          await db.from("pw_whatsapp_messages").insert({
+            wa_message_id: tMsgId,
+            lead_id: params.leadId || null,
+            phone_number: cleanTo,
+            direction: "outbound",
+            message_type: "template",
+            body: `[Template: prosperwork_lead_intro sent] Hello ${recipientName}, thank you for contacting ProsperWork Music Academy regarding ${instrumentName} lessons...`,
+            status: "sent",
+            metadata: { requestBody: templatePayload, responseData: tData },
+          });
+
+          return { success: true, messageId: tMsgId };
+        }
+      }
+
+      // Record failed outbound attempt
+      await db.from("pw_whatsapp_messages").insert({
+        lead_id: params.leadId || null,
+        phone_number: cleanTo,
+        direction: "outbound",
+        message_type: params.buttons ? "interactive" : "text",
+        body: params.body,
+        status: "failed",
+        error_message: errMsg,
+        metadata: { requestBody, responseData: data },
+      });
+
+      return { success: false, error: errMsg };
+    }
+
+    const waMsgId = data?.messages?.[0]?.id || `out_${Date.now()}`;
+
+    // Record successful outbound message
+    await db.from("pw_whatsapp_messages").insert({
+      wa_message_id: waMsgId,
+      lead_id: params.leadId || null,
+      phone_number: cleanTo,
+      direction: "outbound",
+      message_type: params.buttons ? "interactive" : "text",
+      body: params.body,
+      status: "sent",
+      metadata: { requestBody, responseData: data },
+    });
+
+    // If attached to a lead that is still "new", advance to "contacted"
+    if (params.leadId) {
+      const { data: leadRow } = await db
+        .from("pw_leads")
+        .select("id, payload")
+        .eq("id", params.leadId)
+        .maybeSingle();
+
+      if (leadRow?.payload) {
+        const payload = leadRow.payload as any;
+        if (payload.status === "new") {
+          const nowIso = new Date().toISOString();
+          const updatedPayload = {
+            ...payload,
+            status: "contacted",
+            firstResponseAt: payload.firstResponseAt || nowIso,
+          };
+          await db
+            .from("pw_leads")
+            .update({
+              payload: updatedPayload,
+              updated_at: nowIso,
+            })
+            .eq("id", params.leadId);
+        }
+      }
+    }
+
+    return {
+      success: true,
+      messageId: waMsgId,
+    };
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : "WhatsApp delivery network error";
+    return { success: false, error: msg };
+  }
+}
+
+/**
+ * Handles incoming WhatsApp webhook events (inbound messages and delivery status updates).
+ */
+export async function ingestWhatsAppWebhook(payload: any): Promise<{
+  processedMessages: number;
+  processedStatuses: number;
+}> {
+  if (payload?.object !== "whatsapp_business_account" || !Array.isArray(payload.entry)) {
+    return { processedMessages: 0, processedStatuses: 0 };
+  }
+
+  const db = provisioningClient();
+  let messageCount = 0;
+  let statusCount = 0;
+
+  for (const entry of payload.entry) {
+    if (!Array.isArray(entry.changes)) continue;
+
+    for (const change of entry.changes) {
+      if (change.field !== "messages" || !change.value) continue;
+
+      const val = change.value;
+
+      // 1. Inbound messages
+      if (Array.isArray(val.messages)) {
+        const contacts = Array.isArray(val.contacts) ? val.contacts : [];
+        const contactMap = new Map<string, string>();
+        for (const c of contacts) {
+          if (c.wa_id && c.profile?.name) {
+            contactMap.set(c.wa_id, c.profile.name);
+          }
+        }
+
+        for (const msg of val.messages) {
+          const senderPhone = cleanWhatsAppPhoneNumber(msg.from || "");
+          const waMsgId = msg.id;
+          const senderName = contactMap.get(msg.from) || null;
+          let body = "";
+          let interactiveType: string | null = null;
+          let selectedButtonId: string | null = null;
+
+          if (msg.type === "text" && msg.text?.body) {
+            body = msg.text.body;
+          } else if (msg.type === "interactive") {
+            interactiveType = msg.interactive?.type || "button_reply";
+            if (msg.interactive?.button_reply) {
+              selectedButtonId = msg.interactive.button_reply.id;
+              body = msg.interactive.button_reply.title || selectedButtonId;
+            } else if (msg.interactive?.list_reply) {
+              selectedButtonId = msg.interactive.list_reply.id;
+              body = msg.interactive.list_reply.title || selectedButtonId;
+            }
+          } else if (msg.type === "button" && msg.button?.text) {
+            body = msg.button.text;
+            selectedButtonId = msg.button.payload || null;
+          } else {
+            body = `[${msg.type} message]`;
+          }
+
+          // Match sender to an existing lead by last 9-10 digits of phone
+          let matchedLeadId: string | null = null;
+          let matchedLeadPayload: any = null;
+
+          if (senderPhone.length >= 7) {
+            const lastDigits = senderPhone.slice(-9);
+            const { data: leads } = await db
+              .from("pw_leads")
+              .select("id, payload")
+              .order("created_at", { ascending: false })
+              .limit(100);
+
+            if (leads) {
+              for (const l of leads) {
+                const p = l.payload as any;
+                const leadPhone = (p?.phone || p?.customAnswers?.whatsapp_number || "").replace(/\D/g, "");
+                if (leadPhone && leadPhone.includes(lastDigits)) {
+                  matchedLeadId = l.id;
+                  matchedLeadPayload = p;
+                  break;
+                }
+              }
+            }
+          }
+
+          // Ingest into pw_whatsapp_messages
+          await db.from("pw_whatsapp_messages").upsert(
+            {
+              wa_message_id: waMsgId,
+              lead_id: matchedLeadId,
+              phone_number: senderPhone,
+              direction: "inbound",
+              sender_name: senderName,
+              message_type: msg.type || "text",
+              body,
+              interactive_type: interactiveType,
+              selected_button_id: selectedButtonId,
+              status: "received",
+              metadata: msg,
+            },
+            { onConflict: "wa_message_id" }
+          );
+
+          messageCount++;
+
+          // Automated Assistant: Check if parent wants to book a trial
+          const lowerBody = body.toLowerCase();
+          const isBookingTrigger =
+            selectedButtonId === "pw_book_trial" ||
+            lowerBody.includes("book trial") ||
+            lowerBody.includes("trial lesson") ||
+            lowerBody.includes("yes, i want a trial") ||
+            lowerBody.includes("schedule trial");
+
+          if (isBookingTrigger && matchedLeadId && matchedLeadPayload) {
+            // Automatically advance lead stage to "trial_booked"
+            const nowIso = new Date().toISOString();
+            const updated = {
+              ...matchedLeadPayload,
+              status: "trial_booked",
+              preferredSlots: matchedLeadPayload.preferredSlots?.length
+                ? matchedLeadPayload.preferredSlots
+                : ["WhatsApp Instant Booking Request"],
+            };
+
+            await db
+              .from("pw_leads")
+              .update({
+                payload: updated,
+                updated_at: nowIso,
+              })
+              .eq("id", matchedLeadId);
+
+            // Send CAPI event for trial booking
+            await sendMetaConversionEvent({
+              eventName: "Schedule",
+              leadId: matchedLeadId,
+              metaLeadId: matchedLeadPayload.metaLeadId,
+              email: matchedLeadPayload.email,
+              phone: matchedLeadPayload.phone || senderPhone,
+              status: "trial_booked",
+            }).catch(() => null);
+
+            // Send auto-acknowledgement reply
+            await sendWhatsAppMessage({
+              to: senderPhone,
+              leadId: matchedLeadId,
+              body: `Hello ${matchedLeadPayload.parentName || senderName || "there"}! 🎹 We have received your trial booking request for ${matchedLeadPayload.instrument || "lessons"}. An academy director is assigning the best teacher for you and will confirm your lesson time shortly!`,
+            }).catch(() => null);
+          }
+        }
+      }
+
+      // 2. Outbound delivery status updates
+      if (Array.isArray(val.statuses)) {
+        for (const st of val.statuses) {
+          if (st.id && st.status) {
+            await db
+              .from("pw_whatsapp_messages")
+              .update({ status: st.status })
+              .eq("wa_message_id", st.id);
+            statusCount++;
+          }
+        }
+      }
+    }
+  }
+
+  return {
+    processedMessages: messageCount,
+    processedStatuses: statusCount,
+  };
+}
+

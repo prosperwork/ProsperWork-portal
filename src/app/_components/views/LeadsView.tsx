@@ -5,6 +5,7 @@ import {
   Activity,
   ArrowUpRight,
   Check,
+  CheckCheck,
   CheckCircle2,
   ChevronDown,
   Clock3,
@@ -12,6 +13,7 @@ import {
   ExternalLink,
   HelpCircle,
   MessageCircle,
+  MessageSquare,
   Music2,
   PhoneCall,
   RefreshCw,
@@ -142,6 +144,86 @@ export default function LeadsView({
   const [selectedLead, setSelectedLead] = useState<Lead | null>(null);
   const [activeDropdownLeadId, setActiveDropdownLeadId] = useState<string | null>(null);
   const [syncingMeta, setSyncingMeta] = useState(false);
+
+  // In-App WhatsApp Live Chat State
+  const [whatsAppLead, setWhatsAppLead] = useState<Lead | null>(null);
+  const [whatsAppMessages, setWhatsAppMessages] = useState<any[]>([]);
+  const [loadingWhatsApp, setLoadingWhatsApp] = useState(false);
+  const [sendingWhatsApp, setSendingWhatsApp] = useState(false);
+  const [whatsAppDraft, setWhatsAppDraft] = useState("");
+
+  const openWhatsAppChat = async (lead: Lead) => {
+    setWhatsAppLead(lead);
+    setWhatsAppMessages([]);
+    setWhatsAppDraft("");
+    setLoadingWhatsApp(true);
+    const phone = resolveLeadPhone(lead);
+    try {
+      const res = await fetch(
+        `/api/integrations/whatsapp/messages?leadId=${encodeURIComponent(lead.id)}&phone=${encodeURIComponent(phone)}`
+      );
+      const json = await res.json();
+      if (json.messages) {
+        setWhatsAppMessages(json.messages);
+      }
+    } catch {
+      // quiet fallback
+    } finally {
+      setLoadingWhatsApp(false);
+    }
+  };
+
+  const handleSendWhatsApp = async (
+    customText?: string,
+    buttons?: Array<{ id: string; title: string }>
+  ) => {
+    if (!whatsAppLead) return;
+    const phone = resolveLeadPhone(whatsAppLead);
+    if (!phone) {
+      notify("No phone number available for this lead.");
+      return;
+    }
+    const textToSend = (customText || whatsAppDraft).trim();
+    if (!textToSend && (!buttons || buttons.length === 0)) return;
+
+    setSendingWhatsApp(true);
+    try {
+      const res = await fetch("/api/integrations/whatsapp/messages", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          leadId: whatsAppLead.id,
+          phone,
+          message: textToSend,
+          buttons,
+        }),
+      });
+      const json = await res.json();
+      if (res.ok && json.success) {
+        setWhatsAppDraft("");
+        notify("WhatsApp message dispatched via Meta Cloud API!");
+        if (whatsAppLead.status === "new") {
+          setLeadStatus(whatsAppLead, "contacted");
+          setWhatsAppLead((prev) => (prev ? { ...prev, status: "contacted" } : null));
+        }
+        const refetch = await fetch(
+          `/api/integrations/whatsapp/messages?leadId=${encodeURIComponent(whatsAppLead.id)}&phone=${encodeURIComponent(phone)}`
+        );
+        const refetchJson = await refetch.json();
+        if (refetchJson.messages) {
+          setWhatsAppMessages(refetchJson.messages);
+        }
+        if (reload) await reload();
+      } else {
+        notify(`WhatsApp error: ${json.error || "Failed to send message"}`);
+      }
+    } catch {
+      notify("Network error dispatching WhatsApp message.");
+    } finally {
+      setSendingWhatsApp(false);
+    }
+  };
+
 
   const statusButton = (label: string, onClick: () => void, tone = "ghost") => (
     <button type="button" className={`btn small ${tone}`} onClick={onClick}>
@@ -920,23 +1002,21 @@ export default function LeadsView({
                         </button>
                         <button
                           className="icon-btn"
-                          aria-label={`WhatsApp ${displayName}`}
-                          title={phone ? `WhatsApp ${phone}` : "No phone available"}
+                          aria-label={`WhatsApp Live Chat with ${displayName}`}
+                          title={phone ? `WhatsApp Live Chat (${phone})` : "No phone available"}
                           disabled={!phone}
                           style={{
                             color: phone ? "#059669" : "#cbd5e1",
-                            fontWeight: 700,
-                            fontSize: "0.7rem",
+                            background: phone ? "#ecfdf5" : undefined,
+                            borderColor: phone ? "#a7f3d0" : undefined,
+                            fontWeight: 800,
+                            fontSize: "0.72rem",
                             cursor: phone ? "pointer" : "not-allowed",
+                            padding: "0 6px",
                           }}
                           onClick={() => {
                             if (!phone) return;
-                            openExternal(
-                              "whatsapp",
-                              phone,
-                              displayName,
-                              `Hello ${displayName}, this is ProsperWork Music Academy regarding your music lessons enquiry. How can we assist you today?`
-                            );
+                            openWhatsAppChat(lead);
                           }}
                         >
                           WA
@@ -1142,20 +1222,23 @@ export default function LeadsView({
                     <>
                       <button
                         type="button"
-                        className="btn small secondary"
+                        className="btn small"
                         disabled={!modalPhone}
                         onClick={() => {
                           if (!modalPhone) return;
-                          openExternal(
-                            "whatsapp",
-                            modalPhone,
-                            cleanName(selectedLead.parentName),
-                            `Hello ${cleanName(selectedLead.parentName)}, this is ProsperWork Music Academy regarding your music lessons inquiry. How can we assist you today?`
-                          );
+                          openWhatsAppChat(selectedLead);
                         }}
-                        style={{ display: "inline-flex", alignItems: "center", gap: 5, color: modalPhone ? "#065f46" : "#94a3b8" }}
+                        style={{
+                          display: "inline-flex",
+                          alignItems: "center",
+                          gap: 6,
+                          background: modalPhone ? "#059669" : "#f1f5f9",
+                          color: modalPhone ? "#ffffff" : "#94a3b8",
+                          borderColor: modalPhone ? "#047857" : "#e2e8f0",
+                          fontWeight: 700,
+                        }}
                       >
-                        <span style={{ fontWeight: 800 }}>WA</span> Chat on WhatsApp
+                        <MessageSquare size={14} /> In-App WhatsApp Chat
                       </button>
                       <button
                         type="button"
@@ -1399,6 +1482,322 @@ export default function LeadsView({
                   );
                 })}
               </div>
+            </div>
+          </div>
+        )}
+      </PortalModal>
+
+      {/* In-App WhatsApp Live Chat Modal */}
+      <PortalModal
+        isOpen={Boolean(whatsAppLead)}
+        onClose={() => setWhatsAppLead(null)}
+        title={
+          whatsAppLead
+            ? `WhatsApp Live Chat — ${cleanName(whatsAppLead.parentName)}`
+            : "WhatsApp Live Chat"
+        }
+        subtitle={
+          whatsAppLead
+            ? `Prosperwork music (+44 7742 534931) ⟷ ${resolveLeadPhone(whatsAppLead)}`
+            : undefined
+        }
+        size="lg"
+      >
+        {whatsAppLead && (
+          <div style={{ display: "flex", flexDirection: "column", gap: "0.85rem" }}>
+            {/* Meta Cloud API Connection Pill & Info */}
+            <div
+              style={{
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "space-between",
+                background: "#f0fdf4",
+                border: "1px solid #bbf7d0",
+                padding: "8px 12px",
+                borderRadius: "8px",
+                fontSize: "0.8rem",
+              }}
+            >
+              <div style={{ display: "flex", alignItems: "center", gap: 6, color: "#166534", fontWeight: 600 }}>
+                <span
+                  style={{
+                    width: 8,
+                    height: 8,
+                    borderRadius: "50%",
+                    background: "#22c55e",
+                    boxShadow: "0 0 0 2px #bbf7d0",
+                  }}
+                />
+                Meta WhatsApp Business Cloud API Active (Prosperwork music)
+              </div>
+              <button
+                type="button"
+                className="btn small ghost"
+                style={{ fontSize: "0.75rem", padding: "2px 8px", color: "#065f46" }}
+                onClick={() => {
+                  const phone = resolveLeadPhone(whatsAppLead);
+                  if (phone) {
+                    openExternal(
+                      "whatsapp",
+                      phone,
+                      cleanName(whatsAppLead.parentName),
+                      `Hello ${cleanName(whatsAppLead.parentName)}, this is ProsperWork Music Academy regarding your music lessons inquiry.`
+                    );
+                  }
+                }}
+              >
+                Open in WhatsApp Web <ExternalLink size={11} style={{ marginLeft: 3 }} />
+              </button>
+            </div>
+
+            {/* Quick Action Automated Response Chips */}
+            <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+              <div style={{ fontSize: "0.72rem", color: "#64748b", fontWeight: 700, textTransform: "uppercase" }}>
+                Quick Action Prompts
+              </div>
+              <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                <button
+                  type="button"
+                  className="btn small"
+                  disabled={sendingWhatsApp}
+                  style={{
+                    fontSize: "0.76rem",
+                    padding: "3px 9px",
+                    background: "#ecfdf5",
+                    borderColor: "#a7f3d0",
+                    color: "#065f46",
+                    fontWeight: 600,
+                  }}
+                  onClick={() => {
+                    const parentName = cleanName(whatsAppLead.parentName).split(" ")[0];
+                    handleSendWhatsApp(
+                      undefined,
+                      [
+                        { id: "pw_book_trial", title: "Book Trial Lesson" },
+                        { id: "pw_view_schedule", title: "View Schedule" },
+                      ]
+                    );
+                    setWhatsAppDraft(
+                      `Hello ${parentName}! 🎹 Would you like to schedule your trial lesson for ${whatsAppLead.instrument || "Piano"} with our director? Tap a button below to confirm:`
+                    );
+                  }}
+                >
+                  🚀 Trial Booking Prompt with Buttons
+                </button>
+                <button
+                  type="button"
+                  className="btn small"
+                  disabled={sendingWhatsApp}
+                  style={{
+                    fontSize: "0.76rem",
+                    padding: "3px 9px",
+                    background: "#eff6ff",
+                    borderColor: "#bfdbfe",
+                    color: "#1d4ed8",
+                    fontWeight: 600,
+                  }}
+                  onClick={() => {
+                    const parentName = cleanName(whatsAppLead.parentName).split(" ")[0];
+                    setWhatsAppDraft(
+                      `Hello ${parentName}! 👋 Thank you for enquiring about music lessons with ProsperWork Music Academy. Which days of the week work best for your child's 1-on-1 lesson?`
+                    );
+                  }}
+                >
+                  📅 Lesson Availability Query
+                </button>
+                <button
+                  type="button"
+                  className="btn small"
+                  disabled={sendingWhatsApp}
+                  style={{
+                    fontSize: "0.76rem",
+                    padding: "3px 9px",
+                    background: "#faf5ff",
+                    borderColor: "#e9d5ff",
+                    color: "#7e22ce",
+                    fontWeight: 600,
+                  }}
+                  onClick={() => {
+                    setWhatsAppDraft(
+                      `Our premium 1-on-1 weekly lessons start from £45 / ₦78,000 monthly for 4 sessions, complete with curriculum books, performance assessments, and interactive classroom access.`
+                    );
+                  }}
+                >
+                  🎵 Pricing & Monthly Plan
+                </button>
+              </div>
+            </div>
+
+            {/* Conversation Feed */}
+            <div
+              style={{
+                height: "360px",
+                overflowY: "auto",
+                background: "#f8fafc",
+                border: "1px solid #e2e8f0",
+                borderRadius: "10px",
+                padding: "1rem",
+                display: "flex",
+                flexDirection: "column",
+                gap: "0.75rem",
+              }}
+            >
+              {loadingWhatsApp ? (
+                <div style={{ textAlign: "center", color: "#64748b", margin: "auto", fontSize: "0.85rem" }}>
+                  <RefreshCw size={18} className="animate-spin" style={{ margin: "0 auto 6px auto" }} />
+                  Loading WhatsApp messages...
+                </div>
+              ) : whatsAppMessages.length === 0 ? (
+                <div style={{ textAlign: "center", color: "#64748b", margin: "auto", maxWidth: "340px" }}>
+                  <div style={{ fontSize: "1.8rem", marginBottom: 6 }}>💬</div>
+                  <div style={{ fontWeight: 700, fontSize: "0.9rem", color: "#1e293b" }}>
+                    No messages sent yet
+                  </div>
+                  <div style={{ fontSize: "0.78rem", marginTop: 4 }}>
+                    Start the conversation using the composer below or click one of the quick action buttons. Outbound messages send directly through Meta Cloud API.
+                  </div>
+                </div>
+              ) : (
+                whatsAppMessages.map((msg) => {
+                  const isOutbound = msg.direction === "outbound";
+                  const isFailed = msg.status === "failed";
+                  return (
+                    <div
+                      key={msg.id || msg.wa_message_id}
+                      style={{
+                        display: "flex",
+                        flexDirection: "column",
+                        alignItems: isOutbound ? "flex-end" : "flex-start",
+                        maxWidth: "80%",
+                        alignSelf: isOutbound ? "flex-end" : "flex-start",
+                      }}
+                    >
+                      <div
+                        style={{
+                          background: isOutbound ? (isFailed ? "#fef2f2" : "#dcf8c6") : "#ffffff",
+                          color: isFailed ? "#991b1b" : "#0f172a",
+                          border: isOutbound
+                            ? isFailed
+                              ? "1px solid #fecaca"
+                              : "1px solid #bbf7d0"
+                            : "1px solid #e2e8f0",
+                          borderRadius: isOutbound
+                            ? "14px 14px 2px 14px"
+                            : "14px 14px 14px 2px",
+                          padding: "8px 12px",
+                          fontSize: "0.86rem",
+                          boxShadow: "0 1px 2px rgba(0,0,0,0.05)",
+                          wordBreak: "break-word",
+                        }}
+                      >
+                        {!isOutbound && msg.sender_name && (
+                          <div style={{ fontSize: "0.72rem", fontWeight: 700, color: "#0f766e", marginBottom: 2 }}>
+                            {msg.sender_name}
+                          </div>
+                        )}
+                        <div>{msg.body}</div>
+
+                        {msg.message_type === "interactive" && msg.metadata?.requestBody?.interactive?.action?.buttons && (
+                          <div style={{ display: "flex", gap: 4, marginTop: 6, flexWrap: "wrap" }}>
+                            {msg.metadata.requestBody.interactive.action.buttons.map((b: any) => (
+                              <span
+                                key={b.reply?.id}
+                                style={{
+                                  background: "#ffffff",
+                                  border: "1px solid #86efac",
+                                  color: "#166534",
+                                  fontSize: "0.74rem",
+                                  fontWeight: 700,
+                                  padding: "2px 8px",
+                                  borderRadius: "4px",
+                                }}
+                              >
+                                {b.reply?.title}
+                              </span>
+                            ))}
+                          </div>
+                        )}
+
+                        <div
+                          style={{
+                            fontSize: "0.68rem",
+                            color: isFailed ? "#ef4444" : "#64748b",
+                            marginTop: 4,
+                            display: "flex",
+                            alignItems: "center",
+                            justifyContent: "flex-end",
+                            gap: 3,
+                          }}
+                        >
+                          <span>{niceDate(msg.created_at)} {timeAt(msg.created_at)}</span>
+                          {isOutbound && !isFailed && (
+                            <span title={`Status: ${msg.status}`}>
+                              {msg.status === "read" || msg.status === "delivered" ? (
+                                <CheckCheck size={12} color="#0284c7" />
+                              ) : (
+                                <Check size={12} color="#64748b" />
+                              )}
+                            </span>
+                          )}
+                          {isFailed && <span>• Failed</span>}
+                        </div>
+                      </div>
+                      {isFailed && msg.error_message && (
+                        <div style={{ fontSize: "0.68rem", color: "#dc2626", marginTop: 2 }}>
+                          {msg.error_message}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })
+              )}
+            </div>
+
+            {/* Message Input & Send Bar */}
+            <div style={{ display: "flex", gap: "0.5rem", alignItems: "flex-end" }}>
+              <textarea
+                value={whatsAppDraft}
+                onChange={(e) => setWhatsAppDraft(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" && !e.shiftKey) {
+                    e.preventDefault();
+                    handleSendWhatsApp();
+                  }
+                }}
+                placeholder="Type your WhatsApp reply (Press Enter to send)..."
+                rows={2}
+                style={{
+                  flex: 1,
+                  padding: "8px 12px",
+                  borderRadius: "8px",
+                  border: "1px solid #cbd5e1",
+                  fontSize: "0.85rem",
+                  resize: "none",
+                  fontFamily: "inherit",
+                }}
+              />
+              <button
+                type="button"
+                className="btn primary"
+                disabled={sendingWhatsApp || !whatsAppDraft.trim()}
+                onClick={() => handleSendWhatsApp()}
+                style={{
+                  height: "46px",
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: 6,
+                  background: "#059669",
+                  borderColor: "#047857",
+                  fontWeight: 700,
+                }}
+              >
+                {sendingWhatsApp ? (
+                  <RefreshCw size={14} className="animate-spin" />
+                ) : (
+                  <Send size={14} />
+                )}
+                Send
+              </button>
             </div>
           </div>
         )}

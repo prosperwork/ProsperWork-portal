@@ -3,6 +3,7 @@ import {
   fetchMetaLead,
   getMetaConfig,
   ingestMetaLead,
+  ingestWhatsAppWebhook,
   verifyMetaSignature,
 } from "@/lib/meta/graph-client";
 import { provisioningClient } from "@/lib/supabase/server";
@@ -12,7 +13,7 @@ export const dynamic = "force-dynamic";
 
 /**
  * GET /api/integrations/meta/webhook
- * Handles Meta Webhook Verification Challenge
+ * Handles Meta Webhook Verification Challenge for both Page (Leads) & WhatsApp
  */
 export async function GET(request: NextRequest) {
   const { searchParams } = new URL(request.url);
@@ -37,7 +38,7 @@ export async function GET(request: NextRequest) {
 
 /**
  * POST /api/integrations/meta/webhook
- * Receives Meta "leadgen" Webhook Events and Ingests Leads in Real-Time
+ * Receives Meta "leadgen" Webhook Events AND WhatsApp Inbound Messages in Real-Time
  */
 export async function POST(request: NextRequest) {
   let rawBody = "";
@@ -65,6 +66,25 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "Invalid JSON payload" }, { status: 400 });
   }
 
+  // 3. Handle WhatsApp Business Account Events
+  if (payload.object === "whatsapp_business_account") {
+    try {
+      const waResult = await ingestWhatsAppWebhook(payload);
+      return NextResponse.json({
+        ok: true,
+        type: "whatsapp",
+        messages: waResult.processedMessages,
+        statuses: waResult.processedStatuses,
+      });
+    } catch (err) {
+      return NextResponse.json(
+        { ok: false, error: err instanceof Error ? err.message : "WhatsApp webhook error" },
+        { status: 500 }
+      );
+    }
+  }
+
+  // 4. Handle Meta Page (Lead Ads) Events
   if (payload.object !== "page" || !Array.isArray(payload.entry)) {
     return NextResponse.json({ ok: true, ignored: true });
   }
@@ -73,7 +93,6 @@ export async function POST(request: NextRequest) {
   let processedCount = 0;
   let errorCount = 0;
 
-  // 3. Process leadgen events
   for (const entry of payload.entry) {
     if (!Array.isArray(entry.changes)) continue;
 
@@ -129,3 +148,4 @@ export async function POST(request: NextRequest) {
     errors: errorCount,
   });
 }
+
