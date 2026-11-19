@@ -235,6 +235,53 @@ export default function LeadsView({
     }
   };
 
+  const [resettingChat, setResettingChat] = useState(false);
+
+  const handleResetChatForTesting = async () => {
+    if (!whatsAppLead || resettingChat) return;
+    const phone = resolveLeadPhone(whatsAppLead);
+    if (!phone) return;
+
+    if (
+      !confirm(
+        "Reset this conversation for testing? This will clear past chat history and reset the 24-hour window so you can test the incoming automated welcome reply again."
+      )
+    ) {
+      return;
+    }
+
+    setResettingChat(true);
+    try {
+      const res = await fetch("/api/integrations/whatsapp/messages", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "reset",
+          phone,
+          leadId: whatsAppLead.id,
+          resetLeadStage: true,
+        }),
+      });
+      const json = await res.json();
+      if (res.ok && json.success) {
+        setWhatsAppMessages([]);
+        setWhatsAppDraft("");
+        setWhatsAppLead((prev) => (prev ? { ...prev, status: "new" } : null));
+        notify(
+          "Conversation reset! You can now send 'Hello' from this phone to test the automated welcome reply again."
+        );
+        if (reload) await reload();
+      } else {
+        notify(`Reset error: ${json.error || "Failed to reset"}`);
+      }
+    } catch {
+      notify("Network error while resetting conversation.");
+    } finally {
+      setResettingChat(false);
+    }
+  };
+
+
 
   const statusButton = (label: string, onClick: () => void, tone = "ghost") => (
     <button type="button" className={`btn small ${tone}`} onClick={onClick}>
@@ -1633,24 +1680,50 @@ export default function LeadsView({
                 />
                 Meta WhatsApp Business Cloud API Active (Prosperwork music)
               </div>
-              <button
-                type="button"
-                className="btn small ghost"
-                style={{ fontSize: "0.75rem", padding: "2px 8px", color: "#065f46" }}
-                onClick={() => {
-                  const phone = resolveLeadPhone(whatsAppLead);
-                  if (phone) {
-                    openExternal(
-                      "whatsapp",
-                      phone,
-                      cleanName(whatsAppLead.parentName),
-                      `Hello ${cleanName(whatsAppLead.parentName)}, this is ProsperWork Music Academy regarding your music lessons inquiry.`
-                    );
-                  }
-                }}
-              >
-                Open in WhatsApp Web <ExternalLink size={11} style={{ marginLeft: 3 }} />
-              </button>
+              <div style={{ display: "flex", gap: "6px", alignItems: "center", flexWrap: "wrap" }}>
+                <button
+                  type="button"
+                  className="btn small"
+                  disabled={resettingChat}
+                  style={{
+                    fontSize: "0.74rem",
+                    padding: "3px 9px",
+                    background: "#fff1f2",
+                    borderColor: "#fecdd3",
+                    color: "#e11d48",
+                    fontWeight: 700,
+                    cursor: resettingChat ? "not-allowed" : "pointer",
+                    opacity: resettingChat ? 0.65 : 1,
+                    display: "inline-flex",
+                    alignItems: "center",
+                    gap: 4,
+                  }}
+                  onClick={handleResetChatForTesting}
+                  title="Clear past messages and reset 24h window so you can test automated welcome replies repeatedly"
+                >
+                  <RefreshCw size={11} className={resettingChat ? "spin" : ""} />
+                  {resettingChat ? "Resetting..." : "🔄 Reset Chat for Testing"}
+                </button>
+
+                <button
+                  type="button"
+                  className="btn small ghost"
+                  style={{ fontSize: "0.75rem", padding: "2px 8px", color: "#065f46" }}
+                  onClick={() => {
+                    const phone = resolveLeadPhone(whatsAppLead);
+                    if (phone) {
+                      openExternal(
+                        "whatsapp",
+                        phone,
+                        cleanName(whatsAppLead.parentName),
+                        `Hello ${cleanName(whatsAppLead.parentName)}, this is ProsperWork Music Academy regarding your music lessons inquiry.`
+                      );
+                    }
+                  }}
+                >
+                  Open in WhatsApp Web <ExternalLink size={11} style={{ marginLeft: 3 }} />
+                </button>
+              </div>
             </div>
 
             {/* Quick Action Automated Response Chips */}

@@ -78,6 +78,55 @@ export async function POST(request: NextRequest) {
     }
 
     const body = await request.json().catch(() => ({}));
+
+    // Handle Reset / Test Mode Action
+    if (body.action === "reset") {
+      const db = provisioningClient();
+      const rawPhone = body.phone?.trim();
+      const cleanPhone = rawPhone ? cleanWhatsAppPhoneNumber(rawPhone) : "";
+      const leadId = body.leadId?.trim();
+
+      if (leadId && cleanPhone) {
+        const lastDigits = cleanPhone.slice(-9);
+        await db
+          .from("pw_whatsapp_messages")
+          .delete()
+          .or(`lead_id.eq.${leadId},phone_number.eq.${cleanPhone},phone_number.ilike.%${lastDigits}%`);
+      } else if (cleanPhone) {
+        const lastDigits = cleanPhone.slice(-9);
+        await db
+          .from("pw_whatsapp_messages")
+          .delete()
+          .or(`phone_number.eq.${cleanPhone},phone_number.ilike.%${lastDigits}%`);
+      } else if (leadId) {
+        await db.from("pw_whatsapp_messages").delete().eq("lead_id", leadId);
+      }
+
+      // Reset lead status back to "new" to allow full end-to-end testing
+      if (leadId && body.resetLeadStage !== false) {
+        const { data: leadRow } = await db
+          .from("pw_leads")
+          .select("payload")
+          .eq("id", leadId)
+          .maybeSingle();
+
+        if (leadRow?.payload) {
+          const p = leadRow.payload as any;
+          const updated = {
+            ...p,
+            status: "new",
+            firstResponseAt: null,
+          };
+          await db
+            .from("pw_leads")
+            .update({ payload: updated, updated_at: new Date().toISOString() })
+            .eq("id", leadId);
+        }
+      }
+
+      return NextResponse.json({ success: true, reset: true });
+    }
+
     const { leadId, phone, message, buttons } = body;
 
     if (!phone || !message?.trim()) {
