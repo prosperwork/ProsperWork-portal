@@ -315,15 +315,17 @@ export default function OpsLeadsView({
                               const isFb = plat === "fb" || plat === "facebook" || src.includes("facebook") || src.includes("meta");
                               if (isIg) {
                                 return (
-                                  <span style={{ display: "inline-flex", alignItems: "center", gap: 3, background: "#fdf2f8", color: "#db2777", fontWeight: 700, fontSize: "0.68rem", padding: "1px 6px", borderRadius: "4px", border: "1px solid #fbcfe8", marginTop: 2, width: "fit-content" }}>
-                                    ◎ Instagram Lead
+                                  <span style={{ display: "inline-flex", alignItems: "center", gap: 4, background: "#fdf2f8", color: "#db2777", fontWeight: 700, fontSize: "0.68rem", padding: "1px 6px", borderRadius: "4px", border: "1px solid #fbcfe8", marginTop: 2, width: "fit-content" }}>
+                                    <img src="/icons/instagram.svg" alt="Instagram" width={11} height={11} style={{ borderRadius: "2px", display: "block" }} />
+                                    Instagram Lead
                                   </span>
                                 );
                               }
                               if (isFb) {
                                 return (
-                                  <span style={{ display: "inline-flex", alignItems: "center", gap: 3, background: "#ebf5ff", color: "#1877f2", fontWeight: 700, fontSize: "0.68rem", padding: "1px 6px", borderRadius: "4px", border: "1px solid #bfdbfe", marginTop: 2, width: "fit-content" }}>
-                                    f Facebook Lead
+                                  <span style={{ display: "inline-flex", alignItems: "center", gap: 4, background: "#ebf5ff", color: "#1877f2", fontWeight: 700, fontSize: "0.68rem", padding: "1px 6px", borderRadius: "4px", border: "1px solid #bfdbfe", marginTop: 2, width: "fit-content" }}>
+                                    <img src="/icons/facebook.svg" alt="Facebook" width={11} height={11} style={{ display: "block" }} />
+                                    Facebook Lead
                                   </span>
                                 );
                               }
