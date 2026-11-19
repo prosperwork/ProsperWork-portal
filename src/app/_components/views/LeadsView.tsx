@@ -685,8 +685,7 @@ export default function LeadsView({
                 <th>Channel & Intent</th>
                 <th>Trial & Details</th>
                 <th>Owner & Contact</th>
-                <th>Status</th>
-                <th style={{ textAlign: "right" }}>Next Step</th>
+                <th style={{ textAlign: "center", width: "180px" }}>Pipeline Stage</th>
               </tr>
             </thead>
             <tbody>
@@ -961,8 +960,8 @@ export default function LeadsView({
                       </div>
                     </td>
 
-                    <td style={{ position: "relative" }}>
-                      {/* Move Stage Dropdown matching user workflow & screenshot */}
+                    <td style={{ textAlign: "center", position: "relative" }}>
+                      {/* Move Stage Dropdown - Always displays Current Status */}
                       <div style={{ position: "relative", display: "inline-block" }}>
                         <button
                           type="button"
@@ -973,32 +972,32 @@ export default function LeadsView({
                           style={{
                             display: "inline-flex",
                             alignItems: "center",
-                            gap: "6px",
-                            padding: "4px 10px",
+                            gap: "7px",
+                            padding: "6px 12px",
                             borderRadius: "9999px",
-                            fontSize: "0.78rem",
-                            fontWeight: 600,
+                            fontSize: "0.80rem",
+                            fontWeight: 700,
                             background: getStageDisplay(lead.status).pillColor.bg,
                             color: getStageDisplay(lead.status).pillColor.text,
-                            border: `1px solid ${getStageDisplay(lead.status).pillColor.border}`,
+                            border: `1.5px solid ${getStageDisplay(lead.status).pillColor.border}`,
                             cursor: "pointer",
                             whiteSpace: "nowrap",
                             transition: "all 0.15s ease",
-                            boxShadow: "0 1px 2px rgba(0,0,0,0.03)",
+                            boxShadow: "0 1px 3px rgba(0,0,0,0.04)",
                           }}
-                          title="Click to move pipeline stage"
+                          title={`Current Stage: ${getStageDisplay(lead.status).label} (Click to change)`}
                         >
                           <span
                             style={{
-                              width: "6px",
-                              height: "6px",
+                              width: "7px",
+                              height: "7px",
                               borderRadius: "50%",
                               backgroundColor: getStageDisplay(lead.status).pillColor.dot,
                               display: "inline-block",
                             }}
                           />
                           <span>{getStageDisplay(lead.status).label}</span>
-                          <ChevronDown size={12} style={{ opacity: 0.7 }} />
+                          <ChevronDown size={13} style={{ opacity: 0.75 }} />
                         </button>
 
                         {/* Move Stage Popover Dropdown matching image */}
@@ -1022,14 +1021,14 @@ export default function LeadsView({
                               style={{
                                 position: "absolute",
                                 top: "calc(100% + 4px)",
-                                left: 0,
+                                right: 0,
                                 zIndex: 999,
                                 background: "#ffffff",
                                 borderRadius: "14px",
                                 boxShadow:
                                   "0 10px 25px -5px rgba(0, 0, 0, 0.15), 0 8px 10px -6px rgba(0, 0, 0, 0.08), 0 0 0 1px rgba(0, 0, 0, 0.08)",
                                 padding: "8px 6px",
-                                minWidth: "190px",
+                                minWidth: "195px",
                                 textAlign: "left",
                               }}
                               onClick={(e) => e.stopPropagation()}
@@ -1060,10 +1059,10 @@ export default function LeadsView({
                                         display: "flex",
                                         alignItems: "center",
                                         justifyContent: "space-between",
-                                        padding: "7px 10px",
+                                        padding: "8px 10px",
                                         borderRadius: "8px",
                                         fontSize: "0.82rem",
-                                        fontWeight: isSelected ? 600 : 500,
+                                        fontWeight: isSelected ? 700 : 500,
                                         background: isSelected ? "#eef2ff" : "transparent",
                                         color: isSelected ? "#4338ca" : "#334155",
                                         border: "none",
@@ -1088,7 +1087,7 @@ export default function LeadsView({
                                       <span>{s.label}</span>
                                       {isSelected && (
                                         <Check
-                                          size={14}
+                                          size={15}
                                           style={{ color: "#4f46e5", strokeWidth: 2.5 }}
                                         />
                                       )}
@@ -1098,75 +1097,6 @@ export default function LeadsView({
                               </div>
                             </div>
                           </>
-                        )}
-                      </div>
-                    </td>
-
-                    <td style={{ textAlign: "right" }}>
-                      <div className="row-actions" style={{ justifyContent: "flex-end" }}>
-                        {lead.status === "new" && (
-                          <button
-                            type="button"
-                            className="btn small primary"
-                            onClick={() => setLeadStatus(lead, "contacted")}
-                          >
-                            Contacted
-                          </button>
-                        )}
-                        {(lead.status === "called_no_answer" || lead.status === "callback") && (
-                          <button
-                            type="button"
-                            className="btn small secondary"
-                            onClick={() => setLeadStatus(lead, "trial_booked")}
-                          >
-                            Book Trial
-                          </button>
-                        )}
-                        {lead.status === "contacted" && (
-                          <button
-                            type="button"
-                            className="btn small secondary"
-                            onClick={() => setLeadStatus(lead, "trial_booked")}
-                          >
-                            Book Trial
-                          </button>
-                        )}
-                        {(lead.status === "trial_booked" ||
-                          lead.status === "trial_requested" ||
-                          lead.status === "trial_verified") && (
-                          <button
-                            type="button"
-                            className="btn small primary"
-                            onClick={() => setLeadStatus(lead, "converted")}
-                          >
-                            Convert
-                          </button>
-                        )}
-                        {lead.status === "converted" &&
-                          (financeAccess ? (
-                            <button
-                              type="button"
-                              className="btn small primary"
-                              onClick={() => {
-                                changeView("finance");
-                                notify("Add the first payment record in Finance.");
-                              }}
-                            >
-                              First payment
-                            </button>
-                          ) : (
-                            <span className="table-small" style={{ color: "#059669", fontWeight: 600 }}>
-                              Active Student
-                            </span>
-                          ))}
-                        {(lead.status === "lost" || lead.status === "nursery" || lead.status === "winback") && (
-                          <button
-                            type="button"
-                            className="btn small ghost"
-                            onClick={() => setLeadStatus(lead, "contacted")}
-                          >
-                            Re-engage
-                          </button>
                         )}
                       </div>
                     </td>
