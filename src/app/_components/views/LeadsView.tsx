@@ -191,14 +191,17 @@ export default function LeadsView({
   // Catalog Instruments
   const [catalogInstruments, setCatalogInstruments] = useState<string[]>([
     "Piano",
-    "Violin",
-    "Guitar",
-    "Voice / Singing",
-    "Drums",
-    "Saxophone",
     "Keyboard",
+    "Violin",
+    "Acoustic Guitar",
+    "Electric Guitar",
+    "Bass Guitar",
+    "Drums",
+    "Voice / Singing",
+    "Saxophone",
+    "Trumpet",
     "Flute",
-    "Music Theory",
+    "Music Theory & Exam Prep",
   ]);
 
   useEffect(() => {
@@ -207,7 +210,7 @@ export default function LeadsView({
       .then((json) => {
         if (Array.isArray(json?.items) && json.items.length > 0) {
           const list = json.items
-            .filter((i: any) => (!i.catalog || i.catalog === "instruments") && i.enabled !== false)
+            .filter((i: any) => i.catalog === "instruments" && i.enabled !== false)
             .sort((a: any, b: any) => (a.sort_order ?? 100) - (b.sort_order ?? 100))
             .map((i: any) => i.label || i.name || i.code)
             .filter(Boolean);
@@ -261,11 +264,11 @@ export default function LeadsView({
       } else {
         notify(
           json.error ||
-            "Google Calendar API failed. Please create a meeting via meet.google.com/new or use Inbuilt Video Studio."
+            "Google Calendar API failed to generate a link. Please try again or use Inbuilt Video Studio."
         );
       }
     } catch {
-      notify("Failed to connect to Google API. Use 'Create on Google Meet' or Inbuilt Studio.");
+      notify("Failed to connect to Google API. Please try again or use Inbuilt Studio.");
     } finally {
       setGeneratingMeetApi(false);
     }
@@ -2932,55 +2935,32 @@ export default function LeadsView({
                     }}
                   />
                   {trialForm.classroomProvider === "google_meet" && (
-                    <div style={{ display: "flex", gap: 5, flexShrink: 0 }}>
-                      <button
-                        type="button"
-                        disabled={generatingMeetApi}
-                        className="btn small"
-                        style={{
-                          padding: "7px 11px",
-                          fontSize: "0.75rem",
-                          display: "inline-flex",
-                          alignItems: "center",
-                          gap: 4,
-                          background: "#059669",
-                          color: "#ffffff",
-                          whiteSpace: "nowrap",
-                        }}
-                        onClick={handleGenerateMeetViaApi}
-                        title="Call Google Calendar API to generate a Google Meet room"
-                      >
-                        <RotateCcw size={12} className={generatingMeetApi ? "animate-spin" : ""} />
-                        {generatingMeetApi ? "Connecting..." : "Generate via API"}
-                      </button>
-                      <a
-                        href="https://meet.google.com/new"
-                        target="_blank"
-                        rel="noreferrer"
-                        className="btn small ghost"
-                        style={{
-                          padding: "7px 11px",
-                          fontSize: "0.75rem",
-                          display: "inline-flex",
-                          alignItems: "center",
-                          gap: 4,
-                          color: "#1a73e8",
-                          borderColor: "#93c5fd",
-                          background: "#eff6ff",
-                          textDecoration: "none",
-                          whiteSpace: "nowrap",
-                        }}
-                        title="Open Google Meet in a new tab to create an instant active room"
-                      >
-                        <ExternalLink size={12} />
-                        meet.google.com/new ↗
-                      </a>
-                    </div>
+                    <button
+                      type="button"
+                      disabled={generatingMeetApi}
+                      className="btn small"
+                      style={{
+                        padding: "7px 12px",
+                        fontSize: "0.75rem",
+                        display: "inline-flex",
+                        alignItems: "center",
+                        gap: 4,
+                        background: "#059669",
+                        color: "#ffffff",
+                        whiteSpace: "nowrap",
+                        flexShrink: 0,
+                      }}
+                      onClick={handleGenerateMeetViaApi}
+                      title="Generate a fresh Google Meet link via official Google Calendar API"
+                    >
+                      <RotateCcw size={12} className={generatingMeetApi ? "animate-spin" : ""} />
+                      {generatingMeetApi ? "Generating..." : "Regenerate Link"}
+                    </button>
                   )}
                 </div>
                 <div style={{ fontSize: "0.70rem", color: "#64748b", marginTop: 4 }}>
                   {trialForm.classroomProvider === "google_meet"
-                    ? "Google Meet requires an active room generated on Google's servers. Click 'Create on Google Meet' to get a live link, then paste it here."
+                    ? "Real Google Meet room generated automatically via official Google Calendar API."
                     : "In-App Live Video Studio is hosted directly inside ProsperWork. Zero login or Google account required for parent or teacher."}
                 </div>
               </div>

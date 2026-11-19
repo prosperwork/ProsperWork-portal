@@ -6,6 +6,7 @@ import {
   catalogActionSchema,
   fetchCatalogItems,
   fetchPublicAcademyConfig,
+  type CatalogKey,
 } from "@/lib/academy/catalogs";
 
 export const dynamic = "force-dynamic";
@@ -17,10 +18,10 @@ export async function GET(request: Request) {
       return NextResponse.json({ error: "Active academy session required." }, { status: 401 });
     }
     const { searchParams } = new URL(request.url);
-    const catalogFilter = searchParams.get("catalog");
+    const catalogFilter = searchParams.get("catalog") as CatalogKey | null;
 
     const [items, config] = await Promise.all([
-      fetchCatalogItems(client),
+      fetchCatalogItems(client, (catalogFilter as CatalogKey) || undefined),
       fetchPublicAcademyConfig(client),
     ]);
 
