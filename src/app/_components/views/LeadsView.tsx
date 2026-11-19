@@ -127,13 +127,6 @@ const COMMON_TIMEZONES = [
   { value: "Australia/Sydney", label: "Australian Eastern · Sydney (GMT+11)" },
 ];
 
-function generateGoogleMeetLink() {
-  const chars = "abcdefghijklmnopqrstuvwxyz";
-  const part = (len: number) =>
-    Array.from({ length: len }, () => chars[Math.floor(Math.random() * chars.length)]).join("");
-  return `https://meet.google.com/${part(3)}-${part(4)}-${part(3)}`;
-}
-
 export default function LeadsView({
   data,
   role,
@@ -265,7 +258,7 @@ export default function LeadsView({
       teacherName: (lead as any).trialTeacher || lead.teacherName || defaultTeacher,
       timezone: (lead as any).trialTimezone || defaultTz,
       classroomProvider: existingProvider,
-      meetUrl: existingMeetUrl || (existingProvider === "google_meet" ? generateGoogleMeetLink() : `${origin}/classroom?room=trial_${cleanId}`),
+      meetUrl: existingMeetUrl || `${origin}/classroom?room=trial_${cleanId}`,
       notes: "Free 30-minute trial assessment",
       sendWhatsAppConfirmation: Boolean(phone),
     });
@@ -281,7 +274,7 @@ export default function LeadsView({
       setTrialForm((prev) => ({
         ...prev,
         classroomProvider: "google_meet",
-        meetUrl: prev.meetUrl && prev.meetUrl.includes("meet.google.com") ? prev.meetUrl : generateGoogleMeetLink(),
+        meetUrl: prev.meetUrl && prev.meetUrl.includes("meet.google.com") ? prev.meetUrl : "",
       }));
     } else {
       setTrialForm((prev) => ({
@@ -305,6 +298,10 @@ export default function LeadsView({
     }
     if (!trialForm.teacherName) {
       notify("Please select an instructor for the assessment.");
+      return;
+    }
+    if (trialForm.classroomProvider === "google_meet" && (!trialForm.meetUrl || !trialForm.meetUrl.includes("meet.google.com"))) {
+      notify("Please paste an active Google Meet room link or select Inbuilt Video Studio.");
       return;
     }
 
@@ -2861,10 +2858,10 @@ export default function LeadsView({
                   </div>
                   <div>
                     <div style={{ fontSize: "0.84rem", fontWeight: 700, color: "#064e3b" }}>
-                      Auto-generate Meet
+                      Google Meet
                     </div>
                     <div style={{ fontSize: "0.71rem", color: "#64748b" }}>
-                      Creates Google Meet link
+                      Paste or create active Meet
                     </div>
                   </div>
                 </div>
@@ -2878,7 +2875,11 @@ export default function LeadsView({
                     required
                     value={trialForm.meetUrl}
                     onChange={(e) => setTrialForm({ ...trialForm, meetUrl: e.target.value })}
-                    placeholder="Meeting URL"
+                    placeholder={
+                      trialForm.classroomProvider === "google_meet"
+                        ? "Paste Google Meet link (e.g. https://meet.google.com/xxx-yyyy-zzz)"
+                        : "In-App Studio URL"
+                    }
                     style={{
                       flex: 1,
                       padding: "8px 11px",
@@ -2890,28 +2891,33 @@ export default function LeadsView({
                     }}
                   />
                   {trialForm.classroomProvider === "google_meet" && (
-                    <button
-                      type="button"
-                      className="btn small ghost"
+                    <a
+                      href="https://meet.google.com/new"
+                      target="_blank"
+                      rel="noreferrer"
+                      className="btn small"
                       style={{
-                        padding: "7px 10px",
+                        padding: "7px 11px",
                         fontSize: "0.75rem",
                         display: "inline-flex",
                         alignItems: "center",
                         gap: 4,
+                        background: "#1a73e8",
+                        color: "#ffffff",
+                        textDecoration: "none",
+                        whiteSpace: "nowrap",
                       }}
-                      onClick={() =>
-                        setTrialForm((prev) => ({
-                          ...prev,
-                          meetUrl: generateGoogleMeetLink(),
-                        }))
-                      }
-                      title="Generate a new Google Meet link"
+                      title="Open Google Meet in a new tab to create an instant active room"
                     >
-                      <RotateCcw size={12} />
-                      New Link
-                    </button>
+                      <ExternalLink size={12} />
+                      Create on Google Meet ↗
+                    </a>
                   )}
+                </div>
+                <div style={{ fontSize: "0.70rem", color: "#64748b", marginTop: 4 }}>
+                  {trialForm.classroomProvider === "google_meet"
+                    ? "Google Meet requires an active room generated on Google's servers. Click 'Create on Google Meet' to get a live link, then paste it here."
+                    : "In-App Live Video Studio is hosted directly inside ProsperWork. Zero login or Google account required for parent or teacher."}
                 </div>
               </div>
             </div>
