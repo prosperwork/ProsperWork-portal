@@ -900,7 +900,7 @@ export default function LeadsView({
               type="button"
               className={`btn small ${filterMode === "fb" ? "primary" : "ghost"}`}
               style={{
-                padding: "3px 9px",
+                padding: "3px 8px",
                 fontSize: "0.74rem",
                 borderRadius: "6px",
                 display: "inline-flex",
@@ -908,15 +908,16 @@ export default function LeadsView({
                 gap: 5,
               }}
               onClick={() => setFilterMode("fb")}
+              title="Facebook Leads"
             >
-              <img src="/icons/facebook.svg" alt="Facebook" width={13} height={13} style={{ display: "block" }} />
-              Facebook ({fbCount})
+              <img src="/icons/facebook.svg" alt="Facebook" width={14} height={14} style={{ display: "block" }} />
+              {fbCount}
             </button>
             <button
               type="button"
               className={`btn small ${filterMode === "ig" ? "primary" : "ghost"}`}
               style={{
-                padding: "3px 9px",
+                padding: "3px 8px",
                 fontSize: "0.74rem",
                 borderRadius: "6px",
                 display: "inline-flex",
@@ -924,9 +925,10 @@ export default function LeadsView({
                 gap: 5,
               }}
               onClick={() => setFilterMode("ig")}
+              title="Instagram Leads"
             >
-              <img src="/icons/instagram.svg" alt="Instagram" width={13} height={13} style={{ display: "block", borderRadius: "3px" }} />
-              Instagram ({igCount})
+              <img src="/icons/instagram.svg" alt="Instagram" width={14} height={14} style={{ display: "block", borderRadius: "3px" }} />
+              {igCount}
             </button>
           </div>
         </div>
@@ -1044,15 +1046,13 @@ export default function LeadsView({
                         <div style={{ display: "flex", gap: 4, alignItems: "center", flexWrap: "wrap" }}>
                           {plat === "fb" && (
                             <span
+                              title="Facebook Lead"
                               style={{
                                 display: "inline-flex",
                                 alignItems: "center",
-                                gap: 4,
+                                justifyContent: "center",
                                 background: "#ebf5ff",
-                                color: "#1877f2",
-                                fontWeight: 700,
-                                fontSize: "0.72rem",
-                                padding: "2px 7px",
+                                padding: "2px 5px",
                                 borderRadius: "4px",
                                 border: "1px solid #bfdbfe",
                               }}
@@ -1060,24 +1060,21 @@ export default function LeadsView({
                               <img
                                 src="/icons/facebook.svg"
                                 alt="Facebook"
-                                width={13}
-                                height={13}
+                                width={14}
+                                height={14}
                                 style={{ display: "block" }}
                               />
-                              Facebook
                             </span>
                           )}
                           {plat === "ig" && (
                             <span
+                              title="Instagram Lead"
                               style={{
                                 display: "inline-flex",
                                 alignItems: "center",
-                                gap: 4,
+                                justifyContent: "center",
                                 background: "#fdf2f8",
-                                color: "#db2777",
-                                fontWeight: 700,
-                                fontSize: "0.72rem",
-                                padding: "2px 7px",
+                                padding: "2px 5px",
                                 borderRadius: "4px",
                                 border: "1px solid #fbcfe8",
                               }}
@@ -1085,11 +1082,10 @@ export default function LeadsView({
                               <img
                                 src="/icons/instagram.svg"
                                 alt="Instagram"
-                                width={13}
-                                height={13}
+                                width={14}
+                                height={14}
                                 style={{ display: "block", borderRadius: "3px" }}
                               />
-                              Instagram
                             </span>
                           )}
                           {plat === "other" && (
@@ -1568,16 +1564,21 @@ export default function LeadsView({
                     Meta Lead Ads Attribution
                   </span>
                   <span
+                    title={
+                      selectedLead.platform === "ig" || selectedLead.metaPlatform === "ig"
+                        ? "Instagram Lead Ad"
+                        : "Facebook Lead Ad"
+                    }
                     style={{
                       background: selectedLead.platform === "ig" || selectedLead.metaPlatform === "ig" ? "#db2777" : "#1877f2",
                       color: "#fff",
                       fontSize: "0.72rem",
                       fontWeight: 700,
-                      padding: "3px 9px",
-                      borderRadius: "12px",
+                      padding: "4px 8px",
+                      borderRadius: "8px",
                       display: "inline-flex",
                       alignItems: "center",
-                      gap: 5,
+                      justifyContent: "center",
                     }}
                   >
                     <img
@@ -1587,13 +1588,10 @@ export default function LeadsView({
                           : "/icons/facebook.svg"
                       }
                       alt="Platform"
-                      width={13}
-                      height={13}
+                      width={14}
+                      height={14}
                       style={{ display: "block", borderRadius: "2px" }}
                     />
-                    {selectedLead.platform === "ig" || selectedLead.metaPlatform === "ig"
-                      ? "Instagram Lead Ad"
-                      : "Facebook Lead Ad"}
                   </span>
                 </div>
 
