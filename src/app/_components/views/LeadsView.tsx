@@ -3,6 +3,7 @@
 import { useEffect, useState, type ReactNode } from "react";
 import {
   Activity,
+  ArrowUpDown,
   ArrowUpRight,
   Bot,
   Calendar,
@@ -38,6 +39,7 @@ import ProfileAvatar from "../ProfileAvatar";
 import { PortalModal } from "../PortalModal";
 import {
   Empty,
+  fullDate,
   niceDate,
   Pill,
   SectionTitle,
@@ -701,6 +703,125 @@ export default function LeadsView({
     return clean.charAt(0).toUpperCase() + clean.slice(1);
   };
 
+  // Top Stream Tab: Pipeline vs Trial Assessments Schedule
+  const [activeStreamTab, setActiveStreamTab] = useState<"pipeline" | "trial_schedule">("pipeline");
+  const [trialScope, setTrialScope] = useState<"upcoming" | "date" | "unscheduled" | "all">("upcoming");
+  const [trialSortOrder, setTrialSortOrder] = useState<"earliest" | "latest">("earliest");
+  const ownTimezone =
+    typeof Intl !== "undefined"
+      ? Intl.DateTimeFormat().resolvedOptions().timeZone || "Africa/Lagos"
+      : "Africa/Lagos";
+  const [trialSelectedDate, setTrialSelectedDate] = useState<string>(() => {
+    try {
+      return new Intl.DateTimeFormat("en-CA", {
+        timeZone:
+          typeof Intl !== "undefined"
+            ? Intl.DateTimeFormat().resolvedOptions().timeZone || "Africa/Lagos"
+            : "Africa/Lagos",
+        year: "numeric",
+        month: "2-digit",
+        day: "2-digit",
+      }).format(new Date());
+    } catch {
+      return new Date().toISOString().slice(0, 10);
+    }
+  });
+
+  const formatRelativeTrialTime = (isoString: string): string => {
+    if (!isoString) return "Date TBD";
+    const date = new Date(isoString);
+    if (isNaN(date.getTime())) return "Date TBD";
+    const now = new Date();
+    const diffMs = date.getTime() - now.getTime();
+    const diffHours = Math.round(diffMs / (1000 * 60 * 60));
+    const diffDays = Math.round(diffMs / (1000 * 60 * 60 * 24));
+
+    if (diffHours >= -2 && diffHours <= 2) return "Happening Today";
+    if (diffHours > 2 && diffHours < 24 && date.toDateString() === now.toDateString()) return "Today";
+    const tomorrow = new Date(now);
+    tomorrow.setDate(tomorrow.getDate() + 1);
+    if (date.toDateString() === tomorrow.toDateString()) return "Tomorrow";
+    if (diffDays > 1 && diffDays <= 7) return `In ${diffDays} days`;
+    if (diffDays > 7) return `In ${Math.round(diffDays / 7)} weeks`;
+    if (diffDays < 0) return "Past Assessment";
+    return "Upcoming";
+  };
+
+  const allBookedTrials = (data.leads || []).filter(
+    (l) => l.status === "trial_booked" || Boolean(l.trialScheduledAt)
+  );
+
+  const upcomingTrials = allBookedTrials
+    .filter((t) => {
+      if (!t.trialScheduledAt) return false;
+      const time = new Date(t.trialScheduledAt).getTime();
+      return !isNaN(time) && time >= Date.now() - 2 * 3600 * 1000;
+    })
+    .sort((a, b) => {
+      const aTime = new Date(a.trialScheduledAt || 0).getTime();
+      const bTime = new Date(b.trialScheduledAt || 0).getTime();
+      return trialSortOrder === "earliest" ? aTime - bTime : bTime - aTime;
+    });
+
+  const pastTrials = allBookedTrials
+    .filter((t) => {
+      if (!t.trialScheduledAt) return false;
+      const time = new Date(t.trialScheduledAt).getTime();
+      return !isNaN(time) && time < Date.now() - 2 * 3600 * 1000;
+    })
+    .sort((a, b) => {
+      const aTime = new Date(a.trialScheduledAt || 0).getTime();
+      const bTime = new Date(b.trialScheduledAt || 0).getTime();
+      return bTime - aTime;
+    });
+
+  const unscheduledTrials = allBookedTrials.filter((t) => !t.trialScheduledAt);
+
+  const trialsForSelectedDate = allBookedTrials
+    .filter((t) => {
+      if (!t.trialScheduledAt) return false;
+      try {
+        const d = new Intl.DateTimeFormat("en-CA", {
+          timeZone: ownTimezone,
+          year: "numeric",
+          month: "2-digit",
+          day: "2-digit",
+        }).format(new Date(t.trialScheduledAt));
+        return d === trialSelectedDate;
+      } catch {
+        return false;
+      }
+    })
+    .sort((a, b) => {
+      const aTime = new Date(a.trialScheduledAt || 0).getTime();
+      const bTime = new Date(b.trialScheduledAt || 0).getTime();
+      return aTime - bTime;
+    });
+
+  const nextUpcomingTrial = [...upcomingTrials].sort((a, b) => {
+    const aTime = new Date(a.trialScheduledAt || 0).getTime();
+    const bTime = new Date(b.trialScheduledAt || 0).getTime();
+    return aTime - bTime;
+  })[0] || null;
+
+  const isNextGoogleMeet = nextUpcomingTrial?.trialClassroomProvider === "google_meet";
+  const nextUpcomingMeetUrl = nextUpcomingTrial
+    ? nextUpcomingTrial.trialMeetUrl ||
+      (isNextGoogleMeet
+        ? ""
+        : `${typeof window !== "undefined" ? window.location.origin : ""}/classroom?room=trial_${nextUpcomingTrial.id.replace(/[^a-zA-Z0-9_-]/g, "_")}`)
+    : "";
+  const nextUpcomingPhone = nextUpcomingTrial ? resolveLeadPhone(nextUpcomingTrial) : "";
+
+  const displayedTrials =
+    trialScope === "upcoming"
+      ? upcomingTrials
+      : trialScope === "date"
+      ? trialsForSelectedDate
+      : trialScope === "unscheduled"
+      ? unscheduledTrials
+      : [...upcomingTrials, ...pastTrials, ...unscheduledTrials];
+
   const searchedLeads = data.leads.filter((lead) => {
     const phone = resolveLeadPhone(lead);
     const displayName = cleanName(lead.parentName);
@@ -982,7 +1103,544 @@ export default function LeadsView({
 
   return (
     <>
-      <div className="toolbar" style={{ flexWrap: "wrap", gap: "0.5rem" }}>
+      {/* Top Stream Switcher: Admissions & Pipeline vs Trial Assessments Schedule */}
+      <div style={{ display: "flex", gap: "0.5rem", marginBottom: "1rem", flexWrap: "wrap", alignItems: "center" }}>
+        <button
+          type="button"
+          className={`btn small ${activeStreamTab === "pipeline" ? "" : "ghost"}`}
+          style={{
+            display: "inline-flex",
+            alignItems: "center",
+            gap: 6,
+            fontWeight: 700,
+            fontSize: "0.82rem",
+            padding: "6px 14px",
+            borderRadius: "6px",
+          }}
+          onClick={() => setActiveStreamTab("pipeline")}
+        >
+          <Users size={14} />
+          Admissions & Pipeline ({data.leads?.length || 0})
+        </button>
+
+        <button
+          type="button"
+          className={`btn small ${activeStreamTab === "trial_schedule" ? "" : "ghost"}`}
+          style={{
+            display: "inline-flex",
+            alignItems: "center",
+            gap: 6,
+            fontWeight: 700,
+            fontSize: "0.82rem",
+            padding: "6px 14px",
+            borderRadius: "6px",
+            borderColor: activeStreamTab === "trial_schedule" ? "#059669" : "#bbf7d0",
+            background: activeStreamTab === "trial_schedule" ? "#059669" : "#f0fdf4",
+            color: activeStreamTab === "trial_schedule" ? "#ffffff" : "#166534",
+          }}
+          onClick={() => setActiveStreamTab("trial_schedule")}
+        >
+          <CalendarCheck2 size={14} />
+          Trial Assessments Schedule ({upcomingTrials.length} upcoming{allBookedTrials.length > upcomingTrials.length ? ` · ${allBookedTrials.length} total` : ""})
+        </button>
+      </div>
+
+      {activeStreamTab === "trial_schedule" ? (
+        <section className="card section-card">
+          <div
+            style={{
+              display: "flex",
+              justifyContent: "space-between",
+              alignItems: "center",
+              flexWrap: "wrap",
+              gap: "0.75rem",
+              marginBottom: "1rem",
+            }}
+          >
+            <SectionTitle
+              title="Booked Trial Assessments"
+              detail="Prospective 1-on-1 free trial lessons booked with candidates. Managed directly within Admissions."
+            />
+            <div style={{ display: "flex", gap: "0.45rem", alignItems: "center", flexWrap: "wrap" }}>
+              <button
+                type="button"
+                className={`btn small ${trialScope === "upcoming" ? "primary" : "ghost"}`}
+                style={{ fontSize: "0.75rem", padding: "4px 10px", display: "inline-flex", alignItems: "center", gap: 5 }}
+                onClick={() => setTrialScope("upcoming")}
+              >
+                <CalendarCheck2 size={12} />
+                Upcoming ({upcomingTrials.length})
+              </button>
+              <div style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
+                <button
+                  type="button"
+                  className={`btn small ${trialScope === "date" ? "primary" : "ghost"}`}
+                  style={{ fontSize: "0.75rem", padding: "4px 10px", display: "inline-flex", alignItems: "center", gap: 5 }}
+                  onClick={() => setTrialScope("date")}
+                >
+                  <Calendar size={12} />
+                  Date ({trialsForSelectedDate.length})
+                </button>
+                {trialScope === "date" && (
+                  <input
+                    type="date"
+                    value={trialSelectedDate}
+                    onChange={(e) => setTrialSelectedDate(e.target.value)}
+                    style={{
+                      fontSize: "0.75rem",
+                      padding: "2px 6px",
+                      borderRadius: "6px",
+                      border: "1px solid #cbd5e1",
+                    }}
+                  />
+                )}
+              </div>
+              {unscheduledTrials.length > 0 && (
+                <button
+                  type="button"
+                  className={`btn small ${trialScope === "unscheduled" ? "primary" : "ghost"}`}
+                  style={{
+                    fontSize: "0.75rem",
+                    padding: "4px 10px",
+                    display: "inline-flex",
+                    alignItems: "center",
+                    gap: 5,
+                    borderColor: trialScope === "unscheduled" ? undefined : "#fcd34d",
+                    color: trialScope === "unscheduled" ? undefined : "#b45309",
+                    background: trialScope === "unscheduled" ? undefined : "#fffbeb",
+                  }}
+                  onClick={() => setTrialScope("unscheduled")}
+                >
+                  <Clock3 size={12} />
+                  Needs Date ({unscheduledTrials.length})
+                </button>
+              )}
+              <button
+                type="button"
+                className={`btn small ${trialScope === "all" ? "primary" : "ghost"}`}
+                style={{ fontSize: "0.75rem", padding: "4px 10px" }}
+                onClick={() => setTrialScope("all")}
+              >
+                All Booked ({allBookedTrials.length})
+              </button>
+
+              {(trialScope === "upcoming" || trialScope === "all") && upcomingTrials.length > 1 && (
+                <button
+                  type="button"
+                  className="btn small ghost"
+                  style={{
+                    fontSize: "0.74rem",
+                    padding: "4px 9px",
+                    display: "inline-flex",
+                    alignItems: "center",
+                    gap: 4,
+                    color: "#475569",
+                  }}
+                  onClick={() => setTrialSortOrder((prev) => (prev === "earliest" ? "latest" : "earliest"))}
+                  title={
+                    trialSortOrder === "earliest"
+                      ? "Currently showing nearest upcoming first. Click to show latest date first."
+                      : "Currently showing latest date first. Click to show nearest upcoming first."
+                  }
+                >
+                  <ArrowUpDown size={12} />
+                  <span>{trialSortOrder === "earliest" ? "Next Upcoming First" : "Latest Date First"}</span>
+                </button>
+              )}
+            </div>
+          </div>
+
+          {/* Spotlight banner for nearest upcoming trial */}
+          {nextUpcomingTrial && (trialScope === "upcoming" || trialScope === "all") && (
+            <div
+              style={{
+                background: "linear-gradient(135deg, #f0fdf4 0%, #ecfdf5 100%)",
+                border: "1px solid #a7f3d0",
+                borderRadius: "10px",
+                padding: "0.9rem 1.15rem",
+                marginBottom: "1rem",
+                display: "flex",
+                justifyContent: "space-between",
+                alignItems: "center",
+                flexWrap: "wrap",
+                gap: "0.85rem",
+              }}
+            >
+              <div style={{ display: "flex", alignItems: "center", gap: "0.85rem" }}>
+                <div
+                  style={{
+                    width: 40,
+                    height: 40,
+                    borderRadius: "50%",
+                    background: "#059669",
+                    color: "#ffffff",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    flexShrink: 0,
+                  }}
+                >
+                  <CalendarCheck2 size={20} />
+                </div>
+                <div>
+                  <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
+                    <span
+                      style={{
+                        fontSize: "0.68rem",
+                        textTransform: "uppercase",
+                        fontWeight: 800,
+                        letterSpacing: "0.05em",
+                        color: "#065f46",
+                      }}
+                    >
+                      Next Upcoming Assessment
+                    </span>
+                    <span
+                      style={{
+                        fontSize: "0.72rem",
+                        background: "#d1fae5",
+                        color: "#065f46",
+                        padding: "1px 7px",
+                        borderRadius: "10px",
+                        fontWeight: 700,
+                      }}
+                    >
+                      {formatRelativeTrialTime(nextUpcomingTrial.trialScheduledAt || "")}
+                    </span>
+                  </div>
+                  <div style={{ fontSize: "1rem", fontWeight: 800, color: "#064e3b", marginTop: 2 }}>
+                    {cleanName(nextUpcomingTrial.childName || nextUpcomingTrial.parentName)}
+                    <span style={{ fontSize: "0.80rem", fontWeight: 600, color: "#047857", marginLeft: 6 }}>
+                      · {nextUpcomingTrial.instrument || "Piano"} with {nextUpcomingTrial.trialTeacher || nextUpcomingTrial.teacherName || "Assigned Teacher"}
+                    </span>
+                  </div>
+                  <div
+                    style={{
+                      fontSize: "0.76rem",
+                      color: "#047857",
+                      marginTop: 2,
+                      display: "flex",
+                      alignItems: "center",
+                      gap: 10,
+                      flexWrap: "wrap",
+                    }}
+                  >
+                    <span style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
+                      <Calendar size={12} /> {niceDate(nextUpcomingTrial.trialScheduledAt || "")}
+                    </span>
+                    <span style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
+                      <Clock3 size={12} /> {timeAt(nextUpcomingTrial.trialScheduledAt || "", ownTimezone)} ({ownTimezone?.split("/").pop()?.replace(/_/g, " ")})
+                    </span>
+                  </div>
+                </div>
+              </div>
+
+              <div style={{ display: "flex", gap: "0.45rem", alignItems: "center", flexWrap: "wrap" }}>
+                {nextUpcomingMeetUrl && (
+                  <a
+                    href={nextUpcomingMeetUrl}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="btn small"
+                    style={{
+                      background: isNextGoogleMeet ? "#1a73e8" : "#4338ca",
+                      color: "#ffffff",
+                      display: "inline-flex",
+                      alignItems: "center",
+                      gap: 5,
+                      padding: "5px 11px",
+                      fontSize: "0.76rem",
+                      fontWeight: 700,
+                      textDecoration: "none",
+                    }}
+                  >
+                    <Video size={13} />
+                    {isNextGoogleMeet ? "Open Google Meet" : "Enter Live Studio"}
+                  </a>
+                )}
+                {nextUpcomingPhone && (
+                  <a
+                    href={`https://wa.me/${nextUpcomingPhone.replace(/[^0-9+]/g, "")}`}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="btn small"
+                    style={{
+                      background: "#15803d",
+                      color: "#ffffff",
+                      display: "inline-flex",
+                      alignItems: "center",
+                      gap: 5,
+                      padding: "5px 11px",
+                      fontSize: "0.76rem",
+                      fontWeight: 700,
+                      textDecoration: "none",
+                    }}
+                  >
+                    <MessageSquare size={13} />
+                    WhatsApp Parent
+                  </a>
+                )}
+                <button
+                  type="button"
+                  className="btn small secondary"
+                  style={{
+                    fontSize: "0.76rem",
+                    padding: "5px 10px",
+                    fontWeight: 600,
+                  }}
+                  onClick={() => openTrialBookingModal(nextUpcomingTrial)}
+                  title="Reschedule assessment or change meeting room"
+                >
+                  Reschedule / Edit
+                </button>
+              </div>
+            </div>
+          )}
+
+          {displayedTrials.length === 0 ? (
+            <div style={{ padding: "3rem 1rem", textAlign: "center", color: "#64748b" }}>
+              <CalendarCheck2 size={36} color="#94a3b8" style={{ margin: "0 auto 10px" }} />
+              <div style={{ fontWeight: 700, color: "#1e293b", fontSize: "0.95rem" }}>
+                {trialScope === "date"
+                  ? `No trial assessments booked for ${fullDate(trialSelectedDate)}`
+                  : trialScope === "unscheduled"
+                  ? "No unscheduled trials pending"
+                  : "No upcoming trial assessments booked yet"}
+              </div>
+              <p style={{ fontSize: "0.82rem", maxWidth: "420px", margin: "6px auto 14px", color: "#64748b" }}>
+                When you move an applicant to Trial Booked in Admissions, their assessment date, teacher, and Google Meet or studio link will appear here.
+              </p>
+              <button
+                type="button"
+                className="btn small primary"
+                style={{ display: "inline-flex", alignItems: "center", gap: 5 }}
+                onClick={() => setActiveStreamTab("pipeline")}
+              >
+                ← Back to Pipeline
+              </button>
+            </div>
+          ) : (
+            <div className="table-wrap">
+              <table className="schedule-table" style={{ minWidth: 720 }}>
+                <thead>
+                  <tr>
+                    <th style={{ width: "175px" }}>Assessment Time</th>
+                    <th>Candidate & Focus</th>
+                    <th>Assigned Teacher</th>
+                    <th>Classroom / Meeting Room</th>
+                    <th>Parent Contact</th>
+                    <th style={{ textAlign: "right", width: "160px" }}>Actions</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {displayedTrials.map((trial) => {
+                    const startsAt = trial.trialScheduledAt || "";
+                    const candidateName = cleanName(trial.childName || trial.parentName || "Candidate");
+                    const isGoogleMeet = trial.trialClassroomProvider === "google_meet";
+                    const meetUrl =
+                      trial.trialMeetUrl ||
+                      (isGoogleMeet
+                        ? ""
+                        : `${typeof window !== "undefined" ? window.location.origin : ""}/classroom?room=trial_${trial.id.replace(/[^a-zA-Z0-9_-]/g, "_")}`);
+                    const parentPhone = resolveLeadPhone(trial);
+                    const isUpcoming = startsAt && new Date(startsAt).getTime() >= Date.now() - 2 * 3600 * 1000;
+                    const isPast = startsAt && new Date(startsAt).getTime() < Date.now() - 2 * 3600 * 1000;
+
+                    return (
+                      <tr key={trial.id}>
+                        <td>
+                          {startsAt ? (
+                            <>
+                              <div style={{ display: "flex", alignItems: "center", gap: 5, marginBottom: 2 }}>
+                                <strong style={{ color: "#0f766e" }}>
+                                  {timeAt(startsAt, ownTimezone)}
+                                </strong>
+                                <span
+                                  style={{
+                                    fontSize: "0.68rem",
+                                    fontWeight: 700,
+                                    padding: "1px 6px",
+                                    borderRadius: "8px",
+                                    background: isUpcoming ? "#d1fae5" : isPast ? "#f1f5f9" : "#fef3c7",
+                                    color: isUpcoming ? "#065f46" : isPast ? "#64748b" : "#92400e",
+                                  }}
+                                >
+                                  {formatRelativeTrialTime(startsAt)}
+                                </span>
+                              </div>
+                              <div className="table-small">
+                                {niceDate(startsAt)} ({ownTimezone?.split("/").pop()?.replace(/_/g, " ")})
+                              </div>
+                              {trial.trialTimezone && trial.trialTimezone !== ownTimezone && (
+                                <div
+                                  className="table-small"
+                                  style={{
+                                    color: "#64748b",
+                                    display: "inline-flex",
+                                    alignItems: "center",
+                                    gap: 3,
+                                    marginTop: 2,
+                                  }}
+                                >
+                                  <Globe size={10} />
+                                  {timeAt(startsAt, trial.trialTimezone)} (
+                                  {trial.trialTimezone?.split("/").pop()?.replace(/_/g, " ")})
+                                </div>
+                              )}
+                            </>
+                          ) : (
+                            <div>
+                              <span
+                                style={{
+                                  display: "inline-flex",
+                                  alignItems: "center",
+                                  gap: 4,
+                                  padding: "2px 7px",
+                                  borderRadius: "6px",
+                                  background: "#fef3c7",
+                                  color: "#92400e",
+                                  fontSize: "0.72rem",
+                                  fontWeight: 700,
+                                }}
+                              >
+                                <Clock3 size={11} />
+                                Date Not Set
+                              </span>
+                              <div className="table-small" style={{ color: "#94a3b8", marginTop: 2 }}>
+                                Needs schedule
+                              </div>
+                            </div>
+                          )}
+                        </td>
+                        <td>
+                          <strong style={{ color: "#1e293b" }}>{candidateName}</strong>
+                          {trial.childName && trial.parentName && trial.childName !== trial.parentName && (
+                            <div className="table-small" style={{ color: "#64748b" }}>
+                              Parent: {cleanName(trial.parentName)}
+                            </div>
+                          )}
+                          <div style={{ display: "inline-flex", alignItems: "center", gap: 4, marginTop: 3 }}>
+                            <Pill tone="blue">
+                              <Music2 size={11} style={{ marginRight: 3 }} />
+                              {trial.instrument || "Piano"}
+                            </Pill>
+                            <Pill tone="green">Trial Assessment</Pill>
+                          </div>
+                        </td>
+                        <td>
+                          <div
+                            style={{
+                              fontWeight: 600,
+                              color: "#334155",
+                              display: "inline-flex",
+                              alignItems: "center",
+                              gap: 4,
+                            }}
+                          >
+                            <UserCheck size={13} color="#0f766e" />
+                            {trial.trialTeacher || trial.teacherName || "Unassigned"}
+                          </div>
+                        </td>
+                        <td>
+                          {meetUrl ? (
+                            <div style={{ display: "flex", flexDirection: "column", gap: 3, alignItems: "flex-start" }}>
+                              <a
+                                href={meetUrl}
+                                target="_blank"
+                                rel="noreferrer"
+                                className="btn small"
+                                style={{
+                                  fontSize: "0.74rem",
+                                  padding: "3px 8px",
+                                  display: "inline-flex",
+                                  alignItems: "center",
+                                  gap: 4,
+                                  background: isGoogleMeet ? "#1a73e8" : "#4338ca",
+                                  color: "#ffffff",
+                                  textDecoration: "none",
+                                }}
+                              >
+                                <Video size={12} />
+                                {isGoogleMeet ? "Open Google Meet →" : "Enter Live Studio →"}
+                              </a>
+                              <span className="table-small" style={{ color: "#64748b" }}>
+                                {isGoogleMeet ? "Google Meet Room" : "ProsperWork Live Studio"}
+                              </span>
+                            </div>
+                          ) : (
+                            <span style={{ color: "#94a3b8", fontSize: "0.78rem" }}>No link generated</span>
+                          )}
+                        </td>
+                        <td>
+                          {parentPhone ? (
+                            <a
+                              href={`https://wa.me/${parentPhone.replace(/[^0-9+]/g, "")}`}
+                              target="_blank"
+                              rel="noreferrer"
+                              style={{
+                                fontSize: "0.76rem",
+                                color: "#15803d",
+                                fontWeight: 600,
+                                display: "inline-flex",
+                                alignItems: "center",
+                                gap: 4,
+                                textDecoration: "none",
+                              }}
+                              title="Chat with parent on WhatsApp"
+                            >
+                              <MessageSquare size={12} />
+                              {parentPhone}
+                            </a>
+                          ) : (
+                            <span style={{ color: "#94a3b8", fontSize: "0.78rem" }}>No phone</span>
+                          )}
+                          {trial.email && (
+                            <div className="table-small" style={{ color: "#64748b" }}>
+                              {trial.email}
+                            </div>
+                          )}
+                        </td>
+                        <td style={{ textAlign: "right" }}>
+                          <div style={{ display: "inline-flex", gap: 4 }}>
+                            <button
+                              type="button"
+                              className={`btn small ${!startsAt ? "primary" : "ghost"}`}
+                              style={{
+                                fontSize: "0.74rem",
+                                padding: "3px 8px",
+                                fontWeight: !startsAt ? 700 : 500,
+                                background: !startsAt ? "#059669" : undefined,
+                                borderColor: !startsAt ? "#059669" : undefined,
+                                color: !startsAt ? "#ffffff" : undefined,
+                              }}
+                              onClick={() => openTrialBookingModal(trial)}
+                              title={!startsAt ? "Schedule trial date & assign teacher" : "Reschedule assessment date, time or teacher"}
+                            >
+                              <CalendarCheck2 size={12} />
+                              {!startsAt ? "Book Date" : "Reschedule"}
+                            </button>
+                            <button
+                              type="button"
+                              className="btn small ghost"
+                              style={{ fontSize: "0.74rem", padding: "3px 6px" }}
+                              onClick={() => setSelectedLead(trial)}
+                              title="View lead card & history"
+                            >
+                              Details
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </section>
+      ) : (
+        <>
+          <div className="toolbar" style={{ flexWrap: "wrap", gap: "0.5rem" }}>
         {searchBar("Search family, child, email, phone or instrument")}
         <div style={{ display: "flex", gap: "0.4rem", marginLeft: "auto", flexWrap: "wrap", alignItems: "center" }}>
           <span
@@ -1212,6 +1870,51 @@ export default function LeadsView({
             </button>
           ))}
         </div>
+
+        {stageFilter === "trial_booked" && (
+          <div
+            style={{
+              padding: "9px 14px",
+              borderRadius: "8px",
+              background: "#f0fdf4",
+              border: "1px solid #bbf7d0",
+              margin: "0 0 12px",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "space-between",
+              fontSize: "0.82rem",
+              color: "#166534",
+              flexWrap: "wrap",
+              gap: "8px",
+            }}
+          >
+            <div style={{ display: "inline-flex", alignItems: "center", gap: 7 }}>
+              <CalendarCheck2 size={15} color="#15803d" />
+              <span>
+                <strong>{upcomingTrials.length}</strong> upcoming trial assessment{upcomingTrials.length === 1 ? "" : "s"} scheduled.
+              </span>
+            </div>
+            <button
+              type="button"
+              className="btn small"
+              style={{
+                fontSize: "0.74rem",
+                padding: "3px 10px",
+                background: "#059669",
+                color: "#ffffff",
+                borderColor: "#059669",
+                fontWeight: 700,
+                display: "inline-flex",
+                alignItems: "center",
+                gap: 5,
+              }}
+              onClick={() => setActiveStreamTab("trial_schedule")}
+            >
+              <CalendarCheck2 size={13} />
+              Open Trial Assessments Schedule →
+            </button>
+          </div>
+        )}
 
         <div className="table-wrap">
           <table>
@@ -1724,6 +2427,8 @@ export default function LeadsView({
           )}
         </div>
       </section>
+    </>
+  )}
 
       {/* LEAD DETAILS & QUESTIONNAIRE MODAL */}
       <PortalModal
