@@ -20,11 +20,11 @@ import {
   Edit3,
   FileText,
   Inbox,
-  PhoneCall,
+  MessageSquare,
   Plus,
   RefreshCw,
   Sliders,
-  Sparkles,
+  UserCheck,
   UserCog,
   UserX,
   Users,
@@ -1080,7 +1080,7 @@ export default function ManagementPage() {
                       </div>
                       <div className="mw-rule-item">
                         <div className="mw-rule-icon">
-                          <PhoneCall size={15} />
+                          <MessageSquare size={15} />
                         </div>
                         <div className="mw-rule-content">
                           <div className="mw-rule-top">
@@ -1409,7 +1409,7 @@ export default function ManagementPage() {
                     </span>
                   </div>
                   <div className="mw-stat-pill">
-                    <Sparkles size={14} />
+                    <UserCheck size={14} />
                     <span>
                       <strong>{leads.length}</strong> Trial Inquiries
                     </span>

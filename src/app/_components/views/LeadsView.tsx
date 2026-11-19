@@ -22,7 +22,7 @@ import {
   MessageCircle,
   MessageSquare,
   Music2,
-  PhoneCall,
+  Phone,
   RefreshCw,
   RotateCcw,
   Send,
@@ -58,11 +58,6 @@ const PIPELINE_STAGES: {
     pillColor: { bg: "#eff6ff", text: "#1d4ed8", border: "#bfdbfe", dot: "#3b82f6" },
   },
   {
-    id: "called_no_answer",
-    label: "Called – No Answer",
-    pillColor: { bg: "#fffbeb", text: "#b45309", border: "#fde68a", dot: "#f59e0b" },
-  },
-  {
     id: "contacted",
     label: "Contacted",
     pillColor: { bg: "#f5f3ff", text: "#6d28d9", border: "#ddd6fe", dot: "#8b5cf6" },
@@ -86,7 +81,7 @@ const PIPELINE_STAGES: {
 
 const getStageDisplay = (status: Lead["status"]) => {
   if (status === "called_no_answer" || status === "callback") {
-    return PIPELINE_STAGES.find((s) => s.id === "called_no_answer")!;
+    return PIPELINE_STAGES.find((s) => s.id === "contacted")!;
   }
   if (
     status === "trial_booked" ||
@@ -105,7 +100,6 @@ const getStageDisplay = (status: Lead["status"]) => {
 type PipelineFilterKey =
   | "all"
   | "new"
-  | "called_no_answer"
   | "contacted"
   | "trial_booked"
   | "converted"
@@ -693,10 +687,13 @@ export default function LeadsView({
       ? sortedLeads
       : sortedLeads.filter((lead) => {
           if (stageFilter === "new") return lead.status === "new";
-          if (stageFilter === "called_no_answer") {
-            return lead.status === "called_no_answer" || lead.status === "callback";
+          if (stageFilter === "contacted") {
+            return (
+              lead.status === "contacted" ||
+              lead.status === "called_no_answer" ||
+              lead.status === "callback"
+            );
           }
-          if (stageFilter === "contacted") return lead.status === "contacted";
           if (stageFilter === "trial_booked") {
             return (
               lead.status === "trial_booked" ||
@@ -723,16 +720,14 @@ export default function LeadsView({
       count: searchedLeads.filter((l) => l.status === "new").length,
     },
     {
-      id: "called_no_answer",
-      label: "Called – No Answer",
-      count: searchedLeads.filter(
-        (l) => l.status === "called_no_answer" || l.status === "callback"
-      ).length,
-    },
-    {
       id: "contacted",
       label: "Contacted",
-      count: searchedLeads.filter((l) => l.status === "contacted").length,
+      count: searchedLeads.filter(
+        (l) =>
+          l.status === "contacted" ||
+          l.status === "called_no_answer" ||
+          l.status === "callback"
+      ).length,
     },
     {
       id: "trial_booked",
@@ -1245,7 +1240,7 @@ export default function LeadsView({
                           <div style={{ fontSize: "0.75rem", color: "#64748b", display: "flex", alignItems: "center", gap: 5, marginTop: 2, flexWrap: "wrap" }}>
                             {phone ? (
                               <span style={{ fontWeight: 700, color: "#0f766e", display: "inline-flex", alignItems: "center", gap: 3 }}>
-                                <PhoneCall size={10} />
+                                <Phone size={10} />
                                 {phone}
                               </span>
                             ) : (
@@ -1509,22 +1504,6 @@ export default function LeadsView({
                         >
                           WA
                         </button>
-                        <button
-                          className="icon-btn"
-                          aria-label={`Call ${displayName}`}
-                          title={phone ? `Call ${phone}` : "No phone available"}
-                          disabled={!phone}
-                          style={{
-                            color: phone ? "inherit" : "#cbd5e1",
-                            cursor: phone ? "pointer" : "not-allowed",
-                          }}
-                          onClick={() => {
-                            if (!phone) return;
-                            openExternal("phone", phone, displayName);
-                          }}
-                        >
-                          <PhoneCall size={12} />
-                        </button>
                       </div>
                     </td>
 
@@ -1739,18 +1718,6 @@ export default function LeadsView({
                         }}
                       >
                         <MessageSquare size={14} /> In-App WhatsApp Chat
-                      </button>
-                      <button
-                        type="button"
-                        className="btn small ghost"
-                        disabled={!modalPhone}
-                        onClick={() => {
-                          if (!modalPhone) return;
-                          openExternal("phone", modalPhone, cleanName(selectedLead.parentName));
-                        }}
-                      >
-                        <PhoneCall size={13} style={{ marginRight: 4 }} />
-                        Call Phone
                       </button>
                       <button
                         type="button"
