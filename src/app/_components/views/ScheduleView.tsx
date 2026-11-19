@@ -3,6 +3,7 @@
 import { useState, useMemo, type ReactNode } from "react";
 import {
   AlertCircle,
+  ArrowUpDown,
   BookOpen,
   Calendar,
   CalendarCheck2,
@@ -114,7 +115,8 @@ export default function ScheduleView({
   const [actionLesson, setActionLesson] = useState<Lesson | null>(null);
   const [weekOffset, setWeekOffset] = useState(0);
   const [scheduleStream, setScheduleStream] = useState<"academic" | "trials">("academic");
-  const [trialScope, setTrialScope] = useState<"upcoming" | "date">("upcoming");
+  const [trialScope, setTrialScope] = useState<"upcoming" | "date" | "unscheduled" | "all">("upcoming");
+  const [trialSortOrder, setTrialSortOrder] = useState<"earliest" | "latest">("earliest");
 
   const cancelForReplacement = (id: string) => {
     const lesson = data.lessons.find(
@@ -207,25 +209,102 @@ export default function ScheduleView({
           .sort((a, b) => a.lesson.startsAt.localeCompare(b.lesson.startsAt))
       : [];
 
-  const bookedTrials = useMemo(() => {
-    const list = (data.leads || []).filter(
+  const formatRelativeTrialTime = (isoString: string): string => {
+    if (!isoString) return "Date TBD";
+    const date = new Date(isoString);
+    if (isNaN(date.getTime())) return "Date TBD";
+    const now = new Date();
+    const diffMs = date.getTime() - now.getTime();
+    const diffHours = Math.round(diffMs / (1000 * 60 * 60));
+    const diffDays = Math.round(diffMs / (1000 * 60 * 60 * 24));
+
+    if (diffHours >= -2 && diffHours <= 2) return "Happening Today";
+    if (diffHours > 2 && diffHours < 24 && date.toDateString() === now.toDateString()) return "Today";
+    const tomorrow = new Date(now);
+    tomorrow.setDate(tomorrow.getDate() + 1);
+    if (date.toDateString() === tomorrow.toDateString()) return "Tomorrow";
+    if (diffDays > 1 && diffDays <= 7) return `In ${diffDays} days`;
+    if (diffDays > 7) return `In ${Math.round(diffDays / 7)} weeks`;
+    if (diffDays < 0) return "Past Assessment";
+    return "Upcoming";
+  };
+
+  const allBookedTrials = useMemo(() => {
+    return (data.leads || []).filter(
       (l) => l.status === "trial_booked" || Boolean(l.trialScheduledAt)
     );
-    return list.sort((a, b) => {
-      const aTime = a.trialScheduledAt || a.arrivedAt || "";
-      const bTime = b.trialScheduledAt || b.arrivedAt || "";
-      return aTime.localeCompare(bTime);
-    });
   }, [data.leads]);
 
+  // Upcoming trials: within 2h grace period or future, sorted cleanly
+  const upcomingTrials = useMemo(() => {
+    const threshold = Date.now() - 2 * 3600 * 1000;
+    const list = allBookedTrials.filter((t) => {
+      if (!t.trialScheduledAt) return false;
+      const time = new Date(t.trialScheduledAt).getTime();
+      return !isNaN(time) && time >= threshold;
+    });
+    return list.sort((a, b) => {
+      const aTime = new Date(a.trialScheduledAt || 0).getTime();
+      const bTime = new Date(b.trialScheduledAt || 0).getTime();
+      return trialSortOrder === "earliest" ? aTime - bTime : bTime - aTime;
+    });
+  }, [allBookedTrials, trialSortOrder]);
+
+  const pastTrials = useMemo(() => {
+    const threshold = Date.now() - 2 * 3600 * 1000;
+    const list = allBookedTrials.filter((t) => {
+      if (!t.trialScheduledAt) return false;
+      const time = new Date(t.trialScheduledAt).getTime();
+      return !isNaN(time) && time < threshold;
+    });
+    return list.sort((a, b) => {
+      const aTime = new Date(a.trialScheduledAt || 0).getTime();
+      const bTime = new Date(b.trialScheduledAt || 0).getTime();
+      return bTime - aTime;
+    });
+  }, [allBookedTrials]);
+
+  const unscheduledTrials = useMemo(() => {
+    return allBookedTrials.filter((t) => !t.trialScheduledAt);
+  }, [allBookedTrials]);
+
   const trialsForSelectedDate = useMemo(() => {
-    return bookedTrials.filter((t) => {
+    return allBookedTrials.filter((t) => {
       if (!t.trialScheduledAt) return false;
       return dayKeyInOwnTz(t.trialScheduledAt) === selectedDate;
+    }).sort((a, b) => {
+      const aTime = new Date(a.trialScheduledAt || 0).getTime();
+      const bTime = new Date(b.trialScheduledAt || 0).getTime();
+      return aTime - bTime;
     });
-  }, [bookedTrials, selectedDate]);
+  }, [allBookedTrials, selectedDate]);
 
-  const displayedTrials = trialScope === "date" ? trialsForSelectedDate : bookedTrials;
+  // Spotlight: single nearest upcoming trial
+  const nextUpcomingTrial = useMemo(() => {
+    if (upcomingTrials.length === 0) return null;
+    const sorted = [...upcomingTrials].sort((a, b) => {
+      const aTime = new Date(a.trialScheduledAt || 0).getTime();
+      const bTime = new Date(b.trialScheduledAt || 0).getTime();
+      return aTime - bTime;
+    });
+    return sorted[0] || null;
+  }, [upcomingTrials]);
+
+  const isNextGoogleMeet = nextUpcomingTrial?.trialClassroomProvider === "google_meet";
+  const nextUpcomingMeetUrl = nextUpcomingTrial
+    ? nextUpcomingTrial.trialMeetUrl ||
+      (isNextGoogleMeet
+        ? ""
+        : `${typeof window !== "undefined" ? window.location.origin : ""}/classroom?room=trial_${nextUpcomingTrial.id.replace(/[^a-zA-Z0-9_-]/g, "_")}`)
+    : "";
+  const nextUpcomingPhone = nextUpcomingTrial?.phone?.replace(/[^0-9+]/g, "");
+
+  const displayedTrials = useMemo(() => {
+    if (trialScope === "upcoming") return upcomingTrials;
+    if (trialScope === "date") return trialsForSelectedDate;
+    if (trialScope === "unscheduled") return unscheduledTrials;
+    return [...upcomingTrials, ...pastTrials, ...unscheduledTrials];
+  }, [trialScope, upcomingTrials, trialsForSelectedDate, unscheduledTrials, pastTrials]);
 
   return (
     <>
@@ -266,7 +345,7 @@ export default function ScheduleView({
           onClick={() => setScheduleStream("trials")}
         >
           <CalendarCheck2 size={13} />
-          Trial Assessments ({bookedTrials.length})
+          Trial Assessments ({upcomingTrials.length} upcoming)
         </button>
       </div>
 
@@ -286,25 +365,213 @@ export default function ScheduleView({
               title="Booked Trial Assessments"
               detail="Free 1-on-1 trial lessons booked with prospective candidates. Kept strictly separate from regular enrolled academic classes."
             />
-            <div style={{ display: "flex", gap: "0.5rem", alignItems: "center" }}>
+            <div style={{ display: "flex", gap: "0.45rem", alignItems: "center", flexWrap: "wrap" }}>
               <button
                 type="button"
                 className={`btn small ${trialScope === "upcoming" ? "primary" : "ghost"}`}
-                style={{ fontSize: "0.75rem", padding: "4px 10px" }}
+                style={{ fontSize: "0.75rem", padding: "4px 10px", display: "inline-flex", alignItems: "center", gap: 5 }}
                 onClick={() => setTrialScope("upcoming")}
               >
-                All Upcoming ({bookedTrials.length})
+                <CalendarCheck2 size={12} />
+                Upcoming ({upcomingTrials.length})
               </button>
               <button
                 type="button"
                 className={`btn small ${trialScope === "date" ? "primary" : "ghost"}`}
-                style={{ fontSize: "0.75rem", padding: "4px 10px" }}
+                style={{ fontSize: "0.75rem", padding: "4px 10px", display: "inline-flex", alignItems: "center", gap: 5 }}
                 onClick={() => setTrialScope("date")}
               >
+                <Calendar size={12} />
                 Selected Date ({trialsForSelectedDate.length})
               </button>
+              {unscheduledTrials.length > 0 && (
+                <button
+                  type="button"
+                  className={`btn small ${trialScope === "unscheduled" ? "primary" : "ghost"}`}
+                  style={{
+                    fontSize: "0.75rem",
+                    padding: "4px 10px",
+                    display: "inline-flex",
+                    alignItems: "center",
+                    gap: 5,
+                    borderColor: trialScope === "unscheduled" ? undefined : "#fcd34d",
+                    color: trialScope === "unscheduled" ? undefined : "#b45309",
+                    background: trialScope === "unscheduled" ? undefined : "#fffbeb",
+                  }}
+                  onClick={() => setTrialScope("unscheduled")}
+                >
+                  <Clock3 size={12} />
+                  Needs Date ({unscheduledTrials.length})
+                </button>
+              )}
+              <button
+                type="button"
+                className={`btn small ${trialScope === "all" ? "primary" : "ghost"}`}
+                style={{ fontSize: "0.75rem", padding: "4px 10px" }}
+                onClick={() => setTrialScope("all")}
+              >
+                All Booked ({allBookedTrials.length})
+              </button>
+
+              {(trialScope === "upcoming" || trialScope === "all") && upcomingTrials.length > 1 && (
+                <button
+                  type="button"
+                  className="btn small ghost"
+                  style={{
+                    fontSize: "0.74rem",
+                    padding: "4px 9px",
+                    display: "inline-flex",
+                    alignItems: "center",
+                    gap: 4,
+                    color: "#475569",
+                  }}
+                  onClick={() => setTrialSortOrder((prev) => (prev === "earliest" ? "latest" : "earliest"))}
+                  title={
+                    trialSortOrder === "earliest"
+                      ? "Currently showing nearest upcoming first. Click to show latest date first."
+                      : "Currently showing latest date first. Click to show nearest upcoming first."
+                  }
+                >
+                  <ArrowUpDown size={12} />
+                  <span>{trialSortOrder === "earliest" ? "Next Upcoming First" : "Latest Date First"}</span>
+                </button>
+              )}
             </div>
           </div>
+
+          {/* Spotlight Banner for Nearest Upcoming Assessment */}
+          {nextUpcomingTrial && (trialScope === "upcoming" || trialScope === "all") && (
+            <div
+              style={{
+                background: "linear-gradient(135deg, #f0fdf4 0%, #ecfdf5 100%)",
+                border: "1px solid #a7f3d0",
+                borderRadius: "10px",
+                padding: "0.9rem 1.15rem",
+                marginBottom: "1rem",
+                display: "flex",
+                justifyContent: "space-between",
+                alignItems: "center",
+                flexWrap: "wrap",
+                gap: "0.85rem",
+              }}
+            >
+              <div style={{ display: "flex", alignItems: "center", gap: "0.85rem" }}>
+                <div
+                  style={{
+                    width: 40,
+                    height: 40,
+                    borderRadius: "50%",
+                    background: "#059669",
+                    color: "#ffffff",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    flexShrink: 0,
+                  }}
+                >
+                  <CalendarCheck2 size={20} />
+                </div>
+                <div>
+                  <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
+                    <span
+                      style={{
+                        fontSize: "0.68rem",
+                        textTransform: "uppercase",
+                        fontWeight: 800,
+                        letterSpacing: "0.05em",
+                        color: "#065f46",
+                      }}
+                    >
+                      Next Upcoming Assessment
+                    </span>
+                    <span
+                      style={{
+                        fontSize: "0.72rem",
+                        background: "#d1fae5",
+                        color: "#065f46",
+                        padding: "1px 7px",
+                        borderRadius: "10px",
+                        fontWeight: 700,
+                      }}
+                    >
+                      {formatRelativeTrialTime(nextUpcomingTrial.trialScheduledAt || "")}
+                    </span>
+                  </div>
+                  <div style={{ fontSize: "1rem", fontWeight: 800, color: "#064e3b", marginTop: 2 }}>
+                    {nextUpcomingTrial.childName || nextUpcomingTrial.parentName}
+                    <span style={{ fontSize: "0.80rem", fontWeight: 600, color: "#047857", marginLeft: 6 }}>
+                      · {nextUpcomingTrial.instrument || "Piano"} with {nextUpcomingTrial.trialTeacher || nextUpcomingTrial.teacherName || "Assigned Teacher"}
+                    </span>
+                  </div>
+                  <div
+                    style={{
+                      fontSize: "0.76rem",
+                      color: "#047857",
+                      marginTop: 2,
+                      display: "flex",
+                      alignItems: "center",
+                      gap: 10,
+                      flexWrap: "wrap",
+                    }}
+                  >
+                    <span style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
+                      <Calendar size={12} /> {niceDate(nextUpcomingTrial.trialScheduledAt || "")}
+                    </span>
+                    <span style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
+                      <Clock3 size={12} /> {timeAt(nextUpcomingTrial.trialScheduledAt || "", ownTimezone)} ({ownTimezone?.split("/").pop()?.replace(/_/g, " ")})
+                    </span>
+                  </div>
+                </div>
+              </div>
+
+              <div style={{ display: "flex", gap: "0.45rem", alignItems: "center", flexWrap: "wrap" }}>
+                {nextUpcomingMeetUrl && (
+                  <a
+                    href={nextUpcomingMeetUrl}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="btn small"
+                    style={{
+                      background: isNextGoogleMeet ? "#1a73e8" : "#4338ca",
+                      color: "#ffffff",
+                      display: "inline-flex",
+                      alignItems: "center",
+                      gap: 5,
+                      padding: "5px 11px",
+                      fontSize: "0.76rem",
+                      fontWeight: 700,
+                      textDecoration: "none",
+                    }}
+                  >
+                    <Video size={13} />
+                    {isNextGoogleMeet ? "Open Google Meet" : "Enter Live Studio"}
+                  </a>
+                )}
+                {nextUpcomingPhone && (
+                  <a
+                    href={`https://wa.me/${nextUpcomingPhone}`}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="btn small"
+                    style={{
+                      background: "#15803d",
+                      color: "#ffffff",
+                      display: "inline-flex",
+                      alignItems: "center",
+                      gap: 5,
+                      padding: "5px 11px",
+                      fontSize: "0.76rem",
+                      fontWeight: 700,
+                      textDecoration: "none",
+                    }}
+                  >
+                    <MessageSquare size={13} />
+                    WhatsApp Parent
+                  </a>
+                )}
+              </div>
+            </div>
+          )}
 
           {displayedTrials.length === 0 ? (
             <div style={{ padding: "3rem 1rem", textAlign: "center", color: "#64748b" }}>
@@ -312,6 +579,8 @@ export default function ScheduleView({
               <div style={{ fontWeight: 700, color: "#1e293b", fontSize: "0.95rem" }}>
                 {trialScope === "date"
                   ? `No trial assessments booked for ${fullDate(selectedDate)}`
+                  : trialScope === "unscheduled"
+                  ? "No unscheduled trials pending"
                   : "No upcoming trial assessments booked yet"}
               </div>
               <p style={{ fontSize: "0.82rem", maxWidth: "420px", margin: "6px auto 14px", color: "#64748b" }}>
@@ -350,15 +619,31 @@ export default function ScheduleView({
                         ? ""
                         : `${typeof window !== "undefined" ? window.location.origin : ""}/classroom?room=trial_${trial.id.replace(/[^a-zA-Z0-9_-]/g, "_")}`);
                     const parentPhone = trial.phone?.replace(/[^0-9+]/g, "");
+                    const isUpcoming = startsAt && new Date(startsAt).getTime() >= Date.now() - 2 * 3600 * 1000;
+                    const isPast = startsAt && new Date(startsAt).getTime() < Date.now() - 2 * 3600 * 1000;
 
                     return (
                       <tr key={trial.id}>
                         <td>
                           {startsAt ? (
                             <>
-                              <strong style={{ color: "#0f766e" }}>
-                                {timeAt(startsAt, ownTimezone)}
-                              </strong>
+                              <div style={{ display: "flex", alignItems: "center", gap: 5, marginBottom: 2 }}>
+                                <strong style={{ color: "#0f766e" }}>
+                                  {timeAt(startsAt, ownTimezone)}
+                                </strong>
+                                <span
+                                  style={{
+                                    fontSize: "0.68rem",
+                                    fontWeight: 700,
+                                    padding: "1px 6px",
+                                    borderRadius: "8px",
+                                    background: isUpcoming ? "#d1fae5" : isPast ? "#f1f5f9" : "#fef3c7",
+                                    color: isUpcoming ? "#065f46" : isPast ? "#64748b" : "#92400e",
+                                  }}
+                                >
+                                  {formatRelativeTrialTime(startsAt)}
+                                </span>
+                              </div>
                               <div className="table-small">
                                 {niceDate(startsAt)} ({ownTimezone?.split("/").pop()?.replace(/_/g, " ")})
                               </div>
@@ -380,7 +665,27 @@ export default function ScheduleView({
                               )}
                             </>
                           ) : (
-                            <span style={{ color: "#94a3b8" }}>Date TBD</span>
+                            <div>
+                              <span
+                                style={{
+                                  display: "inline-flex",
+                                  alignItems: "center",
+                                  gap: 4,
+                                  padding: "2px 7px",
+                                  borderRadius: "6px",
+                                  background: "#fef3c7",
+                                  color: "#92400e",
+                                  fontSize: "0.72rem",
+                                  fontWeight: 700,
+                                }}
+                              >
+                                <Clock3 size={11} />
+                                Date Not Set
+                              </span>
+                              <div className="table-small" style={{ color: "#94a3b8", marginTop: 2 }}>
+                                Needs schedule
+                              </div>
+                            </div>
                           )}
                         </td>
                         <td>
@@ -472,15 +777,38 @@ export default function ScheduleView({
                           )}
                         </td>
                         <td style={{ textAlign: "right" }}>
-                          <button
-                            type="button"
-                            className="btn small ghost"
-                            style={{ fontSize: "0.74rem", padding: "2px 8px" }}
-                            onClick={() => changeView("leads")}
-                            title="Manage candidate in Admissions"
-                          >
-                            View Lead →
-                          </button>
+                          {!startsAt ? (
+                            <button
+                              type="button"
+                              className="btn small"
+                              style={{
+                                fontSize: "0.74rem",
+                                padding: "3px 9px",
+                                background: "#059669",
+                                color: "#ffffff",
+                                borderColor: "#059669",
+                                display: "inline-flex",
+                                alignItems: "center",
+                                gap: 4,
+                                fontWeight: 700,
+                              }}
+                              onClick={() => changeView("leads")}
+                              title="Set assessment date and teacher in Admissions"
+                            >
+                              <CalendarCheck2 size={12} />
+                              Book Date →
+                            </button>
+                          ) : (
+                            <button
+                              type="button"
+                              className="btn small ghost"
+                              style={{ fontSize: "0.74rem", padding: "2px 8px" }}
+                              onClick={() => changeView("leads")}
+                              title="Manage candidate in Admissions"
+                            >
+                              View Lead →
+                            </button>
+                          )}
                         </td>
                       </tr>
                     );
@@ -492,7 +820,7 @@ export default function ScheduleView({
         </section>
       ) : (
         <>
-          {bookedTrials.length > 0 && (
+          {upcomingTrials.length > 0 && (
             <div
               style={{
                 padding: "8px 12px",
@@ -512,7 +840,11 @@ export default function ScheduleView({
               <div style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
                 <CalendarCheck2 size={14} color="#15803d" />
                 <span>
-                  <strong>{bookedTrials.length}</strong> prospective trial assessment{bookedTrials.length === 1 ? "" : "s"} scheduled. Kept separate from enrolled academic student timetables.
+                  <strong>{upcomingTrials.length}</strong> upcoming trial assessment{upcomingTrials.length === 1 ? "" : "s"} scheduled
+                  {nextUpcomingTrial && (
+                    <> (Next: <strong>{nextUpcomingTrial.childName || nextUpcomingTrial.parentName}</strong> on {niceDate(nextUpcomingTrial.trialScheduledAt || "")})</>
+                  )}
+                  . Kept separate from enrolled academic student timetables.
                 </span>
               </div>
               <button
@@ -527,7 +859,7 @@ export default function ScheduleView({
                 }}
                 onClick={() => setScheduleStream("trials")}
               >
-                View Trial Assessments →
+                View Upcoming Trials →
               </button>
             </div>
           )}
