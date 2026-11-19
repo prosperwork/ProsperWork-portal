@@ -122,13 +122,22 @@ export const manualSections: ManualSection[] = [
     ],
   },
   {
-    id:"operations",title:"Operations",summary:"Handle assignments, enrolment, trials and billing agreements.",href:"/operations",roles:[...academy,"finance","qc","sales_marketing"],
+    id:"operations",title:"Operations",summary:"Handle assignments, enrolment, trials, billing contracts and quality workflows.",href:"/operations",roles:[...academy,"finance","qc","sales_marketing","social_media"],
     steps:[
-      {title:"Choose a work area",text:"Role-scoped tabs separate Finance, Academy, Team and quality, Leads, and Payments and audit records. Referral and private media workflows appear when relevant."},
-      {title:"Choose the workflow and record",text:"Open the relevant student, trial, assignment or billing agreement. Controls are limited to the current role's operational responsibilities."},
-      {title:"Assignments and trials",text:"Authorized administrators select the actual teacher/QC tutor, administrator and future class slots. Review the conflict or capacity result before confirming."},
-      {title:"Billing agreements",text:"Authorized staff use approved currencies and rates and agree the child's frequency, billing terms and applicable tuition details."},
-      {title:"Pause and resume",text:"Review the child's billing state when lessons pause or resume. Resuming teaching does not silently back-charge a paused period; Finance agrees the restart anchor."},
+      {title:"Choose a work area",text:"URL-synced tabs separate Finance, Academy, Team, Leads, Records, Referrals and Media Studio according to your role permissions."},
+      {title:"Use focused action dialogs",text:"Create contracts, FX rates, weekly lesson series, student pauses, availability windows, trial schedules and media reviews via their dedicated action dialogs rather than inline row forms."},
+      {title:"Assignments and trials",text:"Authorized administrators assign Sales reps, schedule verified trial lessons, and check the conversion readiness checklist (verified trial and paid first invoice) before converting a lead."},
+      {title:"Billing contracts and pauses",text:"Manage recurring billing contracts and FX rates in Operations Finance. Paused students place contracts on Billing Hold without silent back-charging; record expenses and verify receipts in Finance, and configure tax or referral rules in Settings."},
+      {title:"Team availability and quality",text:"Switch between Weekly Availability and Teaching Quality & Observations tabs to manage time windows and private QC observations."},
+    ],
+  },
+  {
+    id:"complaints",title:"Complaints and support",summary:"Raise family support tickets, exchange replies and track resolution.",href:"/complaints",roles:["super_admin","general_manager","head_admin","admin","qc","finance","parent"],
+    steps:[
+      {title:"Submit a new ticket",text:"Click New Complaint to choose a category, urgency level, subject and details (with optional student or lesson reference). Links from lesson cards pre-fill the ticket automatically."},
+      {title:"Filter and inspect tickets",text:"Use the KPI summary cards or category/status filters to locate open, under-investigation, urgent or resolved tickets."},
+      {title:"Two-way conversation",text:"Send replies directly inside the ticket thread. Academy staff responses and parent replies are delivered in real time with email alerts."},
+      {title:"Resolution and notification",text:"Authorized staff update ticket status as investigation progresses. Marking a ticket Resolved prompts for confirmation and optional resolution notes before notifying the family by email and closing parent replies."},
     ],
   },
   {
@@ -208,10 +217,9 @@ export const manualSections: ManualSection[] = [
   {
     id:"communications",title:"Email communications",summary:"Manage explicit marketing consent and consented campaigns.",href:"/communications",roles:["super_admin","sales_marketing","parent"],
     steps:[
-      {title:"Consent first",text:"Parents manage their own preference. Authorized Sales staff record explicit permission evidence for their assigned leads. Do not infer marketing permission from a referral, media consent or class enrolment. Marketing choices never affect lesson or academy access."},
-      {title:"Prepare the message",text:"Choose the allowed audience, enter the subject and message, and review the eligible recipient count. Do not include individual private family records in a broadcast."},
-      {title:"Confirm sending",text:"Provide the required confirmation and reason. A queued message is not yet delivered. If an attempt is interrupted, the same send request protects against duplicate campaigns."},
-      {title:"Cancellation and unsubscribe",text:"Cancel an open campaign with a reason. Recipients can confirm withdrawal through their private unsubscribe link. Withdrawal stops future queued marketing but cannot recall an email already in flight; operational lesson reminders remain separate."},
+      {title:"Consent directory",text:"Open the Consent Directory tab to review family and lead marketing permissions. Use Update Consent on an eligible record to record or withdraw explicit consent with dated evidence. Marketing choices never affect lesson or academy access."},
+      {title:"Prepare a campaign",text:"Click New Campaign to select an eligible audience, write the subject and message, review the consented recipient count, and confirm with SEND. Do not include private individual records in a broadcast."},
+      {title:"Inspect and cancel campaigns",text:"In the Campaigns tab, use View Message to read the full body or Cancel Campaign on queued sends with a recorded reason. Withdrawal stops future queued marketing but cannot recall an email already in flight."},
       {title:"Other reminders",text:"Operational lesson and billing reminders are separate from marketing consent. WhatsApp sending is not connected in the current setup."},
     ],
   },
@@ -224,20 +232,20 @@ export const manualSections: ManualSection[] = [
     ],
   },
   {
-    id:"settings",title:"Rules and settings",summary:"Maintain academy-wide business rules and approved values.",href:"/settings",roles:["super_admin"],
+    id:"settings",title:"Rules and settings",summary:"Maintain academy-wide business rules, permissions, catalogs and finance controls.",href:"/settings",roles:["super_admin"],
     steps:[
-      {title:"Choose the settings group",text:"Open the relevant group for classes, payroll rules, referral rules, currencies/rates or operational thresholds."},
-      {title:"Make an explicit change",text:"Review the value and required reason, then save. Class length, approved rates and business-rule values are managed here rather than assumed from an old agreement."},
+      {title:"Choose a settings tab",text:"Switch between General & Rules, Roles & Permissions, Catalogs, Finance & FX, and Email & Logs. Tabs sync with the page URL for direct bookmarking."},
+      {title:"Make an explicit change",text:"Review the value and save your changes. Class durations, approved currencies, referral percentages, and business-rule values are managed here."},
       {title:"Historical obligations",text:"Disabling a currency does not cancel historical agreements or obligations. New agreements must use enabled approved currencies; conversion rates remain explicit."},
-      {title:"Follow-up thresholds",text:"Configure the management follow-up and escalation thresholds. Cold unbooked lead handling uses the configured follow-up threshold."},
+      {title:"Verify email delivery",text:"Use the Email & Logs tab to send an SMTP verification test to the owner address and inspect recent delivery logs."},
     ],
   },
   {
     id:"policies",title:"Policies and agreements",summary:"Publish approved documents and complete required acceptances.",href:"/policies",roles:everyone,
     steps:[
-      {title:"Read the correct version",text:"Open the required policy for your account and review its current version."},
+      {title:"Read the correct version",text:"Filter by All, Published or Drafts (for owners) or search by title/key to open the required policy PDF for your account."},
       {title:"Accept when required",text:"Complete the actual acceptance control. A billing arrangement field is not proof that a legal document has been accepted."},
-      {title:"Owner publication",text:"Review version history first. Owner creates a new policy from New policy by attaching the actual academy-approved PDF, then publishes the saved version. Do not publish test or draft legal text as an approved policy."},
+      {title:"Owner publication",text:"Click New Policy Version (or a missing-policy Upload button) to attach the academy-approved PDF draft, then confirm Publish version. Published legal PDFs are immutable."},
     ],
   },
   {

@@ -1,5 +1,6 @@
 "use client";
 
+import { useMemo, useState } from "react";
 import { Trash2 } from "lucide-react";
 import ProfileAvatar from "@/app/_components/ProfileAvatar";
 import { useRoles } from "@/lib/academy/use-academy-config";
@@ -10,6 +11,34 @@ import {
   type AccountStatus,
 } from "../accounts-types";
 import { AccountIcon } from "./AccountIcon";
+
+export type AccountFilterKey =
+  | "all"
+  | "active"
+  | "needs_attention"
+  | "staff"
+  | "teachers"
+  | "parents"
+  | "students";
+
+function matchesAccountFilter(account: Account, filter: AccountFilterKey): boolean {
+  switch (filter) {
+    case "all":
+      return true;
+    case "active":
+      return account.status === "active";
+    case "needs_attention":
+      return account.status !== "active";
+    case "staff":
+      return !["teacher", "parent", "student"].includes(account.role);
+    case "teachers":
+      return account.role === "teacher";
+    case "parents":
+      return account.role === "parent";
+    case "students":
+      return account.role === "student";
+  }
+}
 
 export interface AccountListProps {
   accounts: Account[];
@@ -43,10 +72,39 @@ export default function AccountList({
   onRequestDelete,
 }: AccountListProps) {
   const { roleLabel } = useRoles();
+  const [activeFilter, setActiveFilter] = useState<AccountFilterKey>("all");
+
+  const filterPills = useMemo(() => {
+    const definitions: Array<{ key: AccountFilterKey; label: string }> = [
+      { key: "all", label: "All" },
+      { key: "active", label: "Active" },
+      { key: "needs_attention", label: "Needs Attention" },
+      { key: "staff", label: "Staff" },
+      { key: "teachers", label: "Teachers" },
+      { key: "parents", label: "Parents" },
+      { key: "students", label: "Students" },
+    ];
+    return definitions.map((def) => ({
+      ...def,
+      count: accounts.filter((a) => matchesAccountFilter(a, def.key)).length,
+    }));
+  }, [accounts]);
+
+  const displayedAccounts = useMemo(
+    () =>
+      visibleAccounts.filter((account) =>
+        matchesAccountFilter(account, activeFilter)
+      ),
+    [visibleAccounts, activeFilter]
+  );
+
+  const hasActiveCriteria = Boolean(query.trim()) || activeFilter !== "all";
+
   return (
     <section
       className="pw-directory-card pw-record-ledger"
       aria-labelledby="directory-title"
+      style={{ width: "100%" }}
     >
       <div className="pw-directory-heading">
         <div>
@@ -56,11 +114,12 @@ export default function AccountList({
         <span className="pw-record-count">
           {loading
             ? "…"
-            : `${visibleAccounts.length} ${
-                visibleAccounts.length === 1 ? "record" : "records"
+            : `${displayedAccounts.length} ${
+                displayedAccounts.length === 1 ? "record" : "records"
               }`}
         </span>
       </div>
+
       <label className="pw-search">
         <svg viewBox="0 0 20 20" fill="none" aria-hidden="true">
           <circle
@@ -85,6 +144,27 @@ export default function AccountList({
           onChange={(event) => onQueryChange(event.target.value)}
         />
       </label>
+
+      <div
+        className="portal-tabs"
+        role="tablist"
+        aria-label="Filter accounts by role or status"
+        style={{ marginTop: 12, marginBottom: 14 }}
+      >
+        {filterPills.map((pill) => (
+          <button
+            key={pill.key}
+            type="button"
+            role="tab"
+            aria-selected={activeFilter === pill.key}
+            className={`portal-tab ${activeFilter === pill.key ? "active" : ""}`}
+            onClick={() => setActiveFilter(pill.key)}
+          >
+            {pill.label}
+            <span className="portal-tab-badge">{pill.count}</span>
+          </button>
+        ))}
+      </div>
 
       {loading ? (
         <div
@@ -115,33 +195,43 @@ export default function AccountList({
             Retry directory
           </button>
         </div>
-      ) : visibleAccounts.length === 0 ? (
+      ) : displayedAccounts.length === 0 ? (
         <div className="pw-directory-empty">
           <div className="pw-empty-icon">
             <AccountIcon type="people" />
           </div>
           <strong>
-            {query ? "No matching accounts" : "No accounts to show yet"}
+            {hasActiveCriteria
+              ? "No matching accounts"
+              : "No accounts to show yet"}
           </strong>
           <p>
-            {query
-              ? "Try another name, email, username, or role."
+            {hasActiveCriteria
+              ? "Try another search term or switch the role/status filter."
               : "Invited families and staff will appear here."}
           </p>
-          {query && (
+          {hasActiveCriteria && (
             <button
               type="button"
               className="pw-text-button"
-              onClick={() => onQueryChange("")}
+              onClick={() => {
+                onQueryChange("");
+                setActiveFilter("all");
+              }}
             >
-              Clear search
+              Clear filters
             </button>
           )}
         </div>
       ) : (
         <div className="pw-account-list">
-          {visibleAccounts.map((account) => {
-            const isOwner = account.role === "super_admin" || account.role === "owner";
+          {displayedAccounts.map((account) => {
+            const isOwner =
+              account.role === "super_admin" || account.role === "owner";
+            const canResendInvite =
+              Boolean(onResendInvite && account.email) &&
+              (account.status === "pending" || account.status === "applicant");
+
             return (
               <article
                 className={`pw-account-row ${isOwner ? "is-owner" : ""}`}
@@ -189,6 +279,8 @@ export default function AccountList({
                     display: "flex",
                     alignItems: "center",
                     gap: 8,
+                    flexWrap: "wrap",
+                    justifyContent: "flex-end",
                   }}
                 >
                   {isOwner ? (
@@ -217,7 +309,7 @@ export default function AccountList({
                           ? "Switching…"
                           : "View as user"}
                       </button>
-                      {onResendInvite && account.email && (
+                      {canResendInvite && onResendInvite && (
                         <button
                           type="button"
                           className="pw-text-button"

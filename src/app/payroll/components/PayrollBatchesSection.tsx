@@ -1,6 +1,13 @@
 "use client";
 
-import { Check, FileCheck2, FileText, type LucideIcon } from "lucide-react";
+import { useMemo, useState } from "react";
+import {
+  Check,
+  ChevronDown,
+  ChevronRight,
+  FileCheck2,
+  FileText,
+} from "lucide-react";
 import ProfileAvatar from "@/app/_components/ProfileAvatar";
 import {
   dateLabel,
@@ -9,7 +16,6 @@ import {
   type Batch,
   type PayrollData,
   type PayrollItem,
-  type PreviewStatement,
   type Statement,
 } from "../payroll-types";
 
@@ -27,8 +33,8 @@ export interface PayrollBatchesSectionProps {
     submitLabel?: string,
     requireReason?: boolean
   ) => void;
-  onSetAdjustForm: (statement: Statement) => void;
-  onSetPaidForm: (statement: Statement) => void;
+  onSetAdjustForm: (statement: Statement, batch?: Batch) => void;
+  onSetPaidForm: (statement: Statement, batch?: Batch) => void;
 }
 
 export function renderPayrollItems(items: PayrollItem[], currency: string) {
@@ -53,8 +59,8 @@ export function renderPayrollItems(items: PayrollItem[], currency: string) {
     const lessonDate = detail.startsAt
       ? dateLabel(detail.startsAt.slice(0, 10))
       : detail.startDate
-      ? `Start ${dateLabel(detail.startDate)}`
-      : "";
+        ? `Start ${dateLabel(detail.startDate)}`
+        : "";
     const week = detail.weekTier ? `Week ${detail.weekTier}` : "";
     const frequency = detail.weeklyFrequency
       ? `${detail.weeklyFrequency}× weekly`
@@ -84,8 +90,8 @@ export function renderHistoricalStatementItem(
   batch: Batch | undefined,
   payrollAccess: boolean,
   owner: boolean,
-  onSetAdjustForm: (statement: Statement) => void,
-  onSetPaidForm: (statement: Statement) => void
+  onSetAdjustForm?: (statement: Statement, batch?: Batch) => void,
+  onSetPaidForm?: (statement: Statement, batch?: Batch) => void
 ) {
   return (
     <article
@@ -142,29 +148,35 @@ export function renderHistoricalStatementItem(
       )}
       {payrollAccess && batch && batch.status !== "paid" && (
         <div className="pr-action-row">
-          {owner && batch.status === "draft" && (
+          {owner && batch.status === "draft" && onSetAdjustForm && (
             <button
               type="button"
               className="pr-button outline small"
-              onClick={() => onSetAdjustForm(statement)}
+              onClick={() => onSetAdjustForm(statement, batch)}
             >
               Adjust draft
             </button>
           )}
-          {owner && batch.status === "approved" && statement.net > 0 && (
-            <button
-              type="button"
-              className="pr-button secondary small"
-              onClick={() => onSetPaidForm(statement)}
-            >
-              Record completed transfer
-            </button>
-          )}
+          {owner &&
+            batch.status === "approved" &&
+            !statement.paid_at &&
+            statement.net > 0 &&
+            onSetPaidForm && (
+              <button
+                type="button"
+                className="pr-button secondary small"
+                onClick={() => onSetPaidForm(statement, batch)}
+              >
+                Record completed transfer
+              </button>
+            )}
         </div>
       )}
     </article>
   );
 }
+
+type BatchStatusFilter = "all" | "draft" | "submitted" | "approved" | "paid";
 
 export default function PayrollBatchesSection({
   data,
@@ -177,6 +189,40 @@ export default function PayrollBatchesSection({
   onSetAdjustForm,
   onSetPaidForm,
 }: PayrollBatchesSectionProps) {
+  const [statusFilter, setStatusFilter] = useState<BatchStatusFilter>("all");
+  const [expandedOverrides, setExpandedOverrides] = useState<
+    Record<string, boolean>
+  >({});
+
+  const filterCounts = useMemo(
+    () => ({
+      all: data.batches.length,
+      draft: data.batches.filter((b) => b.status === "draft").length,
+      submitted: data.batches.filter((b) => b.status === "submitted").length,
+      approved: data.batches.filter((b) => b.status === "approved").length,
+      paid: data.batches.filter((b) => b.status === "paid").length,
+    }),
+    [data.batches]
+  );
+
+  const visibleBatches = useMemo(() => {
+    if (statusFilter === "all") return data.batches;
+    return data.batches.filter((b) => b.status === statusFilter);
+  }, [data.batches, statusFilter]);
+
+  const isBatchExpanded = (batch: Batch, index: number) => {
+    const key = String(batch.id);
+    if (key in expandedOverrides) return expandedOverrides[key];
+    // Expand the first batch or any active non-paid batch by default; collapse older paid batches
+    return index === 0 || batch.status !== "paid";
+  };
+
+  const toggleBatch = (batch: Batch, index: number) => {
+    const key = String(batch.id);
+    const current = isBatchExpanded(batch, index);
+    setExpandedOverrides((prev) => ({ ...prev, [key]: !current }));
+  };
+
   return (
     <section className="pr-card">
       <header className="pr-card-head">
@@ -186,6 +232,40 @@ export default function PayrollBatchesSection({
         <FileCheck2 size={17} color="#54856a" />
       </header>
       <div className="pr-card-body">
+        {data.batches.length > 0 && (
+          <div
+            className="portal-tabs"
+            role="tablist"
+            aria-label="Filter pay batches by status"
+          >
+            {(
+              [
+                { key: "all", label: "All" },
+                { key: "draft", label: "Draft" },
+                { key: "submitted", label: "Submitted" },
+                { key: "approved", label: "Approved" },
+                { key: "paid", label: "Paid" },
+              ] as const
+            ).map((pill) => (
+              <button
+                key={pill.key}
+                type="button"
+                role="tab"
+                aria-selected={statusFilter === pill.key}
+                className={`portal-tab ${
+                  statusFilter === pill.key ? "active" : ""
+                }`}
+                onClick={() => setStatusFilter(pill.key)}
+              >
+                {pill.label}
+                <span className="portal-tab-badge">
+                  {filterCounts[pill.key]}
+                </span>
+              </button>
+            ))}
+          </div>
+        )}
+
         {!data.batches.length ? (
           <div className="pr-empty">
             <span className="pr-empty-icon">
@@ -197,142 +277,202 @@ export default function PayrollBatchesSection({
               overview.
             </p>
           </div>
+        ) : !visibleBatches.length ? (
+          <div className="pr-empty">
+            <span className="pr-empty-icon">
+              <FileText size={17} />
+            </span>
+            <strong>No {label(statusFilter).toLowerCase()} batches</strong>
+            <p>Switch status tabs to view batches in other stages.</p>
+          </div>
         ) : (
           <div className="pr-stack">
-            {data.batches.map((batch) => (
-              <section className="pr-card" key={batch.id}>
-                <header className="pr-card-head">
-                  <div>
-                    <h2>{dateLabel(batch.pay_date)} pay batch</h2>
-                    <p>
-                      Revision {batch.revision} · Created{" "}
-                      {dateLabel(batch.created_at)} · {batch.statements.length}{" "}
-                      statements
-                      {batch.approval_mode
-                        ? ` · ${label(batch.approval_mode)}`
-                        : ""}
-                    </p>
-                  </div>
-                  <span className={`pr-pill ${batch.status}`}>
-                    {label(batch.status)}
-                  </span>
-                </header>
-
-                {batch.status === "draft" && (
-                  <div className="pr-card-body">
-                    <div className="pr-action-row">
-                      {(role === "finance" || payrollAccess || owner) && canSubmitOnDate && (
-                        <button
-                          type="button"
-                          className="pr-button"
-                          onClick={() =>
-                            openDecision(
-                              "Submit pay batch for approval?",
-                              "Hand this prepared batch over for final approval and payout. Submission does not transfer money.",
-                              {
-                                action: "batch",
-                                id: batch.id,
-                                decision: "submit",
-                              },
-                              "Submit batch",
-                              false
-                            )
-                          }
-                          disabled={pending}
-                        >
-                          Submit batch
-                        </button>
-                      )}
-                      {(role === "finance" || payrollAccess || owner) && !canSubmitOnDate && (
-                        <span className="pr-subtitle">
-                          Batch can be submitted on or after{" "}
-                          {dateLabel(batch.pay_date)}.
-                        </span>
-                      )}
-                    </div>
-                  </div>
-                )}
-
-                {batch.status === "submitted" && owner && (
-                  <div className="pr-card-body">
-                    <div className="pr-action-row">
+            {visibleBatches.map((batch, index) => {
+              const expanded = isBatchExpanded(batch, index);
+              return (
+                <section className="pr-card" key={batch.id}>
+                  <header
+                    className="pr-card-head"
+                    style={{ cursor: "pointer" }}
+                    onClick={() => toggleBatch(batch, index)}
+                  >
+                    <div
+                      style={{
+                        display: "flex",
+                        alignItems: "center",
+                        gap: 10,
+                        minWidth: 0,
+                      }}
+                    >
                       <button
                         type="button"
-                        className="pr-button secondary"
-                        onClick={() =>
-                          openDecision(
-                            "Approve pay batch?",
-                            "Approval authorizes Finance to carry out transfers manually. It does not send a payment.",
-                            {
-                              action: "batch",
-                              id: batch.id,
-                              decision: "approve",
-                            },
-                            "Approve batch",
-                            false
-                          )
+                        aria-expanded={expanded}
+                        aria-label={
+                          expanded ? "Collapse batch" : "Expand batch"
                         }
-                        disabled={pending}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          toggleBatch(batch, index);
+                        }}
+                        style={{
+                          border: "1px solid var(--line)",
+                          background: "var(--white)",
+                          borderRadius: 7,
+                          width: 26,
+                          height: 26,
+                          display: "inline-flex",
+                          alignItems: "center",
+                          justifyContent: "center",
+                          color: "var(--muted)",
+                          flexShrink: 0,
+                        }}
                       >
-                        <Check size={13} />
-                        Approve batch
+                        {expanded ? (
+                          <ChevronDown size={14} />
+                        ) : (
+                          <ChevronRight size={14} />
+                        )}
                       </button>
-                      <button
-                        type="button"
-                        className="pr-button danger"
-                        onClick={() =>
-                          openDecision(
-                            "Return batch to Finance?",
-                            "A written reason is required so Finance can correct and resubmit this batch.",
-                            {
-                              action: "batch",
-                              id: batch.id,
-                              decision: "reject",
-                            },
-                            "Return with reason",
-                            true
-                          )
-                        }
-                        disabled={pending}
-                      >
-                        Return to Finance
-                      </button>
+                      <div>
+                        <h2>{dateLabel(batch.pay_date)} pay batch</h2>
+                        <p>
+                          Revision {batch.revision} · Created{" "}
+                          {dateLabel(batch.created_at)} ·{" "}
+                          {batch.statements.length} statement
+                          {batch.statements.length === 1 ? "" : "s"}
+                          {batch.approval_mode
+                            ? ` · ${label(batch.approval_mode)}`
+                            : ""}
+                        </p>
+                      </div>
                     </div>
-                  </div>
-                )}
+                    <span className={`pr-pill ${batch.status}`}>
+                      {label(batch.status)}
+                    </span>
+                  </header>
 
-                {batch.status === "submitted" && !owner && (
-                  <div className="pr-card-body">
-                    <p className="pr-status-note">
-                      Awaiting owner approval
-                      {batch.approval_mode === "vacation_delegation"
-                        ? " · server reports vacation delegation for this run"
-                        : ""}
-                      .
-                    </p>
-                  </div>
-                )}
+                  {expanded && (
+                    <>
+                      {batch.status === "draft" && (
+                        <div className="pr-card-body">
+                          <div className="pr-action-row">
+                            {(role === "finance" || payrollAccess || owner) &&
+                              canSubmitOnDate && (
+                                <button
+                                  type="button"
+                                  className="pr-button"
+                                  onClick={() =>
+                                    openDecision(
+                                      "Submit pay batch for approval?",
+                                      "Hand this prepared batch over for final approval and payout. Submission does not transfer money.",
+                                      {
+                                        action: "batch",
+                                        id: batch.id,
+                                        decision: "submit",
+                                      },
+                                      "Submit batch",
+                                      false
+                                    )
+                                  }
+                                  disabled={pending}
+                                >
+                                  Submit batch
+                                </button>
+                              )}
+                            {(role === "finance" || payrollAccess || owner) &&
+                              !canSubmitOnDate && (
+                                <span className="pr-subtitle">
+                                  Batch can be submitted on or after{" "}
+                                  {dateLabel(batch.pay_date)}.
+                                </span>
+                              )}
+                          </div>
+                        </div>
+                      )}
 
-                {batch.status === "approved" && (
-                  <div className="pr-card-body">
-                    <p className="pr-status-note">
-                      Approved · owner may record a completed transfer.
-                    </p>
-                  </div>
-                )}
+                      {batch.status === "submitted" && owner && (
+                        <div className="pr-card-body">
+                          <div className="pr-action-row">
+                            <button
+                              type="button"
+                              className="pr-button secondary"
+                              onClick={() =>
+                                openDecision(
+                                  "Approve pay batch?",
+                                  "Approval authorizes Finance to carry out transfers manually. It does not send a payment.",
+                                  {
+                                    action: "batch",
+                                    id: batch.id,
+                                    decision: "approve",
+                                  },
+                                  "Approve batch",
+                                  false
+                                )
+                              }
+                              disabled={pending}
+                            >
+                              <Check size={13} />
+                              Approve batch
+                            </button>
+                            <button
+                              type="button"
+                              className="pr-button danger"
+                              onClick={() =>
+                                openDecision(
+                                  "Return batch to Finance?",
+                                  "A written reason is required so Finance can correct and resubmit this batch.",
+                                  {
+                                    action: "batch",
+                                    id: batch.id,
+                                    decision: "reject",
+                                  },
+                                  "Return with reason",
+                                  true
+                                )
+                              }
+                              disabled={pending}
+                            >
+                              Return to Finance
+                            </button>
+                          </div>
+                        </div>
+                      )}
 
-                {batch.statements.map((statement) =>
-                  renderHistoricalStatementItem(
-                    statement,
-                    batch,
-                    payrollAccess,
-                    owner,
-                    onSetAdjustForm,
-                    onSetPaidForm
-                  )
-                )}
-              </section>
-            ))}
+                      {batch.status === "submitted" && !owner && (
+                        <div className="pr-card-body">
+                          <p className="pr-status-note">
+                            Awaiting owner approval
+                            {batch.approval_mode === "vacation_delegation"
+                              ? " · server reports vacation delegation for this run"
+                              : ""}
+                            .
+                          </p>
+                        </div>
+                      )}
+
+                      {batch.status === "approved" && (
+                        <div className="pr-card-body">
+                          <p className="pr-status-note">
+                            Approved · owner may record a completed transfer.
+                          </p>
+                        </div>
+                      )}
+
+                      {batch.statements.map((statement) =>
+                        renderHistoricalStatementItem(
+                          statement,
+                          batch,
+                          payrollAccess,
+                          owner,
+                          onSetAdjustForm,
+                          onSetPaidForm
+                        )
+                      )}
+                    </>
+                  )}
+                </section>
+              );
+            })}
           </div>
         )}
       </div>

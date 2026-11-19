@@ -35,12 +35,54 @@ export default function ReportsView({
       .toLowerCase()
       .includes(query.toLowerCase())
   );
-  const completed = data.lessons.filter(
+
+  const nowMs = Date.now();
+  const pastOrResolvedLessons = data.lessons.filter((lesson) => {
+    if (lesson.status !== "scheduled") return true;
+    const startMs = Date.parse(lesson.startsAt);
+    return Number.isFinite(startMs) && startMs <= nowMs;
+  });
+  const completed = pastOrResolvedLessons.filter(
     (lesson) => lesson.status === "completed"
   ).length;
-  const verifiedRate = data.lessons.length
-    ? Math.round((completed / data.lessons.length) * 100)
+  const verifiedRate = pastOrResolvedLessons.length
+    ? Math.round((completed / pastOrResolvedLessons.length) * 100)
     : 0;
+
+  function exportAuditCsv() {
+    if (!events.length) {
+      notify("No audit records match the current filter to export.");
+      return;
+    }
+    const escapeCell = (value: string) =>
+      `"${String(value ?? "").replace(/"/g, '""')}"`;
+    const header = ["Timestamp", "Action", "Record", "Actor", "Detail"];
+    const rows = events.map((event) => [
+      event.at,
+      event.action,
+      event.record,
+      event.actor,
+      event.detail,
+    ]);
+    const csv = [header, ...rows]
+      .map((line) => line.map(escapeCell).join(","))
+      .join("\r\n");
+    const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    const stamp = new Date().toISOString().slice(0, 10);
+    link.href = url;
+    link.download = `prosperwork-audit-report-${stamp}.csv`;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    window.setTimeout(() => URL.revokeObjectURL(url), 5_000);
+    notify(
+      `Exported ${events.length} audit record${
+        events.length === 1 ? "" : "s"
+      } to CSV.`
+    );
+  }
 
   return (
     <>
@@ -48,15 +90,12 @@ export default function ReportsView({
         {searchBar("Search audit records")}
         {superAdmin && (
           <button
+            type="button"
             className="btn ghost"
-            onClick={() =>
-              notify(
-                "Report export integration is not configured. Audit records remain available below."
-              )
-            }
+            onClick={exportAuditCsv}
           >
             <ArrowDownRight size={14} />
-            Export report
+            Export CSV ({events.length})
           </button>
         )}
       </div>
@@ -70,7 +109,8 @@ export default function ReportsView({
           </div>
           <div className="stat-value">{verifiedRate}%</div>
           <div className="stat-foot">
-            {completed} verified of {data.lessons.length} lesson records
+            {completed} verified of {pastOrResolvedLessons.length} past or
+            resolved lessons
           </div>
         </div>
         <div className="card stat-card">

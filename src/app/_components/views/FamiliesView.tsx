@@ -1,17 +1,19 @@
 "use client";
 
-import { useEffect, useState, type ReactNode } from "react";
+import Link from "next/link";
+import { useState, type ReactNode } from "react";
 import {
   AlertCircle,
-  CalendarDays,
+  BookOpen,
   ChevronRight,
   MessageCircle,
   MessageSquare,
+  Music2,
   ShieldCheck,
   UserCheck,
-  X,
 } from "lucide-react";
 import ProfileAvatar from "../ProfileAvatar";
+import { PortalModal } from "../PortalModal";
 import LessonHistory from "../../workflows/LessonHistory";
 import {
   Empty,
@@ -22,19 +24,56 @@ import {
 import type { FormKind } from "../modals/ActionModal";
 import type { AcademyData, Role, Student } from "@/lib/types";
 
+type RosterFilter = "all" | "pending_review" | "active" | "inactive";
+type DetailTab = "profile" | "lessons" | "audit";
+
+function isPendingReview(student: Student): boolean {
+  return (
+    student.admissionStatus === "pending_review" ||
+    Boolean(student.teacherName?.includes("Pending Review")) ||
+    (student.status === "inactive" && !student.teacherName)
+  );
+}
+
+function calculateCalendarAge(dob: string | null | undefined): number | null {
+  if (!dob) return null;
+  const trimmed = dob.trim();
+  const isoMatch = /^(\d{4})-(\d{2})-(\d{2})/.exec(trimmed);
+  let birthYear: number;
+  let birthMonth: number;
+  let birthDay: number;
+  if (isoMatch) {
+    birthYear = Number(isoMatch[1]);
+    birthMonth = Number(isoMatch[2]);
+    birthDay = Number(isoMatch[3]);
+  } else {
+    const parsed = new Date(trimmed);
+    if (!Number.isFinite(parsed.getTime())) return null;
+    birthYear = parsed.getUTCFullYear();
+    birthMonth = parsed.getUTCMonth() + 1;
+    birthDay = parsed.getUTCDate();
+  }
+  const now = new Date();
+  let age = now.getFullYear() - birthYear;
+  const monthDiff = now.getMonth() + 1 - birthMonth;
+  if (monthDiff < 0 || (monthDiff === 0 && now.getDate() < birthDay)) {
+    age -= 1;
+  }
+  return Math.max(0, age);
+}
+
 export default function FamiliesView({
   data,
   role,
+  profileName,
   studentsVisible,
   query,
   searchBar,
   adminAccess,
-  parentAccess,
   superAdmin,
   selectedStudentId,
   setSelectedStudentId,
   headerActions,
-  openForm,
   updateConsent,
   openEmailComposer,
   notify,
@@ -44,16 +83,15 @@ export default function FamiliesView({
 }: {
   data: AcademyData;
   role: Role;
+  profileName?: string;
   studentsVisible: Student[];
   query: string;
   searchBar: (placeholder: string) => ReactNode;
   adminAccess: boolean;
-  parentAccess: boolean;
   superAdmin: boolean;
   selectedStudentId: string;
   setSelectedStudentId: (id: string) => void;
   headerActions: (label: string, kind: FormKind) => ReactNode;
-  openForm: (kind: FormKind) => void;
   updateConsent: (student: Student) => void;
   openEmailComposer: (
     type: "family" | "staff" | "lead",
@@ -66,6 +104,8 @@ export default function FamiliesView({
   qcAssignmentError?: string;
   qcAssignmentLoading?: boolean;
 }) {
+  const [rosterFilter, setRosterFilter] = useState<RosterFilter>("all");
+  const [detailTab, setDetailTab] = useState<DetailTab>("profile");
   const [approvingStudent, setApprovingStudent] = useState<Student | null>(
     null
   );
@@ -73,16 +113,7 @@ export default function FamiliesView({
   const [approvalBusy, setApprovalBusy] = useState(false);
   const [approvalError, setApprovalError] = useState("");
 
-  useEffect(() => {
-    if (!approvingStudent) return;
-    const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape" && !approvalBusy) {
-        setApprovingStudent(null);
-      }
-    };
-    window.addEventListener("keydown", onKeyDown);
-    return () => window.removeEventListener("keydown", onKeyDown);
-  }, [approvingStudent, approvalBusy]);
+  void superAdmin;
 
   const activeTeachers = data.staff.filter(
     (s) =>
@@ -95,12 +126,39 @@ export default function FamiliesView({
       s.role !== "student"
   );
 
-  const pendingReviewStudents = studentsVisible.filter(
-    (s) =>
-      s.admissionStatus === "pending_review" ||
-      s.teacherName?.includes("Pending Review") ||
-      (s.status === "inactive" && !s.teacherName)
+  const searchedStudents = studentsVisible.filter((student) =>
+    `${student.name} ${student.parentName} ${student.instrument} ${student.teacherName}`
+      .toLowerCase()
+      .includes(query.toLowerCase())
   );
+
+  const pendingReviewStudents = searchedStudents.filter(isPendingReview);
+  const activeStudents = searchedStudents.filter(
+    (s) => !isPendingReview(s) && s.status === "active"
+  );
+  const inactiveStudents = searchedStudents.filter(
+    (s) => !isPendingReview(s) && s.status !== "active"
+  );
+
+  const students =
+    rosterFilter === "pending_review"
+      ? pendingReviewStudents
+      : rosterFilter === "active"
+      ? activeStudents
+      : rosterFilter === "inactive"
+      ? inactiveStudents
+      : searchedStudents;
+
+  const selected =
+    students.find((student) => student.id === selectedStudentId) || students[0];
+
+  const selectedLessons = selected
+    ? data.lessons
+        .filter((lesson) => lesson.studentId === selected.id)
+        .sort((a, b) => b.startsAt.localeCompare(a.startsAt))
+    : [];
+
+  const allPendingCount = studentsVisible.filter(isPendingReview).length;
 
   const handleApproveStudent = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -122,7 +180,7 @@ export default function FamiliesView({
           studentId: approvingStudent.id,
           teacherName,
           teacherId: teacherStaff?.id,
-          adminName: data.staff.find((s) => ["admin", "head_admin", "super_admin", "general_manager"].includes(s.role) || (s.department !== "Music Education" && s.role !== "parent" && s.role !== "student"))?.name,
+          adminName: profileName?.trim() || undefined,
         }),
       });
       const json = await res.json();
@@ -144,35 +202,18 @@ export default function FamiliesView({
     }
   };
 
-  const students = studentsVisible.filter((student) =>
-    `${student.name} ${student.parentName} ${student.instrument} ${student.teacherName}`
-      .toLowerCase()
-      .includes(query.toLowerCase())
-  );
-  const selected =
-    students.find((student) => student.id === selectedStudentId) || students[0];
-
   return (
     <>
       <div className="toolbar">
         {searchBar("Find a student, family or instrument")}
         {adminAccess && headerActions("Enroll student", "student")}
         {adminAccess && (
-          <a className="btn secondary" href="/complaints">
+          <Link className="btn secondary" href="/complaints">
             <MessageSquare size={14} /> Complaints &amp; Support
-          </a>
-        )}
-        {parentAccess && (
-          <button
-            className="btn secondary"
-            onClick={() => openForm("reschedule")}
-          >
-            <CalendarDays size={14} />
-            Request reschedule
-          </button>
+          </Link>
         )}
       </div>
-      {adminAccess && pendingReviewStudents.length > 0 && (
+      {adminAccess && allPendingCount > 0 && (
         <div
           className="callout"
           style={{
@@ -185,8 +226,8 @@ export default function FamiliesView({
           <AlertCircle size={18} color="#d97706" />
           <div>
             <strong style={{ color: "#92400e" }}>
-              {pendingReviewStudents.length} New Student Registration
-              {pendingReviewStudents.length > 1 ? "s" : ""} Awaiting Review
+              {allPendingCount} New Student Registration
+              {allPendingCount > 1 ? "s" : ""} Awaiting Review
             </strong>
             Review submitted schedule availability, lesson duration, and assign
             a qualified instructor to activate enrollment.
@@ -208,15 +249,60 @@ export default function FamiliesView({
           {qcAssignmentError}
         </div>
       )}
-      {parentAccess && (
-        <div className="callout" style={{ marginBottom: 15 }}>
-          <ShieldCheck size={17} />
-          <div>
-            <strong>Your family's learning record</strong>Only this family or
-            learner's own timezone and child records are shown in this preview.
-          </div>
-        </div>
-      )}
+
+      <div
+        className="portal-tabs"
+        role="tablist"
+        aria-label="Filter students by status"
+      >
+        <button
+          type="button"
+          role="tab"
+          aria-selected={rosterFilter === "all"}
+          className={`portal-tab${rosterFilter === "all" ? " active" : ""}`}
+          onClick={() => setRosterFilter("all")}
+        >
+          All
+          <span className="portal-tab-badge">{searchedStudents.length}</span>
+        </button>
+        <button
+          type="button"
+          role="tab"
+          aria-selected={rosterFilter === "pending_review"}
+          className={`portal-tab${
+            rosterFilter === "pending_review" ? " active" : ""
+          }`}
+          onClick={() => setRosterFilter("pending_review")}
+        >
+          Pending Review
+          <span className="portal-tab-badge">
+            {pendingReviewStudents.length}
+          </span>
+        </button>
+        <button
+          type="button"
+          role="tab"
+          aria-selected={rosterFilter === "active"}
+          className={`portal-tab${rosterFilter === "active" ? " active" : ""}`}
+          onClick={() => setRosterFilter("active")}
+        >
+          Active
+          <span className="portal-tab-badge">{activeStudents.length}</span>
+        </button>
+        <button
+          type="button"
+          role="tab"
+          aria-selected={rosterFilter === "inactive"}
+          className={`portal-tab${
+            rosterFilter === "inactive" ? " active" : ""
+          }`}
+          onClick={() => setRosterFilter("inactive")}
+        >
+          Inactive
+          <span className="portal-tab-badge">{inactiveStudents.length}</span>
+        </button>
+      </div>
+
       {students.length ? (
         <div
           className="grid-main families-layout"
@@ -228,272 +314,359 @@ export default function FamiliesView({
         >
           <section className="card section-card">
             <SectionTitle
-              title={
-                parentAccess ? "Your children" : `${students.length} students`
-              }
-              detail="Select a student to view their details and lesson history."
+              title={`${students.length} student${
+                students.length === 1 ? "" : "s"
+              }`}
+              detail="Select a student to view their profile, lessons and audit trail."
             />
-            {students.map((student) => (
-              <button
-                key={student.id}
-                className={`student-select ${
-                  selected?.id === student.id ? "selected" : ""
-                }`}
-                onClick={() => setSelectedStudentId(student.id)}
-              >
-                <ProfileAvatar name={student.name} size={32} />
-                <span className="student-select-copy">
-                  <strong>{student.name}</strong>
-                  <small>
-                    {student.instrument} · {student.parentName}
-                  </small>
-                </span>
-                <Pill
-                  tone={
-                    student.admissionStatus === "pending_review" ||
-                    student.teacherName?.includes("Pending Review")
-                      ? "amber"
-                      : student.status === "active"
-                      ? "green"
-                      : "rose"
-                  }
+            {students.map((student) => {
+              const pending = isPendingReview(student);
+              return (
+                <button
+                  type="button"
+                  key={student.id}
+                  className={`student-select ${
+                    selected?.id === student.id ? "selected" : ""
+                  }`}
+                  onClick={() => setSelectedStudentId(student.id)}
                 >
-                  {student.admissionStatus === "pending_review" ||
-                  student.teacherName?.includes("Pending Review")
-                    ? "Pending Review"
-                    : student.status}
-                </Pill>
-                <ChevronRight size={14} />
-              </button>
-            ))}
+                  <ProfileAvatar name={student.name} size={32} />
+                  <span className="student-select-copy">
+                    <strong>{student.name}</strong>
+                    <small>
+                      {student.instrument} · {student.parentName}
+                    </small>
+                  </span>
+                  <Pill
+                    tone={
+                      pending
+                        ? "amber"
+                        : student.status === "active"
+                        ? "green"
+                        : "rose"
+                    }
+                  >
+                    {pending ? "Pending Review" : student.status}
+                  </Pill>
+                  <ChevronRight size={14} />
+                </button>
+              );
+            })}
           </section>
           {selected && (
             <div className="stack">
               <section className="card">
-                <div className="profile-head">
+                <div className="profile-head" style={{ flexWrap: "wrap" }}>
                   <ProfileAvatar name={selected.name} size={49} />
-                  <div style={{ flex: 1 }}>
+                  <div style={{ flex: 1, minWidth: 180 }}>
                     <h3>{selected.name}</h3>
                     <span className="page-subtitle">
                       {selected.instrument} · {selected.rank} ·{" "}
-                      {selected.admissionStatus === "pending_review" ||
-                      selected.teacherName?.includes("Pending Review")
+                      {isPendingReview(selected)
                         ? "Pending Admission Review"
                         : selected.status}
                     </span>
                   </div>
-                  <Pill tone={selected.consent ? "green" : "amber"}>
-                    {selected.consent
-                      ? "consent granted"
-                      : "consent not granted"}
-                  </Pill>
+                  <div
+                    className="row-actions"
+                    style={{ alignItems: "center", gap: 6, flexWrap: "wrap" }}
+                  >
+                    <Link className="btn ghost small" href="/learning">
+                      <BookOpen size={13} /> Lesson board
+                    </Link>
+                    <Link className="btn ghost small" href="/studio">
+                      <Music2 size={13} /> Studio
+                    </Link>
+                    <Pill tone={selected.consent ? "green" : "amber"}>
+                      {selected.consent
+                        ? "consent granted"
+                        : "consent not granted"}
+                    </Pill>
+                  </div>
                 </div>
-                <div className="profile-grid">
-                  <div className="profile-field">
-                    <span>Age · date of birth</span>
-                    <strong>
-                      {(() => {
-                        const dobMs = selected.dob
-                          ? Date.parse(selected.dob)
-                          : Number.NaN;
-                        const age = Number.isFinite(dobMs)
-                          ? Math.max(
-                              0,
-                              Math.floor((Date.now() - dobMs) / 31557600000)
-                            )
-                          : null;
-                        return (
-                          <>
-                            {age !== null ? `${age} · ` : ""}
-                            {selected.dob
-                              ? niceDate(selected.dob, {
-                                  year: "numeric",
-                                  month: "short",
-                                  day: "numeric",
-                                })
-                              : "Not recorded"}
-                          </>
-                        );
-                      })()}
-                    </strong>
-                  </div>
-                  <div className="profile-field">
-                    <span>Parent / guardian</span>
-                    <strong>{selected.parentName}</strong>
-                  </div>
-                  <div className="profile-field">
-                    <span>Teacher</span>
-                    <strong>{selected.teacherName}</strong>
-                  </div>
-                  <div className="profile-field">
-                    <span>Assigned administrator</span>
-                    <strong>{selected.adminName}</strong>
-                  </div>
-                  <div className="profile-field">
-                    <span>Timezone</span>
-                    <strong>{selected.timezone}</strong>
-                  </div>
-                  <div className="profile-field">
-                    <span>Monthly lessons</span>
-                    <strong>
-                      {selected.lessonsTaken} of {selected.monthlyLessons} taken
-                    </strong>
-                  </div>
-                  <div className="profile-field">
-                    <span>Lesson duration</span>
-                    <strong>
-                      {selected.lessonDuration || "1 hour (Standard)"}
-                    </strong>
-                  </div>
-                  <div className="profile-field">
-                    <span>Preferred schedule</span>
-                    <strong>
-                      {selected.preferredDays || "Flexible / Not specified"}
-                    </strong>
-                  </div>
-                  {selected.extraTimeNotes && (
-                    <div
-                      className="profile-field"
-                      style={{ gridColumn: "1 / -1" }}
-                    >
-                      <span style={{ color: "#d97706" }}>
-                        Extra time request details
-                      </span>
-                      <strong style={{ color: "#92400e" }}>
-                        {selected.extraTimeNotes}
-                      </strong>
-                    </div>
-                  )}
-                  {selected.learningGoals && (
-                    <div className="profile-field">
-                      <span>Primary learning goals</span>
-                      <strong>{selected.learningGoals}</strong>
-                    </div>
-                  )}
-                  {selected.specialNeeds && (
-                    <div className="profile-field">
-                      <span>Accommodations / notes</span>
-                      <strong>{selected.specialNeeds}</strong>
-                    </div>
-                  )}
-                </div>
+
                 <div
-                  className="profile-foot"
                   style={{
-                    padding: "16px 20px",
+                    padding: "0 20px",
                     borderTop: "1px solid var(--line)",
+                    paddingTop: 12,
                   }}
                 >
                   <div
-                    className="settings-row"
-                    style={{ borderTop: "none", paddingTop: 0 }}
+                    className="portal-tabs"
+                    role="tablist"
+                    aria-label={`${selected.name} details`}
+                    style={{ marginBottom: 0, borderBottom: "none" }}
                   >
-                    <div>
-                      <strong>Social media permission</strong>
-                      <span>
-                        Permission for student practice and class clips on
-                        academy channels.
+                    <button
+                      type="button"
+                      role="tab"
+                      aria-selected={detailTab === "profile"}
+                      className={`portal-tab${
+                        detailTab === "profile" ? " active" : ""
+                      }`}
+                      onClick={() => setDetailTab("profile")}
+                    >
+                      Profile
+                    </button>
+                    <button
+                      type="button"
+                      role="tab"
+                      aria-selected={detailTab === "lessons"}
+                      className={`portal-tab${
+                        detailTab === "lessons" ? " active" : ""
+                      }`}
+                      onClick={() => setDetailTab("lessons")}
+                    >
+                      Lessons
+                      <span className="portal-tab-badge">
+                        {selectedLessons.length}
                       </span>
-                    </div>
-                    {(parentAccess || adminAccess) && (
-                      <button
-                        className={`toggle ${selected.consent ? "on" : ""}`}
-                        aria-label={`Toggle consent for ${selected.name}`}
-                        aria-pressed={selected.consent}
-                        onClick={() => updateConsent(selected)}
-                      >
-                        <span />
-                      </button>
-                    )}
+                    </button>
+                    <button
+                      type="button"
+                      role="tab"
+                      aria-selected={detailTab === "audit"}
+                      className={`portal-tab${
+                        detailTab === "audit" ? " active" : ""
+                      }`}
+                      onClick={() => setDetailTab("audit")}
+                    >
+                      Class Audit
+                    </button>
                   </div>
-                  {adminAccess && (
+                </div>
+
+                {detailTab === "profile" && (
+                  <>
+                    <div className="profile-grid">
+                      <div className="profile-field">
+                        <span>Age · date of birth</span>
+                        <strong>
+                          {(() => {
+                            const age = calculateCalendarAge(selected.dob);
+                            return (
+                              <>
+                                {age !== null ? `${age} · ` : ""}
+                                {selected.dob
+                                  ? niceDate(selected.dob, {
+                                      year: "numeric",
+                                      month: "short",
+                                      day: "numeric",
+                                    })
+                                  : "Not recorded"}
+                              </>
+                            );
+                          })()}
+                        </strong>
+                      </div>
+                      <div className="profile-field">
+                        <span>Parent / guardian</span>
+                        <strong>{selected.parentName}</strong>
+                      </div>
+                      <div className="profile-field">
+                        <span>Teacher</span>
+                        <strong>{selected.teacherName}</strong>
+                      </div>
+                      <div className="profile-field">
+                        <span>Assigned administrator</span>
+                        <strong>{selected.adminName}</strong>
+                      </div>
+                      <div className="profile-field">
+                        <span>Timezone</span>
+                        <strong>{selected.timezone}</strong>
+                      </div>
+                      <div className="profile-field">
+                        <span>Monthly lessons</span>
+                        <strong>
+                          {selected.lessonsTaken} of {selected.monthlyLessons}{" "}
+                          taken
+                        </strong>
+                      </div>
+                      <div className="profile-field">
+                        <span>Lesson duration</span>
+                        <strong>
+                          {selected.lessonDuration || "1 hour (Standard)"}
+                        </strong>
+                      </div>
+                      <div className="profile-field">
+                        <span>Preferred schedule</span>
+                        <strong>
+                          {selected.preferredDays || "Flexible / Not specified"}
+                        </strong>
+                      </div>
+                      {selected.extraTimeNotes && (
+                        <div
+                          className="profile-field"
+                          style={{ gridColumn: "1 / -1" }}
+                        >
+                          <span style={{ color: "#d97706" }}>
+                            Extra time request details
+                          </span>
+                          <strong style={{ color: "#92400e" }}>
+                            {selected.extraTimeNotes}
+                          </strong>
+                        </div>
+                      )}
+                      {selected.learningGoals && (
+                        <div className="profile-field">
+                          <span>Primary learning goals</span>
+                          <strong>{selected.learningGoals}</strong>
+                        </div>
+                      )}
+                      {selected.specialNeeds && (
+                        <div className="profile-field">
+                          <span>Accommodations / notes</span>
+                          <strong>{selected.specialNeeds}</strong>
+                        </div>
+                      )}
+                    </div>
                     <div
-                      className="row-actions"
+                      className="profile-foot"
                       style={{
-                        marginTop: 12,
-                        display: "flex",
-                        alignItems: "center",
-                        gap: 10,
-                        flexWrap: "wrap",
+                        padding: "16px 20px",
+                        borderTop: "1px solid var(--line)",
                       }}
                     >
-                      {(selected.admissionStatus === "pending_review" ||
-                        selected.teacherName?.includes("Pending Review") ||
-                        (selected.status === "inactive" &&
-                          !selected.teacherName)) && (
-                        <button
-                          type="button"
-                          className="btn primary small"
-                          style={{
-                            background: "#15803d",
-                            borderColor: "#15803d",
-                            color: "#ffffff",
-                          }}
-                          onClick={() => {
-                            setApprovingStudent(selected);
-                            setAssignTeacherName(activeTeachers[0]?.name || "");
-                            setApprovalError("");
-                          }}
-                        >
-                          <UserCheck size={13} />
-                          Approve &amp; Assign Instructor
-                        </button>
-                      )}
-                      <button
-                        className="btn ghost small"
-                        onClick={() =>
-                          openEmailComposer(
-                            "family",
-                            selected.id,
-                            selected.parentEmail,
-                            selected.parentName
-                          )
-                        }
+                      <div
+                        className="settings-row"
+                        style={{ borderTop: "none", paddingTop: 0 }}
                       >
-                        <MessageCircle size={13} />
-                        Email family
-                      </button>
-                    </div>
-                  )}
-                </div>
-              </section>
-              <section className="card section-card">
-                <SectionTitle
-                  title="Lesson history"
-                  detail="Past, current and upcoming lessons for this student."
-                />
-                {data.lessons
-                  .filter((lesson) => lesson.studentId === selected.id)
-                  .sort((a, b) => b.startsAt.localeCompare(a.startsAt))
-                  .map((lesson) => (
-                    <div className="lesson-row" key={lesson.id}>
-                      <div className="lesson-time">
-                        {niceDate(lesson.startsAt)}
-                      </div>
-                      <div>
-                        <div className="lesson-person">{lesson.title}</div>
-                        <div className="lesson-meta">
-                          {lesson.teacherName} ·{" "}
-                          {lesson.notes || "No lesson note yet"}
-                          {lesson.nextTopics && ` · Next: ${lesson.nextTopics}`}
+                        <div>
+                          <strong>Social media permission</strong>
+                          <span>
+                            Permission for student practice and class clips on
+                            academy channels.
+                          </span>
                         </div>
-                        {lesson.verification && (
-                          <div className="table-small">
-                            Teacher {lesson.verification.teacher} · verified{" "}
-                            {lesson.verification.admin} ·{" "}
-                            {niceDate(lesson.verification.at)}
-                          </div>
+                        {adminAccess && (
+                          <button
+                            type="button"
+                            className={`toggle ${selected.consent ? "on" : ""}`}
+                            aria-label={`Toggle consent for ${selected.name}`}
+                            aria-pressed={selected.consent}
+                            onClick={() => updateConsent(selected)}
+                          >
+                            <span />
+                          </button>
                         )}
                       </div>
-                      <Pill>{lesson.status.replace("_", " ")}</Pill>
+                      {adminAccess && (
+                        <div
+                          className="row-actions"
+                          style={{
+                            marginTop: 12,
+                            display: "flex",
+                            alignItems: "center",
+                            gap: 10,
+                            flexWrap: "wrap",
+                          }}
+                        >
+                          {isPendingReview(selected) && (
+                            <button
+                              type="button"
+                              className="btn primary small"
+                              style={{
+                                background: "#15803d",
+                                borderColor: "#15803d",
+                                color: "#ffffff",
+                              }}
+                              onClick={() => {
+                                setApprovingStudent(selected);
+                                setAssignTeacherName(
+                                  activeTeachers[0]?.name || ""
+                                );
+                                setApprovalError("");
+                              }}
+                            >
+                              <UserCheck size={13} />
+                              Approve &amp; Assign Instructor
+                            </button>
+                          )}
+                          <button
+                            type="button"
+                            className="btn ghost small"
+                            onClick={() =>
+                              openEmailComposer(
+                                "family",
+                                selected.id,
+                                selected.parentEmail,
+                                selected.parentName
+                              )
+                            }
+                          >
+                            <MessageCircle size={13} />
+                            Email family
+                          </button>
+                        </div>
+                      )}
                     </div>
-                  ))}
-                <div className="metric-row">
-                  <span>Monthly lesson plan</span>
-                  <strong>
-                    {selected.lessonsTaken}/{selected.monthlyLessons} complete
-                  </strong>
-                </div>
+                  </>
+                )}
+
+                {detailTab === "lessons" && (
+                  <div
+                    style={{
+                      padding: "16px 20px",
+                      borderTop: "1px solid var(--line)",
+                    }}
+                  >
+                    {selectedLessons.length ? (
+                      selectedLessons.map((lesson) => (
+                        <div className="lesson-row" key={lesson.id}>
+                          <div className="lesson-time">
+                            {niceDate(lesson.startsAt)}
+                          </div>
+                          <div>
+                            <div className="lesson-person">{lesson.title}</div>
+                            <div className="lesson-meta">
+                              {lesson.teacherName} ·{" "}
+                              {lesson.notes || "No lesson note yet"}
+                              {lesson.nextTopics &&
+                                ` · Next: ${lesson.nextTopics}`}
+                            </div>
+                            {lesson.verification && (
+                              <div className="table-small">
+                                Teacher {lesson.verification.teacher} · verified{" "}
+                                {lesson.verification.admin} ·{" "}
+                                {niceDate(lesson.verification.at)}
+                              </div>
+                            )}
+                          </div>
+                          <Pill>{lesson.status.replace("_", " ")}</Pill>
+                        </div>
+                      ))
+                    ) : (
+                      <Empty
+                        title="No scheduled lessons yet"
+                        detail="Lessons assigned to this student will appear here."
+                      />
+                    )}
+                    <div className="metric-row" style={{ marginTop: 12 }}>
+                      <span>Monthly lesson plan</span>
+                      <strong>
+                        {selected.lessonsTaken}/{selected.monthlyLessons}{" "}
+                        complete
+                      </strong>
+                    </div>
+                  </div>
+                )}
+
+                {detailTab === "audit" && (
+                  <div
+                    style={{
+                      padding: "16px 20px",
+                      borderTop: "1px solid var(--line)",
+                    }}
+                  >
+                    <LessonHistory
+                      studentId={selected.id}
+                      studentName={selected.name}
+                      timezone={selected.timezone}
+                      parentView={false}
+                    />
+                  </div>
+                )}
               </section>
             </div>
           )}
@@ -502,205 +675,147 @@ export default function FamiliesView({
         <div className="skeleton" style={{ height: 140 }} />
       ) : (
         <Empty
-          title="No matching family"
+          title="No matching student"
           detail={
             role === "qc"
               ? "No students from your assigned QC tutor lessons are visible here."
-              : "Try a different name or clear the search."
+              : "Try a different filter or clear the search."
           }
         />
       )}
-      {selected && (
-        <LessonHistory
-          studentId={selected.id}
-          studentName={selected.name}
-          timezone={selected.timezone}
-          parentView={parentAccess}
-        />
-      )}
-      {approvingStudent && (
-        <div
-          className="modal-backdrop"
-          style={{
-            position: "fixed",
-            inset: 0,
-            background: "rgba(10, 46, 34, 0.45)",
-            backdropFilter: "blur(3px)",
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            zIndex: 1000,
-            padding: 16,
-          }}
-          onClick={() => !approvalBusy && setApprovingStudent(null)}
-        >
-          <div
-            className="modal-box card"
-            role="dialog"
-            aria-modal="true"
-            aria-labelledby="confirm-admission-title"
-            onClick={(e) => e.stopPropagation()}
-            style={{
-              maxWidth: 480,
-              width: "100%",
-              background: "#ffffff",
-              borderRadius: 14,
-              boxShadow: "0 20px 50px rgba(0,0,0,0.18)",
-              padding: 24,
-            }}
-          >
-            <div
+
+      <PortalModal
+        open={Boolean(approvingStudent)}
+        onClose={() => setApprovingStudent(null)}
+        eyebrow="Admissions Review"
+        title="Confirm Student Admission"
+        subtitle={
+          approvingStudent
+            ? `${approvingStudent.name} · ${approvingStudent.instrument}`
+            : undefined
+        }
+        size="sm"
+        busy={approvalBusy}
+      >
+        {approvingStudent && (
+          <form onSubmit={handleApproveStudent}>
+            <p
               style={{
-                display: "flex",
-                justifyContent: "space-between",
-                alignItems: "center",
-                marginBottom: 16,
-                borderBottom: "1px solid #e7efe9",
-                paddingBottom: 12,
+                fontSize: 13.5,
+                color: "#374740",
+                margin: "0 0 14px",
+                lineHeight: 1.5,
               }}
             >
-              <h3
-                id="confirm-admission-title"
-                style={{ margin: 0, fontSize: 18, color: "#0a2e22" }}
+              Confirm enrollment for <strong>{approvingStudent.name}</strong> (
+              {approvingStudent.instrument}). Assigning an instructor activates
+              their lesson calendar and sends an official confirmation email to{" "}
+              <strong>{approvingStudent.parentEmail}</strong>.
+            </p>
+
+            <div
+              style={{
+                background: "#f8faf9",
+                padding: "12px 14px",
+                borderRadius: 8,
+                border: "1px solid #e2ece6",
+                marginBottom: 14,
+                fontSize: 13,
+                lineHeight: 1.6,
+              }}
+            >
+              <div>
+                <strong>Lesson Duration:</strong>{" "}
+                {approvingStudent.lessonDuration || "1 hour (Standard)"}
+              </div>
+              {approvingStudent.extraTimeNotes && (
+                <div style={{ color: "#92400e" }}>
+                  <strong>Extra Time Note:</strong>{" "}
+                  {approvingStudent.extraTimeNotes}
+                </div>
+              )}
+              <div>
+                <strong>Requested Schedule:</strong>{" "}
+                {approvingStudent.preferredDays || "Flexible"}
+              </div>
+              <div>
+                <strong>Guardian:</strong> {approvingStudent.parentName}
+              </div>
+            </div>
+
+            {approvalError && (
+              <div
+                className="form-error"
+                role="alert"
+                style={{ marginBottom: 12 }}
               >
-                Confirm Student Admission
-              </h3>
+                {approvalError}
+              </div>
+            )}
+
+            <div style={{ marginBottom: 18 }}>
+              <label
+                htmlFor="assign-teacher-select"
+                style={{
+                  display: "block",
+                  fontWeight: 600,
+                  fontSize: 13,
+                  color: "#0a2e22",
+                  marginBottom: 6,
+                }}
+              >
+                Assign Qualified Instructor *
+              </label>
+              <select
+                id="assign-teacher-select"
+                style={{
+                  width: "100%",
+                  padding: "9px 12px",
+                  borderRadius: 8,
+                  border: "1px solid #c9d8ce",
+                  fontSize: 14,
+                }}
+                value={assignTeacherName}
+                onChange={(e) => setAssignTeacherName(e.target.value)}
+                disabled={approvalBusy}
+                required
+              >
+                <option value="">Select an instructor…</option>
+                {activeTeachers.map((t) => (
+                  <option key={t.id} value={t.name}>
+                    {t.name} ({t.department || "Instructor"})
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <div className="modal-actions" style={{ marginTop: 0 }}>
               <button
                 type="button"
-                aria-label="Close"
-                className="btn ghost small"
+                className="btn secondary"
                 onClick={() => setApprovingStudent(null)}
                 disabled={approvalBusy}
               >
-                <X size={16} />
+                Cancel
+              </button>
+              <button
+                type="submit"
+                className="btn primary"
+                disabled={approvalBusy || !assignTeacherName}
+                style={{
+                  background: "#15803d",
+                  borderColor: "#15803d",
+                  color: "#ffffff",
+                }}
+              >
+                {approvalBusy
+                  ? "Confirming & Sending…"
+                  : "Confirm Admission & Notify"}
               </button>
             </div>
-            <form onSubmit={handleApproveStudent}>
-              <p
-                style={{
-                  fontSize: 13.5,
-                  color: "#374740",
-                  margin: "0 0 16px",
-                  lineHeight: 1.5,
-                }}
-              >
-                Confirm enrollment for <strong>{approvingStudent.name}</strong>{" "}
-                ({approvingStudent.instrument}). Assigning an instructor
-                activates their lesson calendar and sends an official
-                confirmation email to{" "}
-                <strong>{approvingStudent.parentEmail}</strong>.
-              </p>
-
-              <div
-                style={{
-                  background: "#f8faf9",
-                  padding: "12px 14px",
-                  borderRadius: 8,
-                  border: "1px solid #e2ece6",
-                  marginBottom: 16,
-                  fontSize: 13,
-                  lineHeight: 1.6,
-                }}
-              >
-                <div>
-                  <strong>Lesson Duration:</strong>{" "}
-                  {approvingStudent.lessonDuration || "1 hour (Standard)"}
-                </div>
-                {approvingStudent.extraTimeNotes && (
-                  <div style={{ color: "#92400e" }}>
-                    <strong>Extra Time Note:</strong>{" "}
-                    {approvingStudent.extraTimeNotes}
-                  </div>
-                )}
-                <div>
-                  <strong>Requested Schedule:</strong>{" "}
-                  {approvingStudent.preferredDays || "Flexible"}
-                </div>
-                <div>
-                  <strong>Guardian:</strong> {approvingStudent.parentName}
-                </div>
-              </div>
-
-              {approvalError && (
-                <div
-                  className="form-error"
-                  role="alert"
-                  style={{ marginBottom: 12 }}
-                >
-                  {approvalError}
-                </div>
-              )}
-
-              <div style={{ marginBottom: 18 }}>
-                <label
-                  htmlFor="assign-teacher-select"
-                  style={{
-                    display: "block",
-                    fontWeight: 600,
-                    fontSize: 13,
-                    color: "#0a2e22",
-                    marginBottom: 6,
-                  }}
-                >
-                  Assign Qualified Instructor *
-                </label>
-                <select
-                  id="assign-teacher-select"
-                  style={{
-                    width: "100%",
-                    padding: "9px 12px",
-                    borderRadius: 8,
-                    border: "1px solid #c9d8ce",
-                    fontSize: 14,
-                  }}
-                  value={assignTeacherName}
-                  onChange={(e) => setAssignTeacherName(e.target.value)}
-                  disabled={approvalBusy}
-                  required
-                >
-                  <option value="">Select an instructor…</option>
-                  {activeTeachers.map((t) => (
-                    <option key={t.id} value={t.name}>
-                      {t.name} ({t.department || "Instructor"})
-                    </option>
-                  ))}
-                </select>
-              </div>
-
-              <div
-                style={{
-                  display: "flex",
-                  justifyContent: "flex-end",
-                  gap: 10,
-                }}
-              >
-                <button
-                  type="button"
-                  className="btn secondary"
-                  onClick={() => setApprovingStudent(null)}
-                  disabled={approvalBusy}
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  className="btn primary"
-                  disabled={approvalBusy || !assignTeacherName}
-                  style={{
-                    background: "#15803d",
-                    borderColor: "#15803d",
-                    color: "#ffffff",
-                  }}
-                >
-                  {approvalBusy
-                    ? "Confirming & Sending…"
-                    : "Confirm Admission & Notify"}
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
+          </form>
+        )}
+      </PortalModal>
     </>
   );
 }

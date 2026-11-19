@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import type { ReactNode } from "react";
 import {
   CalendarDays,
@@ -10,6 +11,7 @@ import {
   Sparkles,
   Users,
 } from "lucide-react";
+import { useConfirmModal } from "../ConfirmModal";
 import ProfileAvatar from "../ProfileAvatar";
 import { Pill, roleNames, SectionTitle } from "../../_lib/portal-formatters";
 import type { AcademyData, Role, StaffMember } from "@/lib/types";
@@ -41,6 +43,8 @@ export default function PeopleView({
     nextStatus: StaffMember["status"]
   ) => void | Promise<void>;
 }) {
+  const { confirm, ConfirmDialog, busy } = useConfirmModal();
+
   const people = data.staff.filter((person) =>
     `${person.name} ${person.department} ${person.role} ${person.status}`
       .toLowerCase()
@@ -49,8 +53,28 @@ export default function PeopleView({
   const staffMembers = data.staff.filter(
     (person) => person.role !== "super_admin"
   );
-  const updateTeacherProgress = () => {
-    window.location.href = "/hiring";
+  const canEditStaffStatus = role === "super_admin" && superAdmin;
+
+  const requestStatusChange = (
+    person: StaffMember,
+    nextStatus: StaffMember["status"]
+  ) => {
+    if (nextStatus === person.status) return;
+    confirm({
+      title: `Update ${person.name}'s status?`,
+      message: `Change ${person.name}'s account status from "${person.status.replace(
+        "_",
+        " "
+      )}" to "${nextStatus.replace(
+        "_",
+        " "
+      )}"? This immediately updates their portal access and scheduling availability.`,
+      confirmLabel: "Confirm status change",
+      tone: ["paused", "restricted"].includes(nextStatus)
+        ? "danger"
+        : "warning",
+      onConfirm: () => updateStaffStatus(person, nextStatus),
+    });
   };
 
   return (
@@ -58,10 +82,10 @@ export default function PeopleView({
       <div className="toolbar">
         {searchBar("Find staff, department or status")}
         {(canManage || role === "hr") && (
-          <button className="btn" onClick={updateTeacherProgress}>
+          <Link className="btn" href="/hiring">
             <Plus size={14} />
-            Log recruitment / observation
-          </button>
+            Hiring pipeline
+          </Link>
         )}
       </div>
       <div className="stat-grid">
@@ -184,7 +208,28 @@ export default function PeopleView({
                       </div>
                     </td>
                     <td>
-                      <Pill>{person.status.replace("_", " ")}</Pill>
+                      {canEditStaffStatus && !isOwner ? (
+                        <select
+                          aria-label={`Update ${person.name} status`}
+                          className="select-mini"
+                          value={person.status}
+                          disabled={busy}
+                          onChange={(event) =>
+                            requestStatusChange(
+                              person,
+                              event.target.value as StaffMember["status"]
+                            )
+                          }
+                        >
+                          <option value="active">Active</option>
+                          <option value="on_leave">On leave</option>
+                          <option value="paused">Paused</option>
+                          <option value="restricted">Restricted</option>
+                          <option value="applicant">Applicant</option>
+                        </select>
+                      ) : (
+                        <Pill>{person.status.replace("_", " ")}</Pill>
+                      )}
                     </td>
                     <td>
                       {isOwner ? (
@@ -193,7 +238,8 @@ export default function PeopleView({
                         <>
                           {person.parentCount !== undefined
                             ? `${person.parentCount} families`
-                            : person.role === "teacher" || person.department === "Music Education"
+                            : person.role === "teacher" ||
+                              person.department === "Music Education"
                             ? `${
                                 data.lessons.filter(
                                   (lesson) =>
@@ -217,6 +263,7 @@ export default function PeopleView({
                       ) : (
                         <div className="row-actions">
                           <button
+                            type="button"
                             className="icon-btn"
                             aria-label={`Email ${person.name}`}
                             onClick={() =>
@@ -230,25 +277,6 @@ export default function PeopleView({
                           >
                             <MessageCircle size={13} />
                           </button>
-                          {(role === "super_admin" || canManage) && (
-                            <select
-                              aria-label={`Update ${person.name} status`}
-                              className="select-mini"
-                              value={person.status}
-                              onChange={(event) =>
-                                void updateStaffStatus(
-                                  person,
-                                  event.target.value as StaffMember["status"]
-                                )
-                              }
-                            >
-                              <option value="active">Active</option>
-                              <option value="on_leave">On leave</option>
-                              <option value="paused">Paused</option>
-                              <option value="restricted">Restricted</option>
-                              <option value="applicant">Applicant</option>
-                            </select>
-                          )}
                         </div>
                       )}
                     </td>
@@ -259,6 +287,7 @@ export default function PeopleView({
           </table>
         </div>
       </section>
+      <ConfirmDialog />
     </>
   );
 }

@@ -4,7 +4,6 @@ import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   AlertCircle,
-  ArrowLeft,
   ArrowRight,
   Check,
   FileText,
@@ -22,7 +21,9 @@ type OnboardingResponse = {
   setupRequired: boolean;
   missingKeys: string[];
 };
+
 type JsonResult = Record<string, unknown>;
+
 function messageFor(result: JsonResult, status: number) {
   if (typeof result.error === "string") return result.error;
   if (typeof result.message === "string") return result.message;
@@ -54,6 +55,13 @@ export default function OnboardingPage() {
   const acknowledgedOnServer = useMemo(
     () => new Set(data?.acceptedIds ?? []),
     [data?.acceptedIds]
+  );
+  const acknowledgedCount = useMemo(
+    () =>
+      currentIds.filter(
+        (id) => acknowledgedOnServer.has(id) || checkedIds.includes(id)
+      ).length,
+    [currentIds, acknowledgedOnServer, checkedIds]
   );
   const allChecked = Boolean(
     !data?.setupRequired &&
@@ -93,7 +101,7 @@ export default function OnboardingPage() {
         !Array.isArray(payload.versions) ||
         !Array.isArray(payload.acceptedIds)
       )
-        throw new Error("The policy response was incomplete.");
+        throw new Error("Academy policies could not be loaded right now.");
       setData(payload);
       const ids = payload.versions
         .filter((version) => version.published_at !== null)
@@ -105,7 +113,7 @@ export default function OnboardingPage() {
       setError(
         cause instanceof Error
           ? cause.message
-          : "Approved policies could not be loaded."
+          : "Academy policies could not be loaded."
       );
       return null;
     } finally {
@@ -119,7 +127,8 @@ export default function OnboardingPage() {
   }, [load]);
 
   const acceptCurrent = async () => {
-    if (busy || !canAccept || stale || !allChecked || currentIds.length === 0) return;
+    if (busy || !canAccept || stale || !allChecked || currentIds.length === 0)
+      return;
     setBusy(true);
     setError("");
     setMessage("");
@@ -136,7 +145,7 @@ export default function OnboardingPage() {
         setStale(true);
         throw new Error(
           messageFor(result, response.status) ||
-            "Policy versions changed. Reload the current versions and review them again before accepting."
+            "One or more policies were updated. Please reload to review the latest versions."
         );
       }
       if (!response.ok || result.ok === false)
@@ -144,7 +153,7 @@ export default function OnboardingPage() {
       const refreshed = await load();
       if (!refreshed)
         throw new Error(
-          "Acceptance returned, but the current policy status could not be verified."
+          "We could not verify your updated policy status. Please reload and check."
         );
       const refreshedCurrentIds = refreshed.versions
         .filter((version) => version.published_at !== null)
@@ -158,21 +167,21 @@ export default function OnboardingPage() {
       if (!allSubmittedStillCurrent) {
         setStale(true);
         throw new Error(
-          "The current published policy set changed during acceptance. Reload and review the latest versions."
+          "A newer policy version was just published. Please reload to review the latest versions."
         );
       }
       if (!allConfirmed)
         throw new Error(
-          "The API did not confirm acceptance for every current policy version. Reload before continuing."
+          "Not all policy acknowledgements were confirmed. Please reload before continuing."
         );
       setMessage(
-        "All current published policies are acknowledged for this account."
+        "Thank you! All academy policies have been acknowledged for your family account."
       );
     } catch (cause) {
       setError(
         cause instanceof Error
           ? cause.message
-          : "Policy acceptance could not be confirmed."
+          : "Policy acknowledgement could not be saved."
       );
     } finally {
       setBusy(false);
@@ -189,142 +198,164 @@ export default function OnboardingPage() {
   };
 
   const noPublished = currentVersions.length === 0;
+
   return (
     <main className="pw-family">
       <div className="family-topline" />
       <section className="family-content">
-        <div className="family-heading">
-          <div>
-            <div className="family-eyebrow">
-              <i /> FAMILY ONBOARDING
-            </div>
-            <h1>Review the academy policies</h1>
-            <p>
-              Open each current, approved PDF and acknowledge each version
-              individually. Only the published documents listed here can be
-              accepted.
-            </p>
-          </div>
-          <button
-            type="button"
-            className="family-button subtle"
-            onClick={() => void load()}
-            disabled={refreshing}
-          >
-            <RefreshCw size={14} aria-hidden="true" />{" "}
-            {refreshing ? "Reloading…" : "Reload"}
-          </button>
-        </div>
-        {error && (
-          <div className="family-alert" role="alert">
-            <AlertCircle size={16} />
-            <p>{error}</p>
-            {stale && (
-              <button
-                className="family-button subtle"
-                type="button"
-                onClick={() => void load()}
-              >
-                Reload current versions
-              </button>
-            )}
-          </div>
-        )}
-        {message && (
-          <div className="family-alert success" role="status">
-            <Check size={16} />
-            <p>{message}</p>
-          </div>
-        )}
-        {data?.setupRequired && (
-          <div className="family-alert info" role="status">
-            <ShieldCheck size={16} />
+        <div style={{ maxWidth: 760, margin: "0 auto" }}>
+          <div className="family-heading">
             <div>
-              <strong>
-                {isParent
-                  ? "Academy policies are being prepared"
-                  : "Owner setup required — onboarding is blocked"}
-              </strong>
+              <div className="family-eyebrow">
+                <i /> FAMILY ONBOARDING
+              </div>
+              <h1>Review the academy policies</h1>
               <p>
-                {isParent
-                  ? "The academy administration is currently finalizing the official policy documents. You will be able to review and acknowledge them here as soon as they are published."
-                  : `An Owner must publish approved PDF documents for every required policy key before acknowledgement can continue. Missing: ${
-                      (data.missingKeys ?? []).join(", ") ||
-                      "required policy versions not confirmed"
-                    }.`}
+                Please open each academy policy PDF below and check the box once
+                you have reviewed it to unlock your Family Workspace.
               </p>
-              {!isParent && (
-                <p>
-                  <Link href="/policies">View policy setup status</Link>
-                </p>
+            </div>
+            <button
+              type="button"
+              className="family-button subtle"
+              onClick={() => void load()}
+              disabled={refreshing}
+            >
+              <RefreshCw size={14} aria-hidden="true" />{" "}
+              {refreshing ? "Reloading…" : "Reload"}
+            </button>
+          </div>
+
+          {error && (
+            <div className="family-alert" role="alert">
+              <AlertCircle size={16} />
+              <p style={{ flex: 1 }}>{error}</p>
+              {stale && (
+                <button
+                  className="family-button subtle"
+                  type="button"
+                  onClick={() => void load()}
+                >
+                  Reload policies
+                </button>
               )}
             </div>
-          </div>
-        )}
-        {data && !data.setupRequired && !canAccept && (
-          <div className="family-alert info" role="status">
-            <ShieldCheck size={16} />
-            <p>
-              Policy documents remain viewable, but only an active Parent
-              account can record guardian acknowledgements.
-            </p>
-          </div>
-        )}
-        {loading && !data ? (
-          <div className="family-card family-card-body">
-            <div className="family-stack">
-              <div className="family-skeleton" />
-              <div className="family-skeleton" />
-              <div className="family-skeleton" />
+          )}
+
+          {message && (
+            <div className="family-alert success" role="status">
+              <Check size={16} />
+              <p>{message}</p>
             </div>
-          </div>
-        ) : data && noPublished ? (
-          <section
-            className="family-card"
-            aria-labelledby="empty-policies-title"
-          >
-            <div className="family-empty">
-              <span className="family-empty-mark">
-                <FileText size={17} />
-              </span>
-              <strong id="empty-policies-title">
-                {data.setupRequired
-                  ? "No approved policy setup is available yet"
-                  : "No current approved policies"}
-              </strong>
-              <p>
-                {data.setupRequired
-                  ? "No approved policy PDF versions have been published. Onboarding cannot be completed until an Owner uploads the academy-approved documents and publishes them."
-                  : "There are no published policy PDFs to review at this time. Nothing has been accepted or recorded."}
-              </p>
-              {data.setupRequired && (
+          )}
+
+          {data?.setupRequired && (
+            <div className="family-alert info" role="status">
+              <ShieldCheck size={16} />
+              <div>
+                <strong>
+                  {isParent
+                    ? "Academy policies are being prepared"
+                    : "Owner setup required — onboarding is paused"}
+                </strong>
                 <p>
-                  <Link className="family-button subtle" href="/policies">
-                    View policy setup status
-                  </Link>
+                  {isParent
+                    ? "Our administration team is finalizing the academy policy documents. You will be able to review and accept them here as soon as they are published."
+                    : `An Owner must publish approved PDF documents for every required policy before families can complete onboarding. Missing: ${
+                        (data.missingKeys ?? []).join(", ") ||
+                        "required policies"
+                      }.`}
                 </p>
-              )}
+                {!isParent && (
+                  <p>
+                    <Link href="/policies">View policy setup status</Link>
+                  </p>
+                )}
+              </div>
             </div>
-          </section>
-        ) : (
-          data && (
-            <div className="family-grid">
+          )}
+
+          {data && !data.setupRequired && !canAccept && (
+            <div className="family-alert info" role="status">
+              <ShieldCheck size={16} />
+              <p>
+                You can read all academy policy documents below. Only an active
+                Parent account can submit family acknowledgements.
+              </p>
+            </div>
+          )}
+
+          {loading && !data ? (
+            <div className="family-card family-card-body">
+              <div className="family-stack">
+                <div className="family-skeleton" />
+                <div className="family-skeleton" />
+                <div className="family-skeleton" />
+              </div>
+            </div>
+          ) : data && noPublished ? (
+            <section
+              className="family-card"
+              aria-labelledby="empty-policies-title"
+            >
+              <div className="family-empty">
+                <span className="family-empty-mark">
+                  <FileText size={17} />
+                </span>
+                <strong id="empty-policies-title">
+                  {data.setupRequired
+                    ? "Academy policies are not published yet"
+                    : "No academy policies to review"}
+                </strong>
+                <p>
+                  {data.setupRequired
+                    ? "No policy documents have been published yet. Please check back once the academy publishes them."
+                    : "There are no policy documents requiring your review right now."}
+                </p>
+                {data.setupRequired && !isParent && (
+                  <p>
+                    <Link className="family-button subtle" href="/policies">
+                      View policy setup status
+                    </Link>
+                  </p>
+                )}
+              </div>
+            </section>
+          ) : (
+            data && (
               <section
                 className="family-card"
                 aria-labelledby="current-policies-title"
               >
                 <div className="family-card-head">
                   <div>
-                    <h2 id="current-policies-title">
-                      Current approved versions
-                    </h2>
+                    <h2 id="current-policies-title">Academy policy checklist</h2>
                     <p>
-                      Each acknowledgement is tied to the exact published PDF
-                      version.
+                      Read each document and confirm your acknowledgement below.
+                      Media-sharing consent is optional and managed separately
+                      on your Family page.
                     </p>
                   </div>
-                  <ShieldCheck size={17} color="#6a9d7b" aria-hidden="true" />
+                  <span
+                    style={{
+                      fontSize: 12,
+                      fontWeight: 800,
+                      padding: "4px 10px",
+                      borderRadius: 999,
+                      whiteSpace: "nowrap",
+                      background: allAccepted ? "#dcfce7" : "#edf6f1",
+                      color: allAccepted ? "#166534" : "#135b45",
+                      border: `1px solid ${
+                        allAccepted ? "#bbf7d0" : "#cfe4d6"
+                      }`,
+                    }}
+                    role="status"
+                  >
+                    {allAccepted ? currentVersions.length : acknowledgedCount} of{" "}
+                    {currentVersions.length} acknowledged
+                  </span>
                 </div>
+
                 <div className="family-card-body">
                   {currentVersions.map((version) => {
                     const accepted = acknowledgedOnServer.has(version.id);
@@ -349,8 +380,8 @@ export default function OnboardingPage() {
                             {version.key.replace(/_/g, " ")} · Version{" "}
                             {version.version}
                             {accepted
-                              ? " · Already acknowledged"
-                              : " · Acknowledgement required"}
+                              ? " · Acknowledged"
+                              : " · Please review & check"}
                           </small>
                         </label>
                         {version.file_id ? (
@@ -362,7 +393,7 @@ export default function OnboardingPage() {
                             target="_blank"
                             rel="noreferrer"
                           >
-                            <FileText size={13} /> Open private PDF
+                            <FileText size={13} /> Open PDF
                           </a>
                         ) : (
                           <span className="family-chip">PDF unavailable</span>
@@ -370,25 +401,49 @@ export default function OnboardingPage() {
                       </div>
                     );
                   })}
-                  {stale && (
-                    <div className="family-alert info" role="status">
-                      <p>
-                        A newer version needs review. Reload the policy list
-                        before continuing.
-                      </p>
-                      <button
-                        type="button"
-                        className="family-button subtle"
-                        onClick={() => void load()}
-                      >
-                        Reload current versions
-                      </button>
-                    </div>
-                  )}
+
                   {data.setupRequired ? (
                     <div className="family-upload-note">
-                      Acknowledgement is unavailable until the Owner publishes
-                      all required policy keys.
+                      Acknowledgements will open as soon as the academy finishes
+                      publishing all required policies.
+                    </div>
+                  ) : allAccepted ? (
+                    <div
+                      className="family-form-actions"
+                      style={{
+                        marginTop: 18,
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "space-between",
+                        gap: 12,
+                        flexWrap: "wrap",
+                      }}
+                    >
+                      <span
+                        style={{
+                          fontSize: 13,
+                          color: "#166534",
+                          fontWeight: 600,
+                          display: "inline-flex",
+                          alignItems: "center",
+                          gap: 6,
+                        }}
+                      >
+                        <Check size={15} aria-hidden="true" /> All current
+                        policies are acknowledged.
+                      </span>
+                      <Link
+                        href="/family"
+                        className="family-button primary"
+                        style={{
+                          display: "inline-flex",
+                          alignItems: "center",
+                          gap: 6,
+                        }}
+                      >
+                        <span>Continue to Family Workspace</span>
+                        <ArrowRight size={14} aria-hidden="true" />
+                      </Link>
                     </div>
                   ) : (
                     <div className="family-form-actions">
@@ -397,72 +452,24 @@ export default function OnboardingPage() {
                         className="family-button primary"
                         onClick={() => void acceptCurrent()}
                         disabled={
-                          !canAccept ||
-                          !allChecked ||
-                          allAccepted ||
-                          stale ||
-                          busy
+                          !canAccept || !allChecked || stale || busy
                         }
                       >
                         {busy ? (
                           <>
-                            <LoaderCircle size={14} /> Recording…
-                          </>
-                        ) : allAccepted ? (
-                          <>
-                            <Check size={14} /> Already acknowledged
+                            <LoaderCircle size={14} /> Saving…
                           </>
                         ) : (
-                          "Acknowledge all current versions"
+                          "Acknowledge all policies"
                         )}
                       </button>
                     </div>
                   )}
-                  {allAccepted && (
-                    <div style={{ marginTop: "1rem" }}>
-                      <p className="family-upload-note" role="status">
-                        The policy API confirms all current versions are
-                        acknowledged. No social or media consent is included in
-                        this step.
-                      </p>
-                      <Link
-                        href="/family"
-                        className="family-button primary"
-                        style={{
-                          marginTop: "0.75rem",
-                          display: "inline-flex",
-                          alignItems: "center",
-                          gap: "6px",
-                        }}
-                      >
-                        <span>Continue to Family Workspace</span>{" "}
-                        <ArrowRight size={14} />
-                      </Link>
-                    </div>
-                  )}
                 </div>
               </section>
-              <aside className="family-stack">
-                <section className="family-card">
-                  <div className="family-card-head">
-                    <div>
-                      <h2>What this records</h2>
-                      <p>Policy acknowledgement only.</p>
-                    </div>
-                    <Check size={17} color="#6a9d7b" aria-hidden="true" />
-                  </div>
-                  <div className="family-card-body">
-                    <div className="family-focus">
-                      The submitted IDs are the current published policy
-                      versions returned by the API. If a version changes, the
-                      server rejects the stale set and asks you to reload.
-                    </div>
-                  </div>
-                </section>
-              </aside>
-            </div>
-          )
-        )}
+            )
+          )}
+        </div>
       </section>
     </main>
   );

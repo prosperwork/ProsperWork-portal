@@ -31,6 +31,7 @@ const operationalRoutes = new Set([
   "/profile",
   "/onboarding",
   "/complaints",
+  "/history",
 ]);
 
 export default function PortalRouteShell({

@@ -9,8 +9,8 @@ import { AccountIcon } from "./AccountIcon";
 export interface AccountInviteFormProps {
   invitePending: boolean;
   loading: boolean;
-  mutationError: string;
-  successMessage: string;
+  inviteError?: string;
+  onCancel?: () => void;
   onInvite: (account: {
     name: string;
     email: string;
@@ -22,8 +22,8 @@ export interface AccountInviteFormProps {
 export default function AccountInviteForm({
   invitePending,
   loading,
-  mutationError,
-  successMessage,
+  inviteError,
+  onCancel,
   onInvite,
 }: AccountInviteFormProps) {
   const { invitableRoles } = useRoles();
@@ -34,7 +34,9 @@ export default function AccountInviteForm({
   const [timezone, setTimezone] = useState(config.defaultTimezone);
 
   useEffect(() => {
-    setTimezone((current) => (current === "Africa/Lagos" ? config.defaultTimezone : current));
+    setTimezone((current) =>
+      current === "Africa/Lagos" ? config.defaultTimezone : current
+    );
   }, [config.defaultTimezone]);
 
   const roleOptions =
@@ -63,116 +65,111 @@ export default function AccountInviteForm({
   };
 
   return (
-    <aside className="pw-invite-workarea" aria-labelledby="invite-title">
-      <div className="pw-card-heading">
-        <div className="pw-invite-mark">
-          <AccountIcon type="mail" />
-        </div>
-        <div>
-          <div className="pw-eyebrow">Bring someone in</div>
-          <h2 id="invite-title">Invite an account</h2>
-        </div>
-      </div>
-      <p className="pw-card-lede">
-        Send a secure invitation and assign the right workspace role.
-      </p>
-
-      {mutationError && (
+    <form className="pw-invite-form" onSubmit={handleSubmit}>
+      {inviteError && (
         <div className="pw-inline-alert error" role="alert">
           <span className="pw-alert-dot" />
-          {mutationError}
-        </div>
-      )}
-      {successMessage && (
-        <div className="pw-inline-alert success" role="status">
-          <span className="pw-alert-dot" />
-          {successMessage}
+          {inviteError}
         </div>
       )}
 
-      <form className="pw-invite-form" onSubmit={handleSubmit}>
+      <label className="pw-field">
+        <span>Name</span>
+        <input
+          name="name"
+          autoComplete="name"
+          required
+          value={name}
+          onChange={(event) => setName(event.target.value)}
+          placeholder="Full name"
+        />
+      </label>
+
+      <label className="pw-field">
+        <span>Email address</span>
+        <input
+          name="email"
+          type="email"
+          autoComplete="email"
+          required
+          value={email}
+          onChange={(event) => setEmail(event.target.value)}
+          placeholder="name@example.com"
+        />
+      </label>
+
+      <div className="pw-field-row">
         <label className="pw-field">
-          <span>Name</span>
-          <input
-            name="name"
-            autoComplete="name"
-            required
-            value={name}
-            onChange={(event) => setName(event.target.value)}
-            placeholder="Full name"
-          />
+          <span>Workspace role</span>
+          <select
+            value={role}
+            onChange={(event) =>
+              setRole(event.target.value as Exclude<Role, "super_admin">)
+            }
+          >
+            {roleOptions.map((item) => (
+              <option value={item.code} key={item.code}>
+                {item.label}
+              </option>
+            ))}
+          </select>
         </label>
         <label className="pw-field">
-          <span>Email address</span>
+          <span>Timezone</span>
           <input
-            name="email"
-            type="email"
-            autoComplete="email"
+            name="timezone"
             required
-            value={email}
-            onChange={(event) => setEmail(event.target.value)}
-            placeholder="name@example.com"
+            list="invite-iana-timezones"
+            value={timezone}
+            onChange={(event) => setTimezone(event.target.value)}
+            placeholder="Africa/Lagos"
           />
+          <datalist id="invite-iana-timezones">
+            <option value="Africa/Lagos" />
+            <option value="Africa/Accra" />
+            <option value="Africa/Nairobi" />
+            <option value="Africa/Johannesburg" />
+            <option value="Africa/Cairo" />
+            <option value="Europe/London" />
+            <option value="Europe/Paris" />
+            <option value="Europe/Berlin" />
+            <option value="Europe/Dublin" />
+            <option value="America/New_York" />
+            <option value="America/Chicago" />
+            <option value="America/Denver" />
+            <option value="America/Los_Angeles" />
+            <option value="America/Toronto" />
+            <option value="America/Vancouver" />
+            <option value="Asia/Dubai" />
+            <option value="Asia/Singapore" />
+            <option value="Asia/Tokyo" />
+            <option value="Asia/Kolkata" />
+            <option value="Australia/Sydney" />
+            <option value="Pacific/Auckland" />
+            <option value="UTC" />
+          </datalist>
         </label>
-        <div className="pw-field-row">
-          <label className="pw-field">
-            <span>Workspace role</span>
-            <select
-              value={role}
-              onChange={(event) =>
-                setRole(event.target.value as Exclude<Role, "super_admin">)
-              }
-            >
-              {roleOptions.map((item) => (
-                <option value={item.code} key={item.code}>
-                  {item.label}
-                </option>
-              ))}
-            </select>
-          </label>
-          <label className="pw-field">
-            <span>Timezone</span>
-            <input
-              name="timezone"
-              required
-              list="invite-iana-timezones"
-              value={timezone}
-              onChange={(event) => setTimezone(event.target.value)}
-              placeholder="Africa/Lagos"
-            />
-            <datalist id="invite-iana-timezones">
-              <option value="Africa/Lagos" />
-              <option value="Africa/Accra" />
-              <option value="Africa/Nairobi" />
-              <option value="Africa/Johannesburg" />
-              <option value="Africa/Cairo" />
-              <option value="Europe/London" />
-              <option value="Europe/Paris" />
-              <option value="Europe/Berlin" />
-              <option value="Europe/Dublin" />
-              <option value="America/New_York" />
-              <option value="America/Chicago" />
-              <option value="America/Denver" />
-              <option value="America/Los_Angeles" />
-              <option value="America/Toronto" />
-              <option value="America/Vancouver" />
-              <option value="Asia/Dubai" />
-              <option value="Asia/Singapore" />
-              <option value="Asia/Tokyo" />
-              <option value="Asia/Kolkata" />
-              <option value="Australia/Sydney" />
-              <option value="Pacific/Auckland" />
-              <option value="UTC" />
-            </datalist>
-          </label>
-        </div>
-        <div className="pw-form-note">
-          <AccountIcon type="shield" />
-          <span>
-            Invitations are sent by email. The invitee receives the assigned
-            role; owner access can’t be assigned here.
-          </span>
-        </div>
+      </div>
+
+      <div className="pw-form-note">
+        <AccountIcon type="shield" />
+        <span>
+          Invitations are sent by email. The invitee receives the assigned role;
+          owner access can’t be assigned here.
+        </span>
+      </div>
+
+      <div className="modal-actions" style={{ marginTop: 8 }}>
+        {onCancel && (
+          <button
+            type="button"
+            className="pw-outline-button"
+            onClick={onCancel}
+            disabled={invitePending}
+          >
+            Cancel
+          </button>
+        )}
         <button
           className="pw-primary-button"
           type="submit"
@@ -198,7 +195,7 @@ export default function AccountInviteForm({
             </>
           )}
         </button>
-      </form>
-    </aside>
+      </div>
+    </form>
   );
 }

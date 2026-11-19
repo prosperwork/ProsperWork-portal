@@ -1,6 +1,6 @@
 "use client";
 
-import type { ReactNode } from "react";
+import { useState, type ReactNode } from "react";
 import {
   Activity,
   ArrowUpRight,
@@ -26,6 +26,7 @@ export default function LeadsView({
   query,
   searchBar,
   adminAccess,
+  financeAccess = false,
   headerActions,
   openEmailComposer,
   openExternal,
@@ -38,6 +39,7 @@ export default function LeadsView({
   query: string;
   searchBar: (placeholder: string) => ReactNode;
   adminAccess: boolean;
+  financeAccess?: boolean;
   headerActions: (label: string, kind: FormKind) => ReactNode;
   openEmailComposer: (
     type: "family" | "staff" | "lead",
@@ -55,17 +57,14 @@ export default function LeadsView({
   changeView: (view: AppView) => void;
   notify: (msg: string) => void;
 }) {
+  const [stageFilter, setStageFilter] = useState<Lead["status"] | "all">("all");
+
   const statusButton = (label: string, onClick: () => void, tone = "ghost") => (
-    <button className={`btn small ${tone}`} onClick={onClick}>
+    <button type="button" className={`btn small ${tone}`} onClick={onClick}>
       {label}
     </button>
   );
 
-  const list = data.leads.filter((lead) =>
-    `${lead.parentName} ${lead.childName} ${lead.instrument} ${lead.source} ${lead.status}`
-      .toLowerCase()
-      .includes(query.toLowerCase())
-  );
   const stages: Lead["status"][] = [
     "new",
     "contacted",
@@ -77,6 +76,33 @@ export default function LeadsView({
     "nursery",
     "winback",
   ];
+
+  const searchedLeads = data.leads.filter((lead) =>
+    `${lead.parentName} ${lead.childName} ${lead.instrument} ${lead.source} ${lead.status}`
+      .toLowerCase()
+      .includes(query.toLowerCase())
+  );
+  const list =
+    stageFilter === "all"
+      ? searchedLeads
+      : searchedLeads.filter((lead) => lead.status === stageFilter);
+
+  const respondedLeads = data.leads.filter((lead) => lead.firstResponseAt);
+  const avgResponseMinutes = respondedLeads.length
+    ? Math.round(
+        respondedLeads.reduce(
+          (sum, lead) =>
+            sum +
+            Math.max(
+              0,
+              (new Date(lead.firstResponseAt!).getTime() -
+                new Date(lead.arrivedAt).getTime()) /
+                60000
+            ),
+          0
+        ) / respondedLeads.length
+      )
+    : null;
 
   return (
     <>
@@ -138,25 +164,15 @@ export default function LeadsView({
             </span>
           </div>
           <div className="stat-value">
-            {Math.round(
-              data.leads
-                .filter((lead) => lead.firstResponseAt)
-                .reduce(
-                  (sum, lead) =>
-                    sum +
-                    (new Date(lead.firstResponseAt!).getTime() -
-                      new Date(lead.arrivedAt).getTime()) /
-                      60000,
-                  0
-                ) /
-                Math.max(
-                  1,
-                  data.leads.filter((lead) => lead.firstResponseAt).length
-                )
-            )}
-            m
+            {avgResponseMinutes === null ? "—" : `${avgResponseMinutes}m`}
           </div>
-          <div className="stat-foot">Across recorded first responses</div>
+          <div className="stat-foot">
+            {respondedLeads.length
+              ? `Across ${respondedLeads.length} recorded first response${
+                  respondedLeads.length === 1 ? "" : "s"
+                }`
+              : "No first responses recorded yet"}
+          </div>
         </div>
       </div>
       <section className="card section-card">
@@ -164,6 +180,40 @@ export default function LeadsView({
           title="Enquiries & trial classes"
           detail="Follow-ups, trial bookings, callbacks and new student enrolments."
         />
+        <div
+          className="portal-tabs"
+          role="tablist"
+          aria-label="Filter leads by pipeline stage"
+        >
+          <button
+            type="button"
+            role="tab"
+            aria-selected={stageFilter === "all"}
+            className={`portal-tab${stageFilter === "all" ? " active" : ""}`}
+            onClick={() => setStageFilter("all")}
+          >
+            All
+            <span className="portal-tab-badge">{searchedLeads.length}</span>
+          </button>
+          {stages.map((stage) => {
+            const count = searchedLeads.filter(
+              (lead) => lead.status === stage
+            ).length;
+            return (
+              <button
+                key={stage}
+                type="button"
+                role="tab"
+                aria-selected={stageFilter === stage}
+                className={`portal-tab${stageFilter === stage ? " active" : ""}`}
+                onClick={() => setStageFilter(stage)}
+              >
+                {stage.replaceAll("_", " ")}
+                <span className="portal-tab-badge">{count}</span>
+              </button>
+            );
+          })}
+        </div>
         <div className="table-wrap">
           <table>
             <thead>
@@ -288,6 +338,13 @@ export default function LeadsView({
                           statusButton("Contacted", () =>
                             setLeadStatus(lead, "contacted")
                           )}
+                        {(lead.status === "contacted" ||
+                          lead.status === "callback") &&
+                          statusButton(
+                            "Request trial",
+                            () => setLeadStatus(lead, "trial_requested"),
+                            "secondary"
+                          )}
                         {lead.status === "trial_requested" &&
                           statusButton(
                             "Book trial",
@@ -307,10 +364,18 @@ export default function LeadsView({
                             "secondary"
                           )}
                         {lead.status === "converted" &&
-                          statusButton("First payment", () => {
-                            changeView("finance");
-                            notify("Add the first payment record in Finance.");
-                          })}
+                          (financeAccess ? (
+                            statusButton("First payment", () => {
+                              changeView("finance");
+                              notify(
+                                "Add the first payment record in Finance."
+                              );
+                            })
+                          ) : (
+                            <span className="table-small">
+                              Handoff to Finance for billing
+                            </span>
+                          ))}
                         {!["converted", "winback"].includes(lead.status) &&
                           statusButton(
                             lead.status === "nursery" ? "Win-back" : "Nursery",

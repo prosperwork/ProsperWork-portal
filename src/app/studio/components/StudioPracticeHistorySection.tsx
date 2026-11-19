@@ -28,10 +28,7 @@ export default function StudioPracticeHistorySection({
       <div className="studio-card-head">
         <div>
           <h2 id="practice-history-title">Practice history</h2>
-          <p>
-            Native session time, quiz score, and private media attached to the
-            original practice record.
-          </p>
+          <p>Logged practice sessions, quiz scores, and saved recordings.</p>
         </div>
         <Timer size={17} color="#6a9d7b" aria-hidden="true" />
       </div>
@@ -48,19 +45,19 @@ export default function StudioPracticeHistorySection({
                   </strong>
                   <small>
                     {row.ended_at
-                      ? `Ended ${formatDate(row.ended_at, studentTimezone)}`
-                      : `Session ${row.id}`}
+                      ? `Finished ${formatDate(row.ended_at, studentTimezone)}`
+                      : row.status === "paused"
+                      ? "Paused session"
+                      : "Session in progress"}
                     {row.game_score !== null && row.game_total !== null
-                      ? ` · Saved quiz ${row.game_score}/${row.game_total}`
+                      ? ` · Quiz ${row.game_score}/${row.game_total}`
                       : ""}
                   </small>
                   {media.length > 0 && (
                     <div className="studio-file-links">
                       {media.map((file) => (
                         <div className="studio-file" key={file.id}>
-                          <span>
-                            {file.original_name} · {file.mime}
-                          </span>
+                          <span>{file.original_name}</span>
                           <a
                             href={`/api/files?id=${encodeURIComponent(
                               file.id
@@ -68,7 +65,7 @@ export default function StudioPracticeHistorySection({
                             target="_blank"
                             rel="noreferrer"
                           >
-                            Open private file
+                            Open recording
                           </a>
                           {file.mime.toLowerCase().startsWith("audio/") && (
                             <audio
@@ -105,8 +102,8 @@ export default function StudioPracticeHistorySection({
         </div>
       ) : (
         <div className="studio-empty">
-          <strong>No saved practice yet</strong>Completed and in-progress
-          practice records will appear here after the service returns them.
+          <strong>No practice sessions logged yet</strong>
+          Completed and active practice sessions will appear here.
         </div>
       )}
     </section>

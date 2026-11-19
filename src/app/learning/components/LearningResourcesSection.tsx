@@ -121,11 +121,11 @@ export default function LearningResourcesSection({
             placeholder="Find a resource…"
             style={{
               width: "min(300px,100%)",
-              minHeight: 35,
+              minHeight: 38,
               border: "1px solid #dce7df",
               borderRadius: 8,
-              padding: "0 10px",
-              fontSize: 10,
+              padding: "0 12px",
+              fontSize: 13,
             }}
           />
           {canEditResources && (

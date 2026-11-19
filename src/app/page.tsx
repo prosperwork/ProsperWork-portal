@@ -2,30 +2,17 @@
 
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { usePathname, useRouter } from "next/navigation";
-import {
-  Baby,
-  CalendarDays,
-  Check,
-  ChevronRight,
-  Plus,
-  Search,
-  Settings2,
-  ShieldCheck,
-  UserRound,
-} from "lucide-react";
+import { Plus, Search, ShieldCheck } from "lucide-react";
 import { useCurrencies } from "@/lib/academy/use-currencies";
 import { useCatalogs, useRoles } from "@/lib/academy/use-academy-config";
 import { apiErrorMessage, readJson } from "@/lib/academy/web-client";
 import { useAcademyData } from "../lib/storage";
-import ClassroomLinks from "./classroom/ClassroomLinks";
 import BrandEmblem from "./_components/BrandEmblem";
 import EmailComposerDialog, {
   type PortalEmailTarget,
 } from "./_components/EmailComposerDialog";
-import ProfileAvatar from "./_components/ProfileAvatar";
 import {
   hasWorkspaceAccess,
-  legacyWorkspaceAccess,
   legacyWorkspaceRoutes,
   legacyViewForPath,
 } from "./_lib/portal-navigation";
@@ -33,8 +20,6 @@ import {
   makeId,
   niceDate,
   roleNames,
-  roles,
-  SectionTitle,
   titles,
 } from "./_lib/portal-formatters";
 import { handleActionModalSubmit } from "./_lib/portal-actions";
@@ -43,7 +28,6 @@ import ActionModal, {
   type Field,
   type FormKind,
 } from "./_components/modals/ActionModal";
-import KidPinDialog from "./_components/modals/KidPinDialog";
 import EmergencyCoverModal from "./_components/modals/EmergencyCoverModal";
 import OverviewView from "./_components/views/OverviewView";
 import ScheduleView, {
@@ -54,42 +38,35 @@ import LeadsView from "./_components/views/LeadsView";
 import FinanceView from "./_components/views/FinanceView";
 import PeopleView from "./_components/views/PeopleView";
 import CurriculumView from "./_components/views/CurriculumView";
-import LearningView from "./_components/views/LearningView";
 import ReportsView from "./_components/views/ReportsView";
-import SettingsView from "./_components/views/SettingsView";
 import type {
   AppView,
-  AuditEntry,
   Currency,
-  Expense,
-  HomeworkItem,
   Lead,
   Lesson,
   LessonStatus,
   Payment,
-  PayrollItem,
-  Resource,
   Role,
   Student,
   StaffMember,
 } from "../lib/types";
+
+const viewEyebrows: Partial<Record<AppView, string>> = {
+  overview: "Academy Workspace",
+  schedule: "Scheduling",
+  families: "Students & Families",
+  leads: "Admissions & CRM",
+  finance: "Finance",
+  people: "Team Directory",
+  curriculum: "Teaching Library",
+  reports: "Audit & Analytics",
+};
 
 /**
  * ============================================================================
  * PROSPERWORK MUSIC ACADEMY - MAIN PORTAL APPLICATION CONTROLLER
  * ============================================================================
  * The primary workspace router and state hub for the academy portal.
- *
- * Architecture & Modular Subsystems:
- * - 10 Dedicated Domain Views in `src/app/_components/views/`:
- *   (Overview, Schedule, Families, Leads, Finance, People, Curriculum,
- *    Learning, Reports, Settings).
- * - ActionModal (`_components/modals/ActionModal.tsx`): Dynamic multi-entity forms.
- * - EmergencyCoverModal: 1-click same-day substitute teacher reassignment.
- * - KidPinDialog: Parental lock protection for kid practice mode.
- * - EmailComposerDialog: Direct role-based email authoring.
- * - ConfirmModal: Centralized confirmation modals for destructive operations.
- * - Global CSS modules (`src/app/styles/`): 5 decoupled scoped stylesheets.
  */
 export default function HomePage() {
   const pathname = usePathname();
@@ -188,7 +165,7 @@ export default function HomePage() {
   const view = (legacyViewForPath[pathname] || "overview") as AppView;
 
   // --------------------------------------------------------------------------
-  // Dialogs, Navigation & Child Safety State
+  // Dialogs & Navigation State
   // --------------------------------------------------------------------------
   const [modal, setModal] = useState<FormKind | null>(null);
   const [emailTarget, setEmailTarget] = useState<PortalEmailTarget | null>(
@@ -200,15 +177,6 @@ export default function HomePage() {
   const [scheduleMode, setScheduleMode] = useState<"today" | "week">("today");
   const [selectedDate, setSelectedDate] = useState(todayKey());
   const [selectedStudentId, setSelectedStudentId] = useState("");
-  const [kidMode, setKidMode] = useState(false);
-  const [kidPin, setKidPin] = useState("");
-  const [kidUnlockPrompt, setKidUnlockPrompt] = useState(false);
-  const [rules] = useState({
-    consent: true,
-    lessonVerify: true,
-    notice: true,
-    makerChecker: true,
-  });
   const [filter, setFilter] = useState("all");
 
   // --------------------------------------------------------------------------
@@ -405,7 +373,6 @@ export default function HomePage() {
     role === "head_admin" ||
     hasPerm("workspace.management") ||
     hasPerm("workspace.settings");
-  const hasPayrollMgmt = superAdmin || hasPerm("workspace.payroll");
   const activeStudent =
     data.students.find((student) => student.id === selectedStudentId) ||
     data.students[0];
@@ -466,22 +433,6 @@ export default function HomePage() {
       showToast(message, 3000);
     });
   }
-  function record(
-    action: string,
-    name: string,
-    detail: string,
-    actor = roleNames[role]
-  ) {
-    const entry: AuditEntry = {
-      id: makeId("audit"),
-      action,
-      record: name,
-      actor,
-      at: new Date().toISOString(),
-      detail,
-    };
-    updateData((current) => ({ ...current, audit: [entry, ...current.audit] }));
-  }
   function changeView(nextView: AppView) {
     const destination = legacyWorkspaceRoutes[nextView];
     if (!destination || !hasWorkspaceAccess(destination, accessProfile)) return;
@@ -509,14 +460,6 @@ export default function HomePage() {
   }
   function submitForm(values: Record<string, string>) {
     if (!modal) return;
-    if (modal === "pin") {
-      setKidPin(values.pin);
-      setKidMode(true);
-      setKidUnlockPrompt(false);
-      setModal(null);
-      notify("Kid Mode unlocked for this browser session.");
-      return;
-    }
 
     const result = handleActionModalSubmit({
       modal,
@@ -606,30 +549,6 @@ export default function HomePage() {
       ],
     }));
     notify(`Lead moved to ${status.replace("_", " ")}.`);
-  }
-
-  function setHomeworkStatus(
-    item: HomeworkItem,
-    status: HomeworkItem["status"]
-  ) {
-    updateData((current) => ({
-      ...current,
-      homework: current.homework.map((task) =>
-        task.id === item.id ? { ...task, status } : task
-      ),
-      audit: [
-        {
-          id: makeId("audit"),
-          action: "Homework reviewed",
-          record: `${item.studentName} · ${item.title}`,
-          actor: roleNames[role],
-          at: new Date().toISOString(),
-          detail: `Status changed to ${status}.`,
-        },
-        ...current.audit,
-      ],
-    }));
-    notify(`Homework marked as ${status}.`);
   }
 
   async function setPaymentStatus(
@@ -729,42 +648,6 @@ export default function HomePage() {
     );
   }
 
-  function advanceSong(student: Student, song: string) {
-    updateData((current) => ({
-      ...current,
-      students: current.students.map((s) => {
-        if (s.id !== student.id) return s;
-        const done = [...new Set([...s.songsDone, song])];
-        const todo = s.songsToDo.filter((item) => item !== song);
-        const availableRanks = enabledByCatalog("student_ranks").map((r) => r.label || r.code);
-        const highestRank = availableRanks[availableRanks.length - 1] ?? "Master";
-        const midRank = availableRanks.length > 2 ? availableRanks[Math.floor(availableRanks.length / 2)] : "Amateur";
-        const beginnerRank = availableRanks[0] ?? "Beginner";
-        const rank =
-          done.length >= 8
-            ? highestRank
-            : done.length >= 5
-            ? midRank
-            : done.length >= 2
-            ? beginnerRank
-            : s.rank;
-        return { ...s, songsDone: done, songsToDo: todo, rank };
-      }),
-      audit: [
-        {
-          id: makeId("audit"),
-          action: "Song bank updated",
-          record: `${student.name} · ${song}`,
-          actor: roleNames[role],
-          at: new Date().toISOString(),
-          detail: `Marked learned; student progress saved.`,
-        },
-        ...current.audit,
-      ],
-    }));
-    notify(`Congratulations! "${song}" added to ${student.name}'s Song Bank.`);
-  }
-
   function openEmailComposer(
     type: "family" | "staff" | "lead",
     id: string,
@@ -800,29 +683,6 @@ export default function HomePage() {
     setEmailTarget(null);
     notify("Email sent through application SMTP.");
     void reload();
-  }
-
-  function enterKidMode() {
-    if (!kidPin) {
-      setModal("pin");
-      return;
-    }
-    setKidUnlockPrompt(true);
-  }
-
-  function verifyKidPin(value: string) {
-    if (value === kidPin) {
-      setKidMode(true);
-      setKidUnlockPrompt(false);
-      notify("Welcome to Kid Mode. Tap any learned song to complete.");
-    } else {
-      notify("Incorrect PIN. Please re-enter.");
-    }
-  }
-
-  function exitKidMode() {
-    setKidMode(false);
-    notify("Exited Kid Mode. Welcome back to the family dashboard.");
   }
 
   const headerActions = (
@@ -916,35 +776,6 @@ export default function HomePage() {
     );
   }
 
-  if (kidMode)
-    return (
-      <main className="kid-mode">
-        <div className="kid-panel">
-          <BrandEmblem className="kid-mode-emblem" />
-          <p className="eyebrow">ProsperWork practice room</p>
-          <h1>Your music is growing.</h1>
-          <p className="page-subtitle">
-            A little practice, a little progress. Today's songs are ready.
-          </p>
-          <div>
-            {(activeStudent?.songsToDo || []).map((song) => (
-              <button
-                className="kid-song"
-                key={song}
-                onClick={() => advanceSong(activeStudent, song)}
-              >
-                {song}
-                <Check size={14} />
-              </button>
-            ))}
-          </div>
-          <button className="btn" onClick={exitKidMode}>
-            Back to parent view
-          </button>
-        </div>
-      </main>
-    );
-
   const modalTitles: Record<FormKind, { title: string; subtitle: string }> = {
     student: {
       title: "Enroll a new learner",
@@ -1005,7 +836,7 @@ export default function HomePage() {
     },
   };
 
-  const viewRenderer: Record<AppView, () => ReactNode> = {
+  const viewRenderer: Partial<Record<AppView, () => ReactNode>> = {
     overview: () => (
       <OverviewView
         data={data}
@@ -1052,16 +883,15 @@ export default function HomePage() {
       <FamiliesView
         data={data}
         role={role}
+        profileName={profile.name}
         studentsVisible={studentsVisible}
         query={query}
         searchBar={searchBar}
         adminAccess={adminAccess}
-        parentAccess={parentAccess}
         superAdmin={superAdmin}
         selectedStudentId={selectedStudentId}
         setSelectedStudentId={setSelectedStudentId}
         headerActions={headerActions}
-        openForm={openForm}
         updateConsent={updateConsent}
         openEmailComposer={openEmailComposer}
         notify={notify}
@@ -1077,6 +907,7 @@ export default function HomePage() {
         query={query}
         searchBar={searchBar}
         adminAccess={adminAccess}
+        financeAccess={financeAccess}
         headerActions={headerActions}
         openEmailComposer={openEmailComposer}
         openExternal={openExternal}
@@ -1100,27 +931,6 @@ export default function HomePage() {
         setPaymentStatus={setPaymentStatus}
         notify={notify}
       />
-    ),
-    payroll: () => (
-      <section className="card section-card">
-        <SectionTitle
-          title={
-            hasPayrollMgmt
-              ? "Verified-attendance payroll"
-              : "Your private earnings wallet"
-          }
-          detail="Salary amounts come from approved rates, exact course starts and immutable attendance—not manually typed lesson counts."
-        />
-        <p>
-          The payroll workbench includes standard, trial and cover earnings,
-          advances and rollover deductions, reasoned adjustments, and
-          Finance-to-owner approval.
-        </p>
-        <a className="btn primary" href="/payroll">
-          Open {hasPayrollMgmt ? "payroll workbench" : "my earnings wallet"}{" "}
-          <ChevronRight size={15} />
-        </a>
-      </section>
     ),
     people: () => (
       <PeopleView
@@ -1146,26 +956,6 @@ export default function HomePage() {
         notify={notify}
       />
     ),
-    learning: () => (
-      <LearningView
-        data={data}
-        role={role}
-        profileName={profile.name}
-        query={query}
-        searchBar={searchBar}
-        studentsVisible={studentsVisible}
-        selectedStudentId={selectedStudentId}
-        visibleLessons={visibleLessons}
-        parentAccess={parentAccess}
-        teacherAccess={teacherAccess}
-        superAdmin={superAdmin}
-        qcOwnLessonIds={qcOwnLessonIds}
-        headerActions={headerActions}
-        enterKidMode={enterKidMode}
-        advanceSong={advanceSong}
-        setHomeworkStatus={setHomeworkStatus}
-      />
-    ),
     reports: () => (
       <ReportsView
         data={data}
@@ -1175,31 +965,17 @@ export default function HomePage() {
         notify={notify}
       />
     ),
-    settings: () => (
-      <SettingsView
-        data={data}
-        rules={rules}
-        superAdmin={superAdmin}
-        reload={reload}
-      />
-    ),
   };
 
   return (
     <div className="page-wrap">
       <div className="page-heading">
         <div>
-          <span className="eyebrow">{subtitle?.title || "Workspace"}</span>
+          <span className="eyebrow">
+            {viewEyebrows[view] || "Academy Workspace"}
+          </span>
           <h1>{subtitle?.title || "ProsperWork"}</h1>
           <p className="page-subtitle">{subtitle?.sub || ""}</p>
-        </div>
-        <div className="heading-actions">
-          {parentAccess && (
-            <button className="btn ghost" onClick={enterKidMode}>
-              <Baby size={14} />
-              Kid Mode
-            </button>
-          )}
         </div>
       </div>
       {saving && <p role="status">Saving to the academy database…</p>}
@@ -1214,30 +990,33 @@ export default function HomePage() {
           {error}
         </div>
       )}
-      {!parentAccess && unmarkedLessons.length > 0 && (
-        <section className="notice" role="status" style={{ marginBottom: 16 }}>
-          <strong>
-            {unmarkedLessons.length} previous-day classes still need marking or
-            verification.
-          </strong>{" "}
-          {unmarkedLessons.slice(0, 5).map((l) => (
-            <button
-              key={l.id}
-              className="subtle-link"
-              onClick={() => {
-                setSelectedDate(dayKey(l.startsAt));
-                changeView("schedule");
-              }}
-            >
-              {l.studentName} · {niceDate(l.startsAt)}
-            </button>
-          ))}
-        </section>
-      )}
-      {["overview", "schedule", "families", "learning"].includes(view) && (
-        <ClassroomLinks lessons={visibleLessons} />
-      )}
-      {viewRenderer[view]()}
+      {!parentAccess &&
+        (view === "overview" || view === "schedule") &&
+        unmarkedLessons.length > 0 && (
+          <section
+            className="notice"
+            role="status"
+            style={{ marginBottom: 16 }}
+          >
+            <strong>
+              {unmarkedLessons.length} previous-day classes still need marking
+              or verification.
+            </strong>{" "}
+            {unmarkedLessons.slice(0, 5).map((l) => (
+              <button
+                key={l.id}
+                className="subtle-link"
+                onClick={() => {
+                  setSelectedDate(dayKey(l.startsAt));
+                  changeView("schedule");
+                }}
+              >
+                {l.studentName} · {niceDate(l.startsAt)}
+              </button>
+            ))}
+          </section>
+        )}
+      {viewRenderer[view]?.()}
       {currencyError && <p role="alert">{currencyError}</p>}
       {modal && (
         <ActionModal
@@ -1274,12 +1053,6 @@ export default function HomePage() {
             setEmergencyCoverLesson(null);
             void reload();
           }}
-        />
-      )}
-      {kidUnlockPrompt && (
-        <KidPinDialog
-          onCancel={() => setKidUnlockPrompt(false)}
-          onSubmit={verifyKidPin}
         />
       )}
       {toast && (

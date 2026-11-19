@@ -105,3 +105,41 @@ export function expectedSupervisor(role: string) {
   }
 }
 
+export function isMusicEducationRole(desiredRole: string): boolean {
+  const normalized = roleKey(desiredRole);
+  return (
+    normalized === "teacher" ||
+    normalized === "qc" ||
+    normalized.includes("teacher") ||
+    normalized.includes("tutor") ||
+    normalized.includes("music") ||
+    normalized.includes("instructor")
+  );
+}
+
+export const COMMON_IANA_TIMEZONES = [
+  "Africa/Lagos",
+  "Africa/Accra",
+  "Africa/Nairobi",
+  "Africa/Johannesburg",
+  "Africa/Cairo",
+  "Europe/London",
+  "Europe/Paris",
+  "Europe/Berlin",
+  "Europe/Dublin",
+  "America/New_York",
+  "America/Chicago",
+  "America/Denver",
+  "America/Los_Angeles",
+  "America/Toronto",
+  "America/Vancouver",
+  "Asia/Dubai",
+  "Asia/Singapore",
+  "Asia/Tokyo",
+  "Asia/Kolkata",
+  "Australia/Sydney",
+  "Pacific/Auckland",
+  "UTC",
+] as const;
+
+

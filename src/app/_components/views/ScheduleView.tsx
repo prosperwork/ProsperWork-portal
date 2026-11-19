@@ -1,18 +1,21 @@
 "use client";
 
-import { useEffect, useState, type ReactNode } from "react";
+import { useState, type ReactNode } from "react";
 import {
   AlertCircle,
   BookOpen,
   CheckCheck,
   CheckCircle2,
+  ChevronLeft,
+  ChevronRight,
   ExternalLink,
   MoreHorizontal,
   ShieldAlert,
   Video,
-  X,
+  XCircle,
 } from "lucide-react";
 import { useConfirmModal } from "../ConfirmModal";
+import { PortalModal } from "../PortalModal";
 import {
   Empty,
   fullDate,
@@ -101,15 +104,7 @@ export default function ScheduleView({
 }) {
   const { confirm, ConfirmDialog } = useConfirmModal();
   const [actionLesson, setActionLesson] = useState<Lesson | null>(null);
-
-  useEffect(() => {
-    if (!actionLesson) return;
-    const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") setActionLesson(null);
-    };
-    window.addEventListener("keydown", onKeyDown);
-    return () => window.removeEventListener("keydown", onKeyDown);
-  }, [actionLesson]);
+  const [weekOffset, setWeekOffset] = useState(0);
 
   const cancelForReplacement = (id: string) => {
     const lesson = data.lessons.find(
@@ -117,22 +112,16 @@ export default function ScheduleView({
     );
     if (!lesson) return;
     confirm({
-      title: "Cancel Class for Replacement?",
+      title: "Cancel scheduled class?",
       message:
-        "Cancel this class? Its history stays recorded. Schedule a replacement with the agreed length after cancellation.",
-      tone: "warning",
-      confirmLabel: "Mark as Cancelled",
+        "Cancel this scheduled class? Its history stays recorded. You can schedule a replacement with the updated length or time afterward.",
+      tone: "danger",
+      confirmLabel: "Cancel scheduled class",
       onConfirm: () => {
         setLessonStatus(lesson, "cancelled");
       },
     });
   };
-
-  const statusButton = (label: string, onClick: () => void, tone = "ghost") => (
-    <button type="button" className={`btn small ${tone}`} onClick={onClick}>
-      {label}
-    </button>
-  );
 
   const dayKeyInOwnTz = (value: string | Date) => {
     const parsed = value instanceof Date ? value : new Date(value);
@@ -152,7 +141,9 @@ export default function ScheduleView({
   const todayInOwnTz = dayKeyInOwnTz(new Date()) || todayKey();
   const base = new Date(`${todayInOwnTz}T12:00:00Z`);
   const weekStart = new Date(base);
-  weekStart.setUTCDate(base.getUTCDate() - ((base.getUTCDay() + 6) % 7));
+  weekStart.setUTCDate(
+    base.getUTCDate() - ((base.getUTCDay() + 6) % 7) + weekOffset * 7
+  );
   const weekDays = Array.from({ length: 7 }, (_, index) => {
     const day = new Date(weekStart);
     day.setUTCDate(weekStart.getUTCDate() + index);
@@ -163,8 +154,29 @@ export default function ScheduleView({
         timeZone: "UTC",
       }).format(day),
       dayNumber: day.getUTCDate(),
+      monthShort: new Intl.DateTimeFormat("en", {
+        month: "short",
+        timeZone: "UTC",
+      }).format(day),
     };
   });
+
+  const shiftWeek = (delta: number) => {
+    const nextOffset = weekOffset + delta;
+    setWeekOffset(nextOffset);
+    const nextStart = new Date(base);
+    nextStart.setUTCDate(
+      base.getUTCDate() - ((base.getUTCDay() + 6) % 7) + nextOffset * 7
+    );
+    setSelectedDate(nextStart.toISOString().slice(0, 10));
+  };
+
+  const jumpToThisWeek = () => {
+    setWeekOffset(0);
+    setSelectedDate(todayInOwnTz);
+  };
+
+  const weekRangeLabel = `${weekDays[0].monthShort} ${weekDays[0].dayNumber} – ${weekDays[6].monthShort} ${weekDays[6].dayNumber}`;
   const thisDateLessons = filteredLessons;
   const ownQCClasses =
     role === "qc"
@@ -190,12 +202,18 @@ export default function ScheduleView({
       <div className="toolbar">
         <div className="segmented">
           <button
+            type="button"
             className={scheduleMode === "today" ? "active" : ""}
-            onClick={() => setScheduleMode("today")}
+            onClick={() => {
+              setScheduleMode("today");
+              setSelectedDate(todayInOwnTz);
+              setWeekOffset(0);
+            }}
           >
             Today
           </button>
           <button
+            type="button"
             className={scheduleMode === "week" ? "active" : ""}
             onClick={() => setScheduleMode("week")}
           >
@@ -310,67 +328,78 @@ export default function ScheduleView({
           )}
         </section>
       )}
-      {adminAccess && (
-        <details className="card section-card">
-          <summary>
-            Change an agreed class length / cancel a scheduled class
-          </summary>
-          <p>
-            Existing length agreements remain in history. Cancel the original
-            class, then schedule a replacement with the new length and family
-            agreement. Verified classes cannot be cancelled.
-          </p>
-          <form
-            onSubmit={(event) => {
-              event.preventDefault();
-              const values = new FormData(event.currentTarget);
-              cancelForReplacement(String(values.get("lesson") || ""));
+      {scheduleMode === "week" && (
+        <div style={{ marginBottom: 16 }}>
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "space-between",
+              gap: 10,
+              flexWrap: "wrap",
+              marginBottom: 10,
             }}
           >
-            <select
-              name="lesson"
-              className="select-mini"
-              required
-              defaultValue=""
-              aria-label="Scheduled class to cancel"
-            >
-              <option value="" disabled>
-                Choose a scheduled class
-              </option>
-              {data.lessons
-                .filter((item) => item.status === "scheduled")
-                .map((item) => (
-                  <option key={item.id} value={item.id}>
-                    {item.studentName} — {niceDate(item.startsAt)}
-                  </option>
-                ))}
-            </select>{" "}
-            <button className="btn ghost" type="submit">
-              Cancel selected class
-            </button>
-          </form>
-        </details>
-      )}
-      {scheduleMode === "week" && (
-        <div className="week-strip">
-          {weekDays.map((day) => {
-            const count = visibleLessons.filter(
-              (lesson) => dayKeyInOwnTz(lesson.startsAt) === day.key
-            ).length;
-            return (
+            <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
               <button
-                key={day.key}
-                onClick={() => setSelectedDate(day.key)}
-                className={`day-tile ${selectedDate === day.key ? "active" : ""}`}
+                type="button"
+                className="btn ghost small"
+                onClick={() => shiftWeek(-1)}
+                aria-label="Previous week"
               >
-                <span className="day-name">{day.weekday}</span>
-                <span className="day-date">{day.dayNumber}</span>
-                <span className="day-count">
-                  {count} {count === 1 ? "class" : "classes"}
-                </span>
+                <ChevronLeft size={14} /> Previous week
               </button>
-            );
-          })}
+              <button
+                type="button"
+                className="btn ghost small"
+                onClick={() => shiftWeek(1)}
+                aria-label="Next week"
+              >
+                Next week <ChevronRight size={14} />
+              </button>
+              {weekOffset !== 0 && (
+                <button
+                  type="button"
+                  className="btn secondary small"
+                  onClick={jumpToThisWeek}
+                >
+                  This week
+                </button>
+              )}
+            </div>
+            <span
+              style={{
+                fontSize: 12,
+                fontWeight: 700,
+                color: "var(--pine-900)",
+              }}
+            >
+              {weekRangeLabel}
+            </span>
+          </div>
+          <div className="week-strip" style={{ marginBottom: 0 }}>
+            {weekDays.map((day) => {
+              const count = visibleLessons.filter(
+                (lesson) => dayKeyInOwnTz(lesson.startsAt) === day.key
+              ).length;
+              return (
+                <button
+                  type="button"
+                  key={day.key}
+                  onClick={() => setSelectedDate(day.key)}
+                  className={`day-tile ${
+                    selectedDate === day.key ? "active" : ""
+                  }`}
+                >
+                  <span className="day-name">{day.weekday}</span>
+                  <span className="day-date">{day.dayNumber}</span>
+                  <span className="day-count">
+                    {count} {count === 1 ? "class" : "classes"}
+                  </span>
+                </button>
+              );
+            })}
+          </div>
         </div>
       )}
       <section className="card section-card">
@@ -536,34 +565,31 @@ export default function ScheduleView({
           this workspace.
         </div>
       </section>
-      {actionLesson && (
-        <div className="overlay" onClick={() => setActionLesson(null)}>
-          <section
-            className="modal"
-            role="dialog"
-            aria-modal="true"
-            aria-labelledby="lesson-action-title"
-            style={{ maxWidth: 440 }}
-            onClick={(e) => e.stopPropagation()}
+      <PortalModal
+        open={Boolean(actionLesson)}
+        onClose={() => setActionLesson(null)}
+        eyebrow="Class Management"
+        title="Lesson actions"
+        subtitle={
+          actionLesson
+            ? `${actionLesson.studentName} · ${niceDate(
+                actionLesson.startsAt
+              )} at ${timeAt(actionLesson.startsAt, ownTimezone)}`
+            : undefined
+        }
+        size="sm"
+        footer={
+          <button
+            type="button"
+            className="btn ghost"
+            onClick={() => setActionLesson(null)}
           >
-            <div className="modal-head">
-              <div>
-                <h2 id="lesson-action-title">Lesson actions</h2>
-                <p>
-                  {actionLesson.studentName} · {niceDate(actionLesson.startsAt)}{" "}
-                  at {timeAt(actionLesson.startsAt, ownTimezone)}
-                </p>
-              </div>
-              <button
-                type="button"
-                className="close-btn"
-                aria-label="Close"
-                onClick={() => setActionLesson(null)}
-              >
-                <X size={16} />
-              </button>
-            </div>
-
+            Close
+          </button>
+        }
+      >
+        {actionLesson && (
+          <>
             <div
               style={{
                 display: "flex",
@@ -573,7 +599,6 @@ export default function ScheduleView({
                 background: "#f7faf8",
                 border: "1px solid #e1e9e3",
                 borderRadius: 10,
-                marginBottom: 16,
                 fontSize: 12,
               }}
             >
@@ -604,7 +629,6 @@ export default function ScheduleView({
                   border: "1px solid #cfe2d6",
                   borderRadius: 8,
                   color: "#1c7a5d",
-                  marginBottom: 14,
                 }}
               >
                 Verified by {actionLesson.verification.admin} on{" "}
@@ -613,23 +637,44 @@ export default function ScheduleView({
             )}
 
             <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-              <a
-                className="btn secondary"
-                style={{
-                  justifyContent: "space-between",
-                  padding: "11px 14px",
-                  fontSize: 12,
-                }}
-                href={`/classroom?lessonId=${encodeURIComponent(
-                  actionLesson.id
-                )}`}
-              >
-                <span style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                  <Video size={16} />
-                  Enter virtual classroom
-                </span>
-                <ExternalLink size={14} style={{ opacity: 0.6 }} />
-              </a>
+              {actionLesson.classroomProvider === "google_meet" &&
+              actionLesson.meetUrl ? (
+                <a
+                  className="btn secondary"
+                  style={{
+                    justifyContent: "space-between",
+                    padding: "11px 14px",
+                    fontSize: 12,
+                  }}
+                  href={actionLesson.meetUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                >
+                  <span style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                    <Video size={16} />
+                    Join Google Meet classroom
+                  </span>
+                  <ExternalLink size={14} style={{ opacity: 0.6 }} />
+                </a>
+              ) : (
+                <a
+                  className="btn secondary"
+                  style={{
+                    justifyContent: "space-between",
+                    padding: "11px 14px",
+                    fontSize: 12,
+                  }}
+                  href={`/classroom?lessonId=${encodeURIComponent(
+                    actionLesson.id
+                  )}`}
+                >
+                  <span style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                    <Video size={16} />
+                    Enter virtual classroom
+                  </span>
+                  <ExternalLink size={14} style={{ opacity: 0.6 }} />
+                </a>
+              )}
 
               <a
                 className="btn ghost"
@@ -736,20 +781,30 @@ export default function ScheduleView({
                   Assign emergency cover teacher
                 </button>
               )}
-            </div>
 
-            <div className="modal-actions" style={{ marginTop: 18 }}>
-              <button
-                type="button"
-                className="btn ghost"
-                onClick={() => setActionLesson(null)}
-              >
-                Close
-              </button>
+              {adminAccess && actionLesson.status === "scheduled" && (
+                <button
+                  type="button"
+                  className="btn ghost danger"
+                  style={{
+                    justifyContent: "flex-start",
+                    padding: "11px 14px",
+                    fontSize: 12,
+                  }}
+                  onClick={() => {
+                    const targetId = actionLesson.id;
+                    setActionLesson(null);
+                    cancelForReplacement(targetId);
+                  }}
+                >
+                  <XCircle size={16} />
+                  Cancel scheduled class
+                </button>
+              )}
             </div>
-          </section>
-        </div>
-      )}
+          </>
+        )}
+      </PortalModal>
       <ConfirmDialog />
     </>
   );

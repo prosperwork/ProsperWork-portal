@@ -8,8 +8,9 @@ import {
   type FormEvent,
 } from "react";
 import { usePathname } from "next/navigation";
-import { useConfirmModal } from "../_components/ConfirmModal";
-import type { HomeworkItem, Lesson, Payment, Role } from "@/lib/types";
+import { Plus } from "lucide-react";
+import { PortalModal } from "../_components/PortalModal";
+import type { HomeworkItem, Role, Student } from "@/lib/types";
 import {
   type WorkflowData,
   type RescheduleRequest,
@@ -31,28 +32,28 @@ type ManagementAssignments = {
   lessons?: { id: string; teacher_id: string | null }[];
 };
 
+type AssignableStudent = {
+  id: string;
+  name: string;
+  instrument: string;
+  teacherName: string;
+  status: string;
+};
+
 /**
  * ============================================================================
- * PROSPERWORK MUSIC ACADEMY - WORKFLOWS CONTROLLER
+ * PROSPERWORK MUSIC ACADEMY - WORKFLOWS & HOMEWORK CONTROLLER
  * ============================================================================
  * Coordinates multi-role educational workflows:
- * 1. Reschedule negotiation protocol (student counter-offers, staff approvals).
- * 2. Homework task assignment, student file submissions, and teacher feedback.
- * 3. Payment receipt uploads, billing reconciliation, and finance tracking.
- *
- * Integrated with the centralized confirmation modal system (`ConfirmModal.tsx`)
- * for approving, rejecting, or amending student reschedules.
+ * 1. Reschedule negotiation protocol (modal-driven approvals, counter-offers, rejections).
+ * 2. Homework task assignment (+ Assign Homework modal via /api/academy),
+ *    student practice submissions, and teacher feedback modals.
+ * 3. Payment receipt uploads via modal and finance tracking.
  */
 export default function WorkflowsPage() {
-  // --------------------------------------------------------------------------
-  // Confirmation Modal & Routing Context
-  // --------------------------------------------------------------------------
-  const { confirm, ConfirmDialog } = useConfirmModal();
   const isHomeworkRoute = usePathname() === "/homework";
 
-  // --------------------------------------------------------------------------
   // Core Server Data State
-  // --------------------------------------------------------------------------
   const [data, setData] = useState<WorkflowData | null>(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -61,22 +62,24 @@ export default function WorkflowsPage() {
   const [notice, setNotice] = useState("");
   const [busy, setBusy] = useState("");
 
-  // --------------------------------------------------------------------------
-  // Reschedule Negotiation State
-  // --------------------------------------------------------------------------
-  const [chosenSlots, setChosenSlots] = useState<Record<string, string>>({});
-  const [counterSlots, setCounterSlots] = useState<Record<string, string[]>>(
-    {}
-  );
-  const [counterReasons, setCounterReasons] = useState<Record<string, string>>(
-    {}
-  );
-  const [selectedCounter, setSelectedCounter] = useState<
-    Record<string, string>
-  >({});
+  // QC Verification & Receipt deep-link
   const [qcAssignedLessonIds, setQcAssignedLessonIds] = useState<string[]>([]);
   const [qcAssignmentError, setQcAssignmentError] = useState("");
   const [initialPaymentId, setInitialPaymentId] = useState("");
+
+  // Assign Homework Modal State
+  const [assignModalOpen, setAssignModalOpen] = useState(false);
+  const [academyStudents, setAcademyStudents] = useState<AssignableStudent[]>(
+    []
+  );
+  const [loadingStudents, setLoadingStudents] = useState(false);
+  const [assignError, setAssignError] = useState("");
+  const [assignForm, setAssignForm] = useState({
+    studentId: "",
+    title: "",
+    dueDate: "",
+    note: "",
+  });
 
   useEffect(() => {
     try {
@@ -88,9 +91,7 @@ export default function WorkflowsPage() {
     }
   }, []);
 
-  // --------------------------------------------------------------------------
   // Data Loader & QC Verification
-  // --------------------------------------------------------------------------
   const load = useCallback(async (): Promise<boolean> => {
     setRefreshing(true);
     setError("");
@@ -174,32 +175,125 @@ export default function WorkflowsPage() {
     void load();
   }, [load]);
 
-  // --------------------------------------------------------------------------
   // Role & Permission Computations
-  // --------------------------------------------------------------------------
   const profile = data?.profile;
   const role = profile?.role as Role;
-  const perms = useMemo(() => new Set(profile?.permissions ?? []), [profile?.permissions]);
+  const perms = useMemo(
+    () => new Set(profile?.permissions ?? []),
+    [profile?.permissions]
+  );
   const isOwner = role === "super_admin" || (role as string) === "owner";
   const isFamily = role === "parent" || role === "student";
-  const isTeacher = role === "teacher" || profile?.department === "Music Education" || (typeof role === "string" && role.includes("teacher")) || perms.has("workspace.learning");
+  const isTeacher =
+    role === "teacher" ||
+    profile?.department === "Music Education" ||
+    (typeof role === "string" && role.includes("teacher")) ||
+    perms.has("workspace.learning");
   const isQC = role === "qc";
+  const isStaffAdmin =
+    role === "admin" || role === "head_admin" || role === "general_manager";
+
   const canTeachLesson = (id: string) =>
     isTeacher || (isQC && qcAssignedLessonIds.includes(id));
-  const isReviewer = isTeacher || isOwner || perms.has("workspace.curriculum") || perms.has("workspace.homework");
-  const canSeeReceipts = isOwner || perms.has("workspace.finance") || perms.has("workspace.documents") || (!!role && receiptRoles.includes(role));
+
+  // Fix blank-page role bug: ensure admin, head_admin, general_manager, qc, teacher, owner, super_admin, parent, student all see scoped homework cleanly
+  const canAssignHomework =
+    isOwner ||
+    isTeacher ||
+    isQC ||
+    isStaffAdmin ||
+    perms.has("workspace.curriculum") ||
+    perms.has("workspace.homework");
+  const isReviewer = canAssignHomework;
+  const canViewHomework = isHomeworkRoute
+    ? canAssignHomework || isFamily || Boolean(role)
+    : isReviewer || isFamily;
+
+  const canSeeReceipts =
+    isOwner ||
+    perms.has("workspace.finance") ||
+    perms.has("workspace.documents") ||
+    (!!role && receiptRoles.includes(role));
+
   const showPrimaryStack =
-    (!isHomeworkRoute && canSeeReceipts) ||
-    isReviewer ||
-    (isFamily && isHomeworkRoute);
+    isHomeworkRoute || canSeeReceipts || canViewHomework;
+
   const isFinalApprover =
     isOwner ||
     perms.has("workspace.workflows") ||
     perms.has("workspace.operations") ||
     perms.has("workspace.schedule") ||
-    role === "admin" ||
-    role === "head_admin" ||
-    role === "general_manager";
+    isStaffAdmin;
+
+  // Load scoped students for + Assign Homework modal
+  const loadAssignableStudents = useCallback(async () => {
+    if (!canAssignHomework) return;
+    setLoadingStudents(true);
+    try {
+      const response = await fetch("/api/academy", {
+        method: "GET",
+        credentials: "include",
+        cache: "no-store",
+      });
+      if (!response.ok) return;
+      const snapshot = (await response.json().catch(() => ({}))) as {
+        students?: Student[];
+      };
+      if (Array.isArray(snapshot.students)) {
+        setAcademyStudents(
+          snapshot.students.map((s) => ({
+            id: s.id,
+            name: s.name,
+            instrument: s.instrument || "",
+            teacherName: s.teacherName || "",
+            status: s.status || "active",
+          }))
+        );
+      }
+    } catch {
+      // Fallback to lesson-derived students below
+    } finally {
+      setLoadingStudents(false);
+    }
+  }, [canAssignHomework]);
+
+  useEffect(() => {
+    if (canAssignHomework && academyStudents.length === 0) {
+      void loadAssignableStudents();
+    }
+  }, [canAssignHomework, academyStudents.length, loadAssignableStudents]);
+
+  const selectableStudents = useMemo(() => {
+    if (academyStudents.length > 0) {
+      const active = academyStudents.filter((s) => s.status === "active");
+      return active.length > 0 ? active : academyStudents;
+    }
+    // Fallback from visible lessons/homework
+    const map = new Map<string, AssignableStudent>();
+    for (const lesson of data?.lessons || []) {
+      if (lesson.studentId && !map.has(lesson.studentId)) {
+        map.set(lesson.studentId, {
+          id: lesson.studentId,
+          name: lesson.studentName,
+          instrument: lesson.instrument || "",
+          teacherName: lesson.teacherName || "",
+          status: "active",
+        });
+      }
+    }
+    for (const hw of data?.homework || []) {
+      if (hw.studentId && !map.has(hw.studentId)) {
+        map.set(hw.studentId, {
+          id: hw.studentId,
+          name: hw.studentName,
+          instrument: "",
+          teacherName: hw.teacherName || "",
+          status: "active",
+        });
+      }
+    }
+    return Array.from(map.values());
+  }, [academyStudents, data?.lessons, data?.homework]);
 
   const assignedHomework = useMemo(
     () => (data?.homework || []).filter((item) => item.status === "assigned"),
@@ -222,9 +316,7 @@ export default function WorkflowsPage() {
     [data]
   );
 
-  // --------------------------------------------------------------------------
   // Server Mutators
-  // --------------------------------------------------------------------------
   async function postJson(body: Record<string, unknown>) {
     const response = await fetch(
       "/api/" +
@@ -297,23 +389,86 @@ export default function WorkflowsPage() {
     key: string,
     action: () => Promise<void>,
     success: string
-  ) {
-    if (busy) return;
+  ): Promise<boolean> {
+    if (busy) return false;
     setBusy(key);
     setActionError("");
     setNotice("");
     try {
       await action();
-      if (await load()) setNotice(success);
-      else
-        setActionError(
-          "The save was accepted, but the updated status could not be confirmed. Refresh to check the record."
-        );
+      if (await load()) {
+        setNotice(success);
+        return true;
+      }
+      setActionError(
+        "The save was accepted, but the updated status could not be confirmed. Refresh to check the record."
+      );
+      return false;
     } catch (requestError) {
       setActionError(
         requestError instanceof Error
           ? requestError.message
           : "The change could not be saved."
+      );
+      return false;
+    } finally {
+      setBusy("");
+    }
+  }
+
+  async function submitAssignHomework(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setAssignError("");
+    const student = selectableStudents.find(
+      (s) => s.id === assignForm.studentId
+    );
+    if (!student || !assignForm.title.trim() || !assignForm.dueDate) {
+      setAssignError("Choose a student, assignment title, and due date.");
+      return;
+    }
+    setBusy("assign-homework");
+    setActionError("");
+    setNotice("");
+    try {
+      const homeworkRecord: HomeworkItem = {
+        id: `hw_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+        studentId: student.id,
+        studentName: student.name,
+        teacherName: student.teacherName || profile?.name || "Teacher",
+        title: assignForm.title.trim(),
+        dueDate: assignForm.dueDate,
+        note: assignForm.note.trim(),
+        status: "assigned",
+      };
+      const response = await fetch("/api/academy", {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          changes: [
+            {
+              module: "homework",
+              operation: "insert",
+              record: homeworkRecord,
+            },
+          ],
+        }),
+      });
+      const result = await response.json().catch(() => ({}));
+      if (!response.ok || result.error) {
+        throw new Error(
+          result.error || "The homework assignment could not be saved."
+        );
+      }
+      await load();
+      setNotice(`Homework "${homeworkRecord.title}" assigned to ${student.name}.`);
+      setAssignForm({ studentId: "", title: "", dueDate: "", note: "" });
+      setAssignModalOpen(false);
+    } catch (err) {
+      setAssignError(
+        err instanceof Error
+          ? err.message
+          : "The homework assignment could not be saved."
       );
     } finally {
       setBusy("");
@@ -336,8 +491,7 @@ export default function WorkflowsPage() {
     const note = (
       form.elements.namedItem("receiptNote") as HTMLInputElement
     ).value.trim();
-    let success = false;
-    await runAction(
+    return runAction(
       "receipt",
       async () => {
         await upload("receipt", targetPaymentId, file, note);
@@ -350,43 +504,27 @@ export default function WorkflowsPage() {
           "",
           `${currentUrl.pathname}${currentUrl.search}${currentUrl.hash}`
         );
-        success = true;
       },
       "Receipt submitted. The saved status is shown below."
     );
-    return success;
   }
 
   async function submitHomework(
-    event: FormEvent<HTMLFormElement>
+    hwId: string,
+    file: File | null,
+    note: string
   ): Promise<boolean> {
-    event.preventDefault();
-    const form = event.currentTarget;
-    const homeworkSelect = form.elements.namedItem(
-      "homework-assignment"
-    ) as HTMLSelectElement | null;
-    const hwId = homeworkSelect?.value || "";
-    const file =
-      (form.elements.namedItem("homeworkFile") as HTMLInputElement)
-        .files?.[0] || null;
-    const note = (
-      form.elements.namedItem("homeworkNote") as HTMLTextAreaElement
-    ).value.trim();
     if (!hwId || !note) {
-      setActionError("Choose an assignment and write a practice reflection.");
+      setActionError("Write a practice reflection before submitting.");
       return false;
     }
-    let success = false;
-    await runAction(
+    return runAction(
       "homework",
       async () => {
         await upload("homework", hwId, file, note);
-        form.reset();
-        success = true;
       },
       "Homework submitted. The saved status is shown below."
     );
-    return success;
   }
 
   async function submitReschedule(
@@ -397,7 +535,7 @@ export default function WorkflowsPage() {
     const slots = slotInputs
       .filter(Boolean)
       .map((value) => new Date(value).toISOString());
-    if (!lessonId || !reason || slots.length < 2) {
+    if (!lessonId || !reason.trim() || slots.length < 2) {
       setActionError(
         "Choose a lesson, give a reason, and offer at least two dates."
       );
@@ -410,27 +548,30 @@ export default function WorkflowsPage() {
       setActionError("Choose distinct dates in the future.");
       return false;
     }
-    let success = false;
-    await runAction(
+    return runAction(
       "reschedule",
       async () => {
-        await postJson({ action: "request", lessonId, slots, reason });
-        success = true;
+        await postJson({
+          action: "request",
+          lessonId,
+          slots,
+          reason: reason.trim(),
+        });
       },
       "Request submitted. Approval progress below reflects the saved record."
     );
-    return success;
   }
 
-  async function review(item: HomeworkItem, form: HTMLFormElement) {
-    const value = (
-      form.elements.namedItem("feedback") as HTMLTextAreaElement
-    ).value.trim();
+  async function review(
+    item: HomeworkItem,
+    feedbackText: string
+  ): Promise<boolean> {
+    const value = feedbackText.trim();
     if (!value) {
       setActionError("Write feedback before marking this work reviewed.");
-      return;
+      return false;
     }
-    await runAction(
+    return runAction(
       `review-${item.id}`,
       async () => {
         await postJson({ id: item.id, feedback: value });
@@ -442,36 +583,35 @@ export default function WorkflowsPage() {
   async function decide(
     request: RescheduleRequest,
     decision: "approve" | "reject",
-    note: string
-  ) {
-    const selectedSlot = isTeacher
-      ? chosenSlots[request.id] || ""
-      : request.selected_slot || "";
-    if (isTeacher && request.teacher_approved && decision === "approve") {
-      setActionError(
-        "Teacher availability has already been confirmed for this request."
-      );
-      return;
-    }
-    if (
-      isFinalApprover &&
-      decision === "approve" &&
-      !request.teacher_approved
-    ) {
-      setActionError(
-        "Final approval is locked until the teacher confirms availability."
-      );
-      return;
-    }
-    if (decision === "approve" && !selectedSlot) {
-      setActionError("Select one proposed slot before approving.");
-      return;
+    note: string,
+    selectedSlotArg?: string
+  ): Promise<boolean> {
+    const canActAsTeacher = canTeachLesson(request.lesson_id);
+    const actingAsTeacher = canActAsTeacher && !request.teacher_approved;
+    const actingAsFinalApprover = isFinalApprover && !actingAsTeacher;
+
+    const selectedSlot = actingAsTeacher
+      ? selectedSlotArg || ""
+      : request.selected_slot || selectedSlotArg || "";
+
+    if (decision === "approve") {
+      if (actingAsFinalApprover && !request.teacher_approved) {
+        setActionError(
+          "Final approval is locked until the teacher confirms availability."
+        );
+        return false;
+      }
+      if (!selectedSlot) {
+        setActionError("Select one proposed slot before approving.");
+        return false;
+      }
     }
     if (decision === "reject" && !note.trim()) {
       setActionError("Write a reason before rejecting this request.");
-      return;
+      return false;
     }
-    await runAction(
+
+    return runAction(
       `decision-${request.id}`,
       async () => {
         await postJson({
@@ -486,11 +626,15 @@ export default function WorkflowsPage() {
     );
   }
 
-  async function proposeCounter(request: RescheduleRequest) {
-    const slots = (counterSlots[request.id] || [])
+  async function proposeCounter(
+    request: RescheduleRequest,
+    rawSlots: string[],
+    rawReason: string
+  ): Promise<boolean> {
+    const slots = rawSlots
       .filter(Boolean)
       .map((value) => new Date(value).toISOString());
-    const reason = (counterReasons[request.id] || "").trim();
+    const reason = rawReason.trim();
     if (
       !reason ||
       !slots.length ||
@@ -499,26 +643,26 @@ export default function WorkflowsPage() {
       setActionError(
         "Offer at least one future alternative and explain the counterproposal."
       );
-      return;
+      return false;
     }
-    await runAction(
+    return runAction(
       `counter-${request.id}`,
       async () => {
         await postJson({ action: "counter", id: request.id, slots, reason });
-        setCounterSlots((current) => ({ ...current, [request.id]: [""] }));
-        setCounterReasons((current) => ({ ...current, [request.id]: "" }));
       },
       "Counterproposal sent. The saved request has been refreshed."
     );
   }
 
-  async function acceptCounter(request: RescheduleRequest) {
-    const selectedSlot = selectedCounter[request.id] || "";
+  async function acceptCounter(
+    request: RescheduleRequest,
+    selectedSlot: string
+  ): Promise<boolean> {
     if (!selectedSlot) {
       setActionError("Select one teacher-proposed time before accepting.");
-      return;
+      return false;
     }
-    await runAction(
+    return runAction(
       `accept-counter-${request.id}`,
       async () => {
         await postJson({
@@ -539,20 +683,49 @@ export default function WorkflowsPage() {
         file.complete
     );
 
+  const openAssignModal = () => {
+    setAssignError("");
+    if (academyStudents.length === 0) {
+      void loadAssignableStudents();
+    }
+    const defaultDue = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000)
+      .toISOString()
+      .slice(0, 10);
+    setAssignForm((prev) => ({
+      studentId: prev.studentId || selectableStudents[0]?.id || "",
+      title: "",
+      dueDate: prev.dueDate || defaultDue,
+      note: "",
+    }));
+    setAssignModalOpen(true);
+  };
+
   return (
     <main className="wf-page">
       <div className="wf-topline" />
       <div className="wf-content">
         <header className="wf-intro">
           <h1>{isHomeworkRoute ? "Homework" : "Workflows"}</h1>
-          <button
-            type="button"
-            className="wf-button secondary"
-            onClick={() => void load()}
-            disabled={refreshing}
-          >
-            {refreshing ? "Refreshing" : "Refresh"}
-          </button>
+          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            {isHomeworkRoute && canAssignHomework && (
+              <button
+                type="button"
+                className="wf-button"
+                onClick={openAssignModal}
+                disabled={loading}
+              >
+                <Plus size={14} />+ Assign Homework
+              </button>
+            )}
+            <button
+              type="button"
+              className="wf-button secondary"
+              onClick={() => void load()}
+              disabled={refreshing}
+            >
+              {refreshing ? "Refreshing" : "Refresh"}
+            </button>
+          </div>
         </header>
 
         {error && (
@@ -621,21 +794,17 @@ export default function WorkflowsPage() {
                 </div>
               </section>
             </div>
-            <div className="wf-stack">
-              <section className="wf-card">
-                <div className="wf-skeleton">
-                  <i />
-                  <i />
-                  <i />
-                </div>
-              </section>
-              <section className="wf-card">
-                <div className="wf-skeleton">
-                  <i />
-                  <i />
-                </div>
-              </section>
-            </div>
+            {!isHomeworkRoute && (
+              <div className="wf-stack">
+                <section className="wf-card">
+                  <div className="wf-skeleton">
+                    <i />
+                    <i />
+                    <i />
+                  </div>
+                </section>
+              </div>
+            )}
           </div>
         ) : (
           data && (
@@ -649,6 +818,7 @@ export default function WorkflowsPage() {
                 <div className="wf-stack">
                   <WorkflowPaymentsSection
                     data={data}
+                    canSeeReceipts={canSeeReceipts}
                     isFamily={isFamily}
                     isHomeworkRoute={isHomeworkRoute}
                     initialPaymentId={initialPaymentId}
@@ -660,12 +830,15 @@ export default function WorkflowsPage() {
 
                   <WorkflowHomeworkSection
                     data={data}
+                    canViewHomework={canViewHomework}
+                    canAssignHomework={canAssignHomework}
                     isReviewer={isReviewer}
                     isFamily={isFamily}
                     isHomeworkRoute={isHomeworkRoute}
                     assignedHomework={assignedHomework}
                     busy={busy}
                     filesFor={filesFor}
+                    onOpenAssignModal={openAssignModal}
                     submitHomework={submitHomework}
                     review={review}
                   />
@@ -678,8 +851,6 @@ export default function WorkflowsPage() {
                     data={data}
                     role={role}
                     isFamily={isFamily}
-                    isTeacher={isTeacher}
-                    isQC={isQC}
                     isFinalApprover={isFinalApprover}
                     upcomingLessons={upcomingLessons}
                     pendingRequests={pendingRequests}
@@ -689,15 +860,6 @@ export default function WorkflowsPage() {
                     decide={decide}
                     proposeCounter={proposeCounter}
                     acceptCounter={acceptCounter}
-                    chosenSlots={chosenSlots}
-                    setChosenSlots={setChosenSlots}
-                    counterSlots={counterSlots}
-                    setCounterSlots={setCounterSlots}
-                    counterReasons={counterReasons}
-                    setCounterReasons={setCounterReasons}
-                    selectedCounter={selectedCounter}
-                    setSelectedCounter={setSelectedCounter}
-                    confirm={confirm}
                   />
                 </div>
               )}
@@ -709,8 +871,127 @@ export default function WorkflowsPage() {
           <span>PROSPERWORK MUSIC CONCEPTS</span>
           <span>Lesson continuity · private workspace</span>
         </footer>
-        <ConfirmDialog />
       </div>
+
+      {/* Assign Homework Modal */}
+      {canAssignHomework && (
+        <PortalModal
+          open={assignModalOpen}
+          onClose={() => {
+            setAssignModalOpen(false);
+            setAssignError("");
+          }}
+          eyebrow="Practice assignment"
+          title="Assign homework"
+          subtitle="Practice tasks appear in the student's notebook and homework portal with due dates."
+          size="md"
+          busy={busy === "assign-homework"}
+        >
+          <form
+            className="wf-form"
+            style={{ padding: 0, border: "none", background: "transparent" }}
+            onSubmit={submitAssignHomework}
+          >
+            {assignError && (
+              <div className="wf-alert" role="alert" style={{ marginBottom: 10 }}>
+                {assignError}
+              </div>
+            )}
+            <div className="wf-form-grid">
+              <div className="wf-field full">
+                <label htmlFor="assign-hw-student">Student *</label>
+                <select
+                  id="assign-hw-student"
+                  required
+                  value={assignForm.studentId}
+                  onChange={(e) =>
+                    setAssignForm({ ...assignForm, studentId: e.target.value })
+                  }
+                  disabled={loadingStudents}
+                >
+                  <option value="">
+                    {loadingStudents
+                      ? "Loading students…"
+                      : "Select an enrolled student"}
+                  </option>
+                  {selectableStudents.map((student) => (
+                    <option key={student.id} value={student.id}>
+                      {student.name}
+                      {student.instrument ? ` · ${student.instrument}` : ""}
+                      {student.teacherName ? ` (${student.teacherName})` : ""}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div className="wf-field full">
+                <label htmlFor="assign-hw-title">Practice assignment *</label>
+                <input
+                  id="assign-hw-title"
+                  type="text"
+                  required
+                  maxLength={120}
+                  placeholder="e.g. C Major scale hands together at 72 BPM"
+                  value={assignForm.title}
+                  onChange={(e) =>
+                    setAssignForm({ ...assignForm, title: e.target.value })
+                  }
+                />
+              </div>
+              <div className="wf-field full">
+                <label htmlFor="assign-hw-due">Due date *</label>
+                <input
+                  id="assign-hw-due"
+                  type="date"
+                  required
+                  value={assignForm.dueDate}
+                  onChange={(e) =>
+                    setAssignForm({ ...assignForm, dueDate: e.target.value })
+                  }
+                />
+              </div>
+              <div className="wf-field full">
+                <label htmlFor="assign-hw-note">
+                  Instructions / teacher guidance
+                </label>
+                <textarea
+                  id="assign-hw-note"
+                  rows={4}
+                  maxLength={4000}
+                  placeholder="Share practice tips, bar numbers, tempo goals, or recording guidance."
+                  value={assignForm.note}
+                  onChange={(e) =>
+                    setAssignForm({ ...assignForm, note: e.target.value })
+                  }
+                />
+              </div>
+            </div>
+            <div className="modal-actions" style={{ marginTop: 8 }}>
+              <button
+                type="button"
+                className="wf-button secondary"
+                onClick={() => setAssignModalOpen(false)}
+                disabled={busy === "assign-homework"}
+              >
+                Cancel
+              </button>
+              <button
+                type="submit"
+                className="wf-button"
+                disabled={
+                  busy === "assign-homework" ||
+                  !assignForm.studentId ||
+                  !assignForm.title.trim() ||
+                  !assignForm.dueDate
+                }
+              >
+                {busy === "assign-homework"
+                  ? "Assigning…"
+                  : "Assign Homework"}
+              </button>
+            </div>
+          </form>
+        </PortalModal>
+      )}
     </main>
   );
 }

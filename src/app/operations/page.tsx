@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   AlertCircle,
   CheckCircle2,
@@ -19,6 +19,16 @@ import OpsLeadsView from "./views/OpsLeadsView";
 import OpsRecordsView from "./views/OpsRecordsView";
 import { type OperationsData, type OperationsView } from "./ops-types";
 
+const validViews: OperationsView[] = [
+  "finance",
+  "academy",
+  "team",
+  "leads",
+  "records",
+  "referrals",
+  "media",
+];
+
 export default function OperationsPage() {
   const [data, setData] = useState<OperationsData | null>(null);
   const [loading, setLoading] = useState(true);
@@ -28,6 +38,7 @@ export default function OperationsPage() {
   const [notice, setNotice] = useState("");
   const [busy, setBusy] = useState("");
   const [selectedView, setSelectedView] = useState<OperationsView>("finance");
+  const didInitTabRef = useRef(false);
 
   const { confirm, ConfirmDialog } = useConfirmModal();
   const { currencies: currencyRows } = useCurrencies();
@@ -35,6 +46,25 @@ export default function OperationsPage() {
     () => currencyRows.map((c) => c.code),
     [currencyRows]
   );
+
+  // Read initial ?tab= query param on mount
+  useEffect(() => {
+    if (didInitTabRef.current || typeof window === "undefined") return;
+    didInitTabRef.current = true;
+    const param = new URLSearchParams(window.location.search).get("tab");
+    if (param && validViews.includes(param as OperationsView)) {
+      setSelectedView(param as OperationsView);
+    }
+  }, []);
+
+  const selectView = useCallback((viewId: OperationsView) => {
+    setSelectedView(viewId);
+    if (typeof window !== "undefined") {
+      const url = new URL(window.location.href);
+      url.searchParams.set("tab", viewId);
+      window.history.replaceState(null, "", url.pathname + url.search + url.hash);
+    }
+  }, []);
 
   const load = useCallback(async (isManualRefresh = false) => {
     if (isManualRefresh) setRefreshing(true);
@@ -44,6 +74,7 @@ export default function OperationsPage() {
       const response = await fetch("/api/operations", {
         method: "GET",
         credentials: "include",
+        cache: "no-store",
       });
       const result = await readJson<Record<string, unknown>>(response);
       if (response.status === 401) {
@@ -93,40 +124,101 @@ export default function OperationsPage() {
   const profileId = data?.profile.id ?? "";
   const isActive = data?.profile.status === "active";
   const isOwner = role === "super_admin" || role === "owner";
-  const perms = useMemo(() => new Set(data?.profile.permissions ?? []), [data?.profile?.permissions]);
+  const perms = useMemo(
+    () => new Set(data?.profile.permissions ?? []),
+    [data?.profile?.permissions]
+  );
 
   const isHead = role === "head_admin" || perms.has("workspace.management");
-  const isAdmin = role === "admin" || perms.has("workspace.operations") || perms.has("workspace.schedule");
+  const isAdmin =
+    role === "admin" ||
+    perms.has("workspace.operations") ||
+    perms.has("workspace.schedule");
   const isFinance = role === "finance" || perms.has("workspace.finance");
-  const isTeacher = role === "teacher" || data?.profile.department === "Music Education" || role.includes("teacher") || perms.has("workspace.learning");
+  const isTeacher =
+    role === "teacher" ||
+    data?.profile.department === "Music Education" ||
+    role.includes("teacher") ||
+    perms.has("workspace.learning");
   const isQc = role === "qc" || perms.has("reports.learning");
   const isSales = role === "sales_marketing" || perms.has("workspace.leads");
-  const isSocial = role === "social_media" || isOwner || perms.has("workspace.curriculum");
+  const isSocial =
+    role === "social_media" || isOwner || perms.has("workspace.curriculum");
 
   const canBilling = isOwner || isFinance || perms.has("workspace.finance");
-  const canSchedule = isOwner || isHead || isAdmin || isTeacher || isQc || perms.has("workspace.schedule");
-  const canAvailability = isOwner || isTeacher || isQc || isAdmin || isHead || perms.has("workspace.schedule");
-  const canReadQuality = isOwner || isHead || isQc || isTeacher || perms.has("reports.learning");
+  const canSchedule =
+    isOwner ||
+    isHead ||
+    isAdmin ||
+    isTeacher ||
+    isQc ||
+    perms.has("workspace.schedule");
+  const canAvailability =
+    isOwner ||
+    isTeacher ||
+    isQc ||
+    isAdmin ||
+    isHead ||
+    perms.has("workspace.schedule");
+  const canReadQuality =
+    isOwner || isHead || isQc || isTeacher || perms.has("reports.learning");
   const canObserve = isOwner || isQc || perms.has("reports.learning");
-  const canReadLeads = isOwner || isHead || isSales || perms.has("workspace.leads");
-  const canTrial = isOwner || isHead || isSales || perms.has("workspace.leads");
+  const canReadLeads =
+    isOwner || isHead || isSales || perms.has("workspace.leads");
+  const canTrial =
+    isOwner || isHead || isSales || perms.has("workspace.leads");
   const canAssignLeads = isOwner || isHead || perms.has("workspace.leads");
   const canConvert = isOwner || isHead || perms.has("workspace.leads");
-  const canSeeEvents = isOwner || isHead || isFinance || isAdmin || perms.has("workspace.operations");
+  const canSeeEvents =
+    isOwner ||
+    isHead ||
+    isFinance ||
+    isAdmin ||
+    perms.has("workspace.operations");
 
   const views = useMemo(() => {
-    const list: { id: OperationsView; title: string }[] = [];
-    if (canBilling) list.push({ id: "finance", title: "Finance" });
-    if (canSchedule) list.push({ id: "academy", title: "Academy" });
-    if (canAvailability || canReadQuality)
+    const list: { id: OperationsView; title: string; count?: number }[] = [];
+    if (canBilling) {
+      list.push({
+        id: "finance",
+        title: "Finance",
+        count: data?.contracts.filter((c) => c.active).length,
+      });
+    }
+    if (canSchedule) {
+      list.push({
+        id: "academy",
+        title: "Academy",
+        count: data?.series.length,
+      });
+    }
+    if (canAvailability || canReadQuality) {
       list.push({ id: "team", title: "Team" });
-    if (canReadLeads) list.push({ id: "leads", title: "Leads" });
-    if (canBilling || canSeeEvents)
+    }
+    if (canReadLeads) {
+      list.push({
+        id: "leads",
+        title: "Leads",
+        count: data?.leads.filter((l) => !l.converted_at).length,
+      });
+    }
+    if (canBilling || canSeeEvents) {
       list.push({ id: "records", title: "Records" });
-    if (isOwner || isFinance || isSales)
-      list.push({ id: "referrals", title: "Referrals" });
-    if (isSocial || isTeacher || isQc || isAdmin || isHead)
-      list.push({ id: "media", title: "Media Studio" });
+    }
+    if (isOwner || isFinance || isSales || role === "parent") {
+      list.push({
+        id: "referrals",
+        title: "Referrals",
+        count: data?.referrals?.length,
+      });
+    }
+    if (isSocial || isTeacher || isQc || isAdmin || isHead) {
+      list.push({
+        id: "media",
+        title: "Media Studio",
+        count: data?.media?.length,
+      });
+    }
     return list;
   }, [
     canBilling,
@@ -143,6 +235,12 @@ export default function OperationsPage() {
     isQc,
     isAdmin,
     isHead,
+    role,
+    data?.contracts,
+    data?.series,
+    data?.leads,
+    data?.referrals,
+    data?.media,
   ]);
 
   const activeView = useMemo(() => {
@@ -262,7 +360,7 @@ export default function OperationsPage() {
           apiErrorMessage(result, response.status, "Operations request failed")
         );
       }
-      const fresh = await load();
+      const fresh = await load(true);
       if (!fresh) {
         throw new Error(
           "The server accepted the action, but refreshed records could not be loaded. Reload to confirm before retrying."
@@ -357,138 +455,135 @@ export default function OperationsPage() {
               )}
 
               {showAnySection && (
-                <nav className="ops-tabs" aria-label="Operations work areas">
+                <nav
+                  className="portal-tabs"
+                  aria-label="Operations work areas"
+                >
                   {views.map((view) => (
                     <button
                       key={view.id}
                       type="button"
-                      className={`ops-tab ${
+                      className={`portal-tab ${
                         activeView === view.id ? "active" : ""
                       }`}
                       aria-current={activeView === view.id ? "page" : undefined}
-                      onClick={() => setSelectedView(view.id)}
+                      onClick={() => selectView(view.id)}
                     >
                       {view.title}
+                      {typeof view.count === "number" && (
+                        <span className="portal-tab-badge">{view.count}</span>
+                      )}
                     </button>
                   ))}
                 </nav>
               )}
 
-              <div
-                className="ops-grid"
-                data-portal-layout="operations-workspace"
-              >
-                {activeView === "finance" && (
-                  <OpsFinanceView
-                    data={data}
-                    activeStudents={activeStudents}
-                    isActive={isActive}
-                    isOwner={isOwner}
-                    canBilling={canBilling}
-                    currencies={currencies}
-                    busy={busy}
-                    submitAction={submitAction}
-                    confirm={confirm}
-                  />
-                )}
+              {(activeView === "finance" ||
+                activeView === "academy" ||
+                activeView === "team" ||
+                activeView === "leads" ||
+                activeView === "records") && (
+                <div
+                  className="ops-grid"
+                  data-portal-layout="operations-workspace"
+                >
+                  {activeView === "finance" && (
+                    <OpsFinanceView
+                      data={data}
+                      activeStudents={activeStudents}
+                      isActive={isActive}
+                      isOwner={isOwner}
+                      canBilling={canBilling}
+                      currencies={currencies}
+                      busy={busy}
+                      submitAction={submitAction}
+                      confirm={confirm}
+                    />
+                  )}
 
-                {activeView === "academy" && (
-                  <OpsAcademyView
-                    data={data}
-                    activeStudents={activeStudents}
-                    activeTeachers={activeTeachers}
-                    activeAdmins={activeAdmins}
-                    isActive={isActive}
-                    isOwner={isOwner}
-                    isHead={isHead}
-                    canSchedule={canSchedule}
-                    busy={busy}
-                    submitAction={submitAction}
-                    confirm={confirm}
-                  />
-                )}
+                  {activeView === "academy" && (
+                    <OpsAcademyView
+                      data={data}
+                      activeStudents={activeStudents}
+                      activeTeachers={activeTeachers}
+                      activeAdmins={activeAdmins}
+                      isActive={isActive}
+                      isOwner={isOwner}
+                      isHead={isHead}
+                      canSchedule={canSchedule}
+                      busy={busy}
+                      submitAction={submitAction}
+                      confirm={confirm}
+                    />
+                  )}
 
-                {activeView === "team" && (
-                  <OpsTeamView
-                    data={data}
-                    visibleAvailability={visibleAvailability}
-                    visibleQuality={visibleQuality}
-                    visibleObservations={visibleObservations}
-                    isActive={isActive}
-                    isOwner={isOwner}
-                    canAvailability={canAvailability}
-                    canReadQuality={canReadQuality}
-                    canObserve={canObserve}
-                    busy={busy}
-                    submitAction={submitAction}
-                    confirm={confirm}
-                  />
-                )}
+                  {activeView === "team" && (
+                    <OpsTeamView
+                      data={data}
+                      visibleAvailability={visibleAvailability}
+                      visibleQuality={visibleQuality}
+                      visibleObservations={visibleObservations}
+                      isActive={isActive}
+                      isOwner={isOwner}
+                      canAvailability={canAvailability}
+                      canReadQuality={canReadQuality}
+                      canObserve={canObserve}
+                      busy={busy}
+                      submitAction={submitAction}
+                      confirm={confirm}
+                    />
+                  )}
 
-                {activeView === "leads" && (
-                  <OpsLeadsView
-                    data={data}
-                    sortedLeads={sortedLeads}
-                    activeStudents={activeStudents}
-                    activeTeachers={activeTeachers}
-                    activeAdmins={activeAdmins}
-                    activeSales={activeSales}
-                    isActive={isActive}
-                    canReadLeads={canReadLeads}
-                    canTrial={canTrial}
-                    canAssignLeads={canAssignLeads}
-                    canConvert={canConvert}
-                    busy={busy}
-                    submitAction={submitAction}
-                    confirm={confirm}
-                  />
-                )}
+                  {activeView === "leads" && (
+                    <OpsLeadsView
+                      data={data}
+                      sortedLeads={sortedLeads}
+                      activeStudents={activeStudents}
+                      activeTeachers={activeTeachers}
+                      activeAdmins={activeAdmins}
+                      activeSales={activeSales}
+                      isActive={isActive}
+                      canReadLeads={canReadLeads}
+                      canTrial={canTrial}
+                      canAssignLeads={canAssignLeads}
+                      canConvert={canConvert}
+                      busy={busy}
+                      submitAction={submitAction}
+                      confirm={confirm}
+                    />
+                  )}
 
-                {activeView === "records" && (
-                  <OpsRecordsView
-                    data={data}
-                    isOwner={isOwner}
-                    profileId={profileId}
-                    canBilling={canBilling}
-                    canSeeEvents={canSeeEvents}
-                  />
-                )}
-              </div>
+                  {activeView === "records" && (
+                    <OpsRecordsView
+                      data={data}
+                      isOwner={isOwner}
+                      profileId={profileId}
+                      canBilling={canBilling}
+                      canSeeEvents={canSeeEvents}
+                    />
+                  )}
+                </div>
+              )}
+
+              {activeView === "referrals" && (
+                <OperationsExtras
+                  data={data}
+                  students={data.students}
+                  view="referrals"
+                  onRefresh={() => load(true)}
+                />
+              )}
+
+              {activeView === "media" && (
+                <OperationsExtras
+                  data={data}
+                  students={data.students}
+                  view="media"
+                  onRefresh={() => load(true)}
+                />
+              )}
             </>
           )
-        )}
-
-        {canBilling &&
-          data?.contracts.some((c) => c.active && c.billing_hold) && (
-            <section
-              hidden={activeView !== "finance"}
-              className="ops-inline-summary"
-            >
-              <h2>Billing review after a pause</h2>
-              <p>
-                Held contracts do not back-charge paused months. Agree the
-                resume date before generating invoices.
-              </p>
-            </section>
-          )}
-
-        {data && (
-          <>
-            <div hidden={activeView !== "referrals"}>
-              <OperationsExtras
-                data={data}
-                students={data.students}
-                view="referrals"
-              />
-            </div>
-            <div hidden={activeView !== "media"}>
-              <OperationsExtras
-                data={data}
-                students={data.students}
-                view="media"
-              />
-            </div>
-          </>
         )}
       </div>
       <ConfirmDialog />

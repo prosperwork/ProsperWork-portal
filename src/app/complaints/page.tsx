@@ -9,30 +9,34 @@ import {
   type FormEvent,
 } from "react";
 import {
-  AlertCircle,
-  Check,
+  AlertTriangle,
   CheckCircle2,
   ChevronRight,
   Clock,
   Lock,
-  Mail,
   MessageSquare,
+  Plus,
   RefreshCw,
   Search,
   Send,
-  ShieldCheck,
-  User,
 } from "lucide-react";
 import ProfileAvatar from "../_components/ProfileAvatar";
+import { PortalModal } from "../_components/PortalModal";
 import { Empty, Pill, SectionTitle, niceDate } from "../_lib/portal-formatters";
 import {
   COMPLAINT_CATEGORIES,
   categoryLabel,
   type ComplaintRecord,
-  type ComplaintCategory,
   type ComplaintStatus,
+  type ComplaintUrgency,
 } from "@/lib/academy/complaints";
 import { useCatalogs } from "@/lib/academy/use-academy-config";
+
+const statusLabels: Record<ComplaintStatus, string> = {
+  open: "Open",
+  in_progress: "Under Investigation",
+  resolved: "Resolved",
+};
 
 export default function ComplaintsPage() {
   const { enabledByCatalog, allByCatalog } = useCatalogs();
@@ -43,12 +47,15 @@ export default function ComplaintsPage() {
       ? enabled.map((item) => ({ value: item.code, label: item.label }))
       : COMPLAINT_CATEGORIES.map((c) => ({ value: c.value, label: c.label }));
   }, [enabledByCatalog]);
+
   const [complaints, setComplaints] = useState<ComplaintRecord[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState("");
   const [toast, setToast] = useState("");
   const toastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const threadContainerRef = useRef<HTMLDivElement | null>(null);
+  const didParseParamsRef = useRef(false);
 
   useEffect(() => {
     return () => {
@@ -81,47 +88,111 @@ export default function ComplaintsPage() {
   const [replyBusy, setReplyBusy] = useState(false);
   const [replyError, setReplyError] = useState("");
 
-  const loadComplaints = useCallback(async (isRefresh = false) => {
-    if (isRefresh) setRefreshing(true);
-    else setLoading(true);
-    setError("");
-    try {
-      const url = isRefresh ? "/api/complaints?sync=true" : "/api/complaints";
-      const response = await fetch(url, {
-        method: "GET",
-        credentials: "include",
-        cache: "no-store",
-      });
-      const data = await response.json().catch(() => ({}));
-      if (!response.ok) {
-        throw new Error(data.error || "Failed to load complaints.");
+  // New Complaint Modal state
+  const [createOpen, setCreateOpen] = useState(false);
+  const [createBusy, setCreateBusy] = useState(false);
+  const [createError, setCreateError] = useState("");
+  const [newCategory, setNewCategory] = useState<string>(
+    COMPLAINT_CATEGORIES[0].value
+  );
+  const [newUrgency, setNewUrgency] = useState<ComplaintUrgency>("normal");
+  const [newSubject, setNewSubject] = useState("");
+  const [newStudentName, setNewStudentName] = useState("");
+  const [newLessonRef, setNewLessonRef] = useState("");
+  const [newMessage, setNewMessage] = useState("");
+
+  // Resolve Ticket Confirmation Modal state
+  const [resolveTarget, setResolveTarget] = useState<ComplaintRecord | null>(
+    null
+  );
+  const [resolveNotes, setResolveNotes] = useState("");
+  const [resolveError, setResolveError] = useState("");
+
+  const isParent = currentUser?.role === "parent";
+  const canManageStatus = Boolean(currentUser?.role && !isParent);
+
+  // Read ?category= and ?lessonId= query params to pre-fill and open the modal
+  useEffect(() => {
+    if (didParseParamsRef.current || typeof window === "undefined") return;
+    didParseParamsRef.current = true;
+    const params = new URLSearchParams(window.location.search);
+    const paramCategory = params.get("category")?.trim();
+    const paramLessonId = params.get("lessonId")?.trim();
+    const paramStudent = params.get("studentName")?.trim();
+
+    if (paramCategory || paramLessonId) {
+      if (paramCategory) {
+        setNewCategory(paramCategory);
       }
-      const list = (data.complaints || []) as ComplaintRecord[];
-      setComplaints(list);
-      if (data.currentRole) {
-        setCurrentUser({
-          role: data.currentRole,
-          id: data.currentUserId,
-          name: data.currentName,
-        });
+      if (paramLessonId) {
+        setNewLessonRef(paramLessonId);
+        setNewSubject((prev) =>
+          prev || `Lesson issue (Ref: ${paramLessonId.slice(0, 12)})`
+        );
       }
-      // Auto-select first ticket if none selected
-      setSelectedComplaintId((prev) => {
-        if (prev && list.some((c) => c.id === prev)) return prev;
-        return list[0]?.id || null;
-      });
-    } catch (err) {
-      setError(
-        err instanceof Error ? err.message : "Failed to load complaints."
-      );
-    } finally {
-      setLoading(false);
-      setRefreshing(false);
+      if (paramStudent) {
+        setNewStudentName(paramStudent);
+      }
+      setCreateOpen(true);
     }
   }, []);
 
+  // Ensure default category stays valid when catalogs load
   useEffect(() => {
-    void loadComplaints();
+    if (
+      complaintCategoryOptions.length > 0 &&
+      !complaintCategoryOptions.some((c) => c.value === newCategory)
+    ) {
+      setNewCategory(complaintCategoryOptions[0].value);
+    }
+  }, [complaintCategoryOptions, newCategory]);
+
+  const loadComplaints = useCallback(
+    async (isRefresh = false, allowSync = false) => {
+      if (isRefresh) setRefreshing(true);
+      else setLoading(true);
+      setError("");
+      try {
+        const url =
+          isRefresh && allowSync
+            ? "/api/complaints?sync=true"
+            : "/api/complaints";
+        const response = await fetch(url, {
+          method: "GET",
+          credentials: "include",
+          cache: "no-store",
+        });
+        const data = await response.json().catch(() => ({}));
+        if (!response.ok) {
+          throw new Error(data.error || "Failed to load complaints.");
+        }
+        const list = (data.complaints || []) as ComplaintRecord[];
+        setComplaints(list);
+        if (data.currentRole) {
+          setCurrentUser({
+            role: data.currentRole,
+            id: data.currentUserId,
+            name: data.currentName,
+          });
+        }
+        setSelectedComplaintId((prev) => {
+          if (prev && list.some((c) => c.id === prev)) return prev;
+          return list[0]?.id || null;
+        });
+      } catch (err) {
+        setError(
+          err instanceof Error ? err.message : "Failed to load complaints."
+        );
+      } finally {
+        setLoading(false);
+        setRefreshing(false);
+      }
+    },
+    []
+  );
+
+  useEffect(() => {
+    void loadComplaints(false, false);
   }, [loadComplaints]);
 
   // Derived metrics
@@ -171,25 +242,50 @@ export default function ComplaintsPage() {
       }
       return true;
     });
-  }, [complaints, statusFilter, categoryFilter, searchQuery, complaintCategoryItems]);
+  }, [
+    complaints,
+    statusFilter,
+    categoryFilter,
+    searchQuery,
+    complaintCategoryItems,
+  ]);
 
+  // Always keep selectedComplaint strictly aligned with filteredComplaints
   const selectedComplaint = useMemo(() => {
-    if (!selectedComplaintId) return filteredComplaints[0] || null;
-    return (
-      filteredComplaints.find((c) => c.id === selectedComplaintId) ||
-      complaints.find((c) => c.id === selectedComplaintId) ||
-      filteredComplaints[0] ||
-      null
-    );
-  }, [selectedComplaintId, filteredComplaints, complaints]);
+    if (!filteredComplaints.length) return null;
+    if (selectedComplaintId) {
+      const match = filteredComplaints.find(
+        (c) => c.id === selectedComplaintId
+      );
+      if (match) return match;
+    }
+    return filteredComplaints[0];
+  }, [selectedComplaintId, filteredComplaints]);
 
-  // When selected complaint changes, reset reply box
+  // Keep selectedComplaintId synced when filters hide the previous ticket
+  useEffect(() => {
+    if (selectedComplaint && selectedComplaint.id !== selectedComplaintId) {
+      setSelectedComplaintId(selectedComplaint.id);
+    } else if (!selectedComplaint && selectedComplaintId !== null) {
+      setSelectedComplaintId(null);
+    }
+  }, [selectedComplaint, selectedComplaintId]);
+
+  // Reset reply box when selected complaint changes
   useEffect(() => {
     if (selectedComplaint) {
       setReplyText("");
       setReplyError("");
     }
   }, [selectedComplaint?.id]);
+
+  // Auto-scroll chat thread to the latest message on selection or new reply
+  const selectedMessageCount = selectedComplaint?.messages?.length ?? 0;
+  useEffect(() => {
+    const el = threadContainerRef.current;
+    if (!el) return;
+    el.scrollTop = el.scrollHeight;
+  }, [selectedComplaint?.id, selectedMessageCount]);
 
   const showToast = (message: string) => {
     setToast(message);
@@ -198,6 +294,92 @@ export default function ComplaintsPage() {
       setToast("");
       toastTimerRef.current = null;
     }, 4500);
+  };
+
+  const resetCreateForm = () => {
+    setNewCategory(
+      complaintCategoryOptions[0]?.value ?? COMPLAINT_CATEGORIES[0].value
+    );
+    setNewUrgency("normal");
+    setNewSubject("");
+    setNewStudentName("");
+    setNewLessonRef("");
+    setNewMessage("");
+    setCreateError("");
+  };
+
+  const handleCreateComplaint = async (e: FormEvent) => {
+    e.preventDefault();
+    if (createBusy) return;
+
+    const trimmedSubject = newSubject.trim();
+    const trimmedLesson = newLessonRef.trim();
+    const baseMessage = newMessage.trim();
+    const finalMessage =
+      trimmedLesson && !baseMessage.includes(trimmedLesson)
+        ? `${baseMessage}\n\nLesson reference: ${trimmedLesson}`
+        : baseMessage;
+
+    if (trimmedSubject.length < 3) {
+      setCreateError("Please enter a subject of at least 3 characters.");
+      return;
+    }
+    if (finalMessage.length < 10) {
+      setCreateError("Please describe your concern in at least 10 characters.");
+      return;
+    }
+
+    setCreateBusy(true);
+    setCreateError("");
+    try {
+      const payload: Record<string, unknown> = {
+        action: "create",
+        category: newCategory,
+        urgency: newUrgency,
+        subject: trimmedSubject,
+        message: finalMessage,
+      };
+      if (newStudentName.trim()) {
+        payload.studentName = newStudentName.trim();
+      }
+
+      const response = await fetch("/api/complaints", {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+
+      const result = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        throw new Error(result.error || "Could not submit your complaint.");
+      }
+
+      const created = result.complaint as ComplaintRecord | undefined;
+      if (created) {
+        setComplaints((prev) => [{ ...created, messages: [] }, ...prev]);
+        setStatusFilter("all");
+        setCategoryFilter("all");
+        setSearchQuery("");
+        setSelectedComplaintId(created.id);
+      } else {
+        await loadComplaints(true, false);
+      }
+
+      setCreateOpen(false);
+      resetCreateForm();
+      showToast(
+        created
+          ? `Ticket #${created.ticket_number} submitted. Confirmation sent by email.`
+          : "Your complaint has been submitted."
+      );
+    } catch (err) {
+      setCreateError(
+        err instanceof Error ? err.message : "Could not submit your complaint."
+      );
+    } finally {
+      setCreateBusy(false);
+    }
   };
 
   const handleSendReply = async (e: FormEvent) => {
@@ -224,13 +406,13 @@ export default function ComplaintsPage() {
         throw new Error(result.error || "Failed to post reply.");
       }
 
-      const newMessage = result.messageRecord;
+      const newMsg = result.messageRecord;
       const nextStatus = result.status;
 
       setComplaints((current) =>
         current.map((c) => {
           if (c.id === selectedComplaint.id) {
-            const updatedMessages = [...(c.messages || []), newMessage];
+            const updatedMessages = [...(c.messages || []), newMsg];
             return {
               ...c,
               status: nextStatus || c.status,
@@ -252,26 +434,28 @@ export default function ComplaintsPage() {
     }
   };
 
-  const handleUpdateStatus = async (newStatus: ComplaintStatus) => {
-    if (
-      !selectedComplaint ||
-      selectedComplaint.status === newStatus ||
-      statusBusy
-    )
-      return;
-
+  const executeStatusUpdate = async (
+    ticket: ComplaintRecord,
+    newStatus: ComplaintStatus,
+    resolutionNotes?: string
+  ): Promise<boolean> => {
     setStatusBusy(true);
     try {
+      const payload: Record<string, unknown> = {
+        action: "update_status",
+        complaintId: ticket.id,
+        status: newStatus,
+        notifyParent: newStatus === "resolved",
+      };
+      if (resolutionNotes !== undefined) {
+        payload.resolutionNotes = resolutionNotes;
+      }
+
       const response = await fetch("/api/complaints", {
         method: "POST",
         credentials: "include",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          action: "update_status",
-          complaintId: selectedComplaint.id,
-          status: newStatus,
-          notifyParent: newStatus === "resolved",
-        }),
+        body: JSON.stringify(payload),
       });
 
       const result = await response.json().catch(() => ({}));
@@ -281,48 +465,102 @@ export default function ComplaintsPage() {
 
       const updated = result.complaint as ComplaintRecord;
       setComplaints((current) =>
-        current.map((c) => (c.id === updated.id ? updated : c))
+        current.map((c) =>
+          c.id === updated.id ? { ...updated, messages: c.messages } : c
+        )
       );
-
-      const statusLabels: Record<ComplaintStatus, string> = {
-        open: "Open",
-        in_progress: "Under Investigation",
-        resolved: "Resolved",
-      };
 
       showToast(
         newStatus === "resolved"
-          ? `Ticket #${updated.ticket_number} marked as resolved.`
+          ? `Ticket #${updated.ticket_number} marked as resolved and family notified.`
           : `Ticket #${updated.ticket_number} status set to ${
               statusLabels[updated.status] || updated.status
             }.`
       );
+      return true;
     } catch (err) {
-      showToast(
-        err instanceof Error ? err.message : "Failed to update ticket status."
-      );
+      const msg =
+        err instanceof Error ? err.message : "Failed to update ticket status.";
+      if (newStatus === "resolved") {
+        setResolveError(msg);
+      } else {
+        showToast(msg);
+      }
+      return false;
     } finally {
       setStatusBusy(false);
     }
   };
+
+  const handleStatusSelectChange = (newStatus: ComplaintStatus) => {
+    if (
+      !canManageStatus ||
+      !selectedComplaint ||
+      selectedComplaint.status === newStatus ||
+      statusBusy
+    ) {
+      return;
+    }
+
+    if (newStatus === "resolved") {
+      setResolveTarget(selectedComplaint);
+      setResolveNotes(selectedComplaint.resolution_notes || "");
+      setResolveError("");
+      return;
+    }
+
+    void executeStatusUpdate(selectedComplaint, newStatus);
+  };
+
+  const handleConfirmResolve = async (e: FormEvent) => {
+    e.preventDefault();
+    if (!resolveTarget || statusBusy) return;
+    setResolveError("");
+    const ok = await executeStatusUpdate(
+      resolveTarget,
+      "resolved",
+      resolveNotes.trim() || undefined
+    );
+    if (ok) {
+      setResolveTarget(null);
+      setResolveNotes("");
+    }
+  };
+
+  const toggleStatusFilter = (
+    target: "all" | "open" | "in_progress" | "resolved"
+  ) => {
+    setStatusFilter((prev) => (prev === target ? "all" : target));
+  };
+
+  const statCardStyle = (active: boolean) => ({
+    cursor: "pointer" as const,
+    textAlign: "left" as const,
+    width: "100%",
+    borderColor: active ? "var(--pine-800, #135b45)" : undefined,
+    boxShadow: active ? "0 0 0 2px rgba(19, 91, 69, 0.14)" : undefined,
+  });
 
   return (
     <div className="page-wrap">
       {/* Page Heading matching all other workspaces */}
       <div className="page-heading">
         <div>
-          <span className="eyebrow">Quality &amp; Operations</span>
+          <span className="eyebrow">
+            {isParent ? "Family Support" : "Quality & Operations"}
+          </span>
           <h1>Complaints &amp; Support</h1>
           <p className="page-subtitle">
-            Review, investigate, and resolve grievances raised by academy
-            parents and families.
+            {isParent
+              ? "Raise concerns, follow updates, and message academy administration directly."
+              : "Review, investigate, and resolve grievances raised by academy parents and families."}
           </p>
         </div>
         <div className="heading-actions">
           <button
             type="button"
             className="btn ghost"
-            onClick={() => void loadComplaints(true)}
+            onClick={() => void loadComplaints(true, canManageStatus)}
             disabled={loading || refreshing}
             aria-label="Refresh tickets"
           >
@@ -330,7 +568,23 @@ export default function ComplaintsPage() {
               size={14}
               className={refreshing ? "spinning" : undefined}
             />
-            {refreshing ? "Syncing emails…" : "Sync emails & refresh"}
+            {isParent
+              ? refreshing
+                ? "Refreshing…"
+                : "Refresh"
+              : refreshing
+              ? "Syncing emails…"
+              : "Sync emails & refresh"}
+          </button>
+          <button
+            type="button"
+            className="btn primary"
+            onClick={() => {
+              setCreateError("");
+              setCreateOpen(true);
+            }}
+          >
+            <Plus size={14} /> New Complaint
           </button>
         </div>
       </div>
@@ -342,9 +596,15 @@ export default function ComplaintsPage() {
         </div>
       )}
 
-      {/* Stat Cards - using exact base.css .stat-grid layout */}
+      {/* Clickable KPI Stat Cards */}
       <div className="stat-grid">
-        <div className="card stat-card">
+        <button
+          type="button"
+          className="card stat-card"
+          style={statCardStyle(statusFilter === "all")}
+          onClick={() => setStatusFilter("all")}
+          aria-pressed={statusFilter === "all"}
+        >
           <div className="stat-top">
             Total Inquiries{" "}
             <span className="stat-icon">
@@ -352,10 +612,18 @@ export default function ComplaintsPage() {
             </span>
           </div>
           <div className="stat-value">{stats.total}</div>
-          <div className="stat-foot">Logged across academy families</div>
-        </div>
+          <div className="stat-foot">
+            {isParent ? "Your logged tickets" : "Logged across academy families"}
+          </div>
+        </button>
 
-        <div className="card stat-card">
+        <button
+          type="button"
+          className="card stat-card"
+          style={statCardStyle(statusFilter === "open")}
+          onClick={() => toggleStatusFilter("open")}
+          aria-pressed={statusFilter === "open"}
+        >
           <div className="stat-top">
             Awaiting Review{" "}
             <span
@@ -374,9 +642,15 @@ export default function ComplaintsPage() {
           <div className="stat-foot">
             {stats.urgent} urgent priority ticket{stats.urgent === 1 ? "" : "s"}
           </div>
-        </div>
+        </button>
 
-        <div className="card stat-card">
+        <button
+          type="button"
+          className="card stat-card"
+          style={statCardStyle(statusFilter === "in_progress")}
+          onClick={() => toggleStatusFilter("in_progress")}
+          aria-pressed={statusFilter === "in_progress"}
+        >
           <div className="stat-top">
             Under Investigation{" "}
             <span
@@ -393,9 +667,15 @@ export default function ComplaintsPage() {
             {stats.inProgress}
           </div>
           <div className="stat-foot">Staff follow-up in progress</div>
-        </div>
+        </button>
 
-        <div className="card stat-card">
+        <button
+          type="button"
+          className="card stat-card"
+          style={statCardStyle(statusFilter === "resolved")}
+          onClick={() => toggleStatusFilter("resolved")}
+          aria-pressed={statusFilter === "resolved"}
+        >
           <div className="stat-top">
             Resolved{" "}
             <span
@@ -409,7 +689,7 @@ export default function ComplaintsPage() {
             {stats.resolved}
           </div>
           <div className="stat-foot">Issues concluded and confirmed</div>
-        </div>
+        </button>
       </div>
 
       {/* Toolbar matching FamiliesView and LeadsView */}
@@ -458,13 +738,15 @@ export default function ComplaintsPage() {
         </select>
       </div>
 
-      {/* Master-Detail Layout - exactly matching FamiliesView */}
+      {/* Master-Detail Layout */}
       <div className="complaints-grid-main">
         {/* Left: Ticket Roster */}
         <section className="card section-card">
           <SectionTitle
             title="Grievance Tickets"
-            detail={`${filteredComplaints.length} tickets matching filters`}
+            detail={`${filteredComplaints.length} ticket${
+              filteredComplaints.length === 1 ? "" : "s"
+            } matching filters`}
           />
 
           {filteredComplaints.length > 0 ? (
@@ -504,7 +786,8 @@ export default function ComplaintsPage() {
                     </small>
                     <small>
                       {c.student_name ? `${c.student_name} · ` : ""}
-                      {categoryLabel(c.category, complaintCategoryItems)} · {niceDate(c.created_at)}
+                      {categoryLabel(c.category, complaintCategoryItems)} ·{" "}
+                      {niceDate(c.created_at)}
                     </small>
                   </span>
                   <div
@@ -555,7 +838,7 @@ export default function ComplaintsPage() {
                 categoryFilter !== "all" ||
                 statusFilter !== "all"
                   ? "No tickets match the selected filters."
-                  : "No parent complaints or inquiries recorded."
+                  : "No complaints or inquiries recorded yet. Click New Complaint to open one."
               }
             />
           )}
@@ -581,45 +864,62 @@ export default function ComplaintsPage() {
                     <h3 style={{ margin: 0 }}>
                       {selectedComplaint.parent_name}
                     </h3>
-                    <div
-                      style={{ display: "inline-flex", alignItems: "center" }}
-                    >
-                      <select
-                        aria-label="Ticket Status"
-                        value={selectedComplaint.status}
-                        onChange={(e) =>
-                          handleUpdateStatus(e.target.value as ComplaintStatus)
-                        }
-                        disabled={statusBusy}
-                        style={{
-                          fontWeight: 700,
-                          fontSize: "11px",
-                          borderRadius: "14px",
-                          padding: "3px 8px",
-                          border: "1px solid var(--line)",
-                          backgroundColor:
-                            selectedComplaint.status === "resolved"
-                              ? "#ecfdf5"
-                              : selectedComplaint.status === "in_progress"
-                              ? "#eff6ff"
-                              : "#fffbeb",
-                          color:
-                            selectedComplaint.status === "resolved"
-                              ? "#065f46"
-                              : selectedComplaint.status === "in_progress"
-                              ? "#1e40af"
-                              : "#92400e",
-                          cursor: "pointer",
-                          outline: "none",
-                        }}
+                    {canManageStatus ? (
+                      <div
+                        style={{ display: "inline-flex", alignItems: "center" }}
                       >
-                        <option value="open">Status: Open</option>
-                        <option value="in_progress">
-                          Status: Under Investigation
-                        </option>
-                        <option value="resolved">Status: Resolved</option>
-                      </select>
-                    </div>
+                        <select
+                          aria-label="Ticket Status"
+                          value={selectedComplaint.status}
+                          onChange={(e) =>
+                            handleStatusSelectChange(
+                              e.target.value as ComplaintStatus
+                            )
+                          }
+                          disabled={statusBusy}
+                          style={{
+                            fontWeight: 700,
+                            fontSize: "11px",
+                            borderRadius: "14px",
+                            padding: "3px 8px",
+                            border: "1px solid var(--line)",
+                            backgroundColor:
+                              selectedComplaint.status === "resolved"
+                                ? "#ecfdf5"
+                                : selectedComplaint.status === "in_progress"
+                                ? "#eff6ff"
+                                : "#fffbeb",
+                            color:
+                              selectedComplaint.status === "resolved"
+                                ? "#065f46"
+                                : selectedComplaint.status === "in_progress"
+                                ? "#1e40af"
+                                : "#92400e",
+                            cursor: "pointer",
+                            outline: "none",
+                          }}
+                        >
+                          <option value="open">Status: Open</option>
+                          <option value="in_progress">
+                            Status: Under Investigation
+                          </option>
+                          <option value="resolved">Status: Resolved</option>
+                        </select>
+                      </div>
+                    ) : (
+                      <Pill
+                        tone={
+                          selectedComplaint.status === "resolved"
+                            ? "green"
+                            : selectedComplaint.status === "in_progress"
+                            ? "blue"
+                            : "amber"
+                        }
+                      >
+                        {statusLabels[selectedComplaint.status] ||
+                          selectedComplaint.status}
+                      </Pill>
+                    )}
                     <Pill
                       tone={
                         selectedComplaint.urgency === "urgent"
@@ -642,7 +942,12 @@ export default function ComplaintsPage() {
               <div className="profile-grid">
                 <div className="profile-field">
                   <span>Category</span>
-                  <strong>{categoryLabel(selectedComplaint.category, complaintCategoryItems)}</strong>
+                  <strong>
+                    {categoryLabel(
+                      selectedComplaint.category,
+                      complaintCategoryItems
+                    )}
+                  </strong>
                 </div>
                 <div className="profile-field">
                   <span>Student / Learner</span>
@@ -672,6 +977,28 @@ export default function ComplaintsPage() {
                     {selectedComplaint.subject}
                   </h2>
                 </div>
+                {selectedComplaint.resolution_notes && (
+                  <div
+                    style={{
+                      marginTop: "14px",
+                      padding: "12px 14px",
+                      borderRadius: "10px",
+                      background: "#f0fdf4",
+                      border: "1px solid #bbf7d0",
+                      fontSize: "12.5px",
+                      color: "#166534",
+                      lineHeight: 1.5,
+                    }}
+                  >
+                    <strong style={{ display: "block", marginBottom: 4 }}>
+                      Resolution summary
+                      {selectedComplaint.resolved_by_name
+                        ? ` · ${selectedComplaint.resolved_by_name}`
+                        : ""}
+                    </strong>
+                    {selectedComplaint.resolution_notes}
+                  </div>
+                )}
               </div>
             </section>
 
@@ -685,6 +1012,7 @@ export default function ComplaintsPage() {
               />
 
               <div
+                ref={threadContainerRef}
                 style={{
                   display: "flex",
                   flexDirection: "column",
@@ -698,7 +1026,7 @@ export default function ComplaintsPage() {
                   marginTop: "6px",
                 }}
               >
-                {/* Initial Parent Inquiry (First Chat Message) */}
+                {/* Initial Parent Inquiry */}
                 {(() => {
                   const isMe =
                     currentUser?.role === "parent" &&
@@ -868,9 +1196,8 @@ export default function ComplaintsPage() {
                   : null}
               </div>
 
-              {/* Modern Chat Reply Input */}
-              {currentUser?.role === "parent" &&
-              selectedComplaint.status === "resolved" ? (
+              {/* Chat Reply Input */}
+              {isParent && selectedComplaint.status === "resolved" ? (
                 <div
                   style={{
                     padding: "14px 18px",
@@ -889,7 +1216,7 @@ export default function ComplaintsPage() {
                   <Lock size={16} style={{ flexShrink: 0, color: "#16a34a" }} />
                   <span>
                     This ticket has been marked as resolved and closed for new
-                    replies.
+                    replies. Open a new complaint if you need further help.
                   </span>
                 </div>
               ) : (
@@ -913,7 +1240,7 @@ export default function ComplaintsPage() {
                         id="complaint-reply-input"
                         rows={2}
                         placeholder={`Write a reply to ${
-                          currentUser?.role === "parent"
+                          isParent
                             ? "Academy Staff"
                             : selectedComplaint.parent_name
                         }…`}
@@ -975,12 +1302,225 @@ export default function ComplaintsPage() {
         ) : (
           <section className="card section-card">
             <Empty
-              title="Select a ticket"
-              detail="Choose a complaint from the roster on the left to inspect student details, read the parent's message, and take resolution action."
+              title={
+                filteredComplaints.length === 0
+                  ? "No matching ticket"
+                  : "Select a ticket"
+              }
+              detail={
+                filteredComplaints.length === 0
+                  ? "Adjust your filters or submit a new support complaint."
+                  : "Choose a complaint from the roster on the left to inspect details and message the family or academy staff."
+              }
             />
           </section>
         )}
       </div>
+
+      {/* + New Complaint Modal */}
+      <PortalModal
+        open={createOpen}
+        onClose={() => {
+          if (!createBusy) setCreateOpen(false);
+        }}
+        title="Submit a Support Complaint"
+        eyebrow="New Ticket"
+        subtitle="Your inquiry will be logged immediately and routed to academy administration with an email receipt."
+        size="md"
+        busy={createBusy}
+        footer={
+          <>
+            <button
+              type="button"
+              className="btn secondary"
+              onClick={() => setCreateOpen(false)}
+              disabled={createBusy}
+            >
+              Cancel
+            </button>
+            <button
+              type="submit"
+              form="new-complaint-form"
+              className="btn primary"
+              disabled={createBusy}
+            >
+              {createBusy ? "Submitting…" : "Submit Complaint"}
+            </button>
+          </>
+        }
+      >
+        <form
+          id="new-complaint-form"
+          onSubmit={(e) => void handleCreateComplaint(e)}
+          className="form-grid"
+        >
+          <div className="field">
+            <label htmlFor="new-complaint-category">Category</label>
+            <select
+              id="new-complaint-category"
+              value={newCategory}
+              onChange={(e) => setNewCategory(e.target.value)}
+              required
+            >
+              {complaintCategoryOptions.map((cat) => (
+                <option key={cat.value} value={cat.value}>
+                  {cat.label}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <div className="field">
+            <label htmlFor="new-complaint-urgency">Priority / Urgency</label>
+            <select
+              id="new-complaint-urgency"
+              value={newUrgency}
+              onChange={(e) =>
+                setNewUrgency(e.target.value as ComplaintUrgency)
+              }
+            >
+              <option value="normal">Standard</option>
+              <option value="high">High Priority</option>
+              <option value="urgent">Urgent</option>
+            </select>
+          </div>
+
+          <div className="field full">
+            <label htmlFor="new-complaint-subject">Subject</label>
+            <input
+              id="new-complaint-subject"
+              type="text"
+              required
+              minLength={3}
+              maxLength={200}
+              placeholder="Brief summary of the issue"
+              value={newSubject}
+              onChange={(e) => setNewSubject(e.target.value)}
+            />
+          </div>
+
+          <div className="field">
+            <label htmlFor="new-complaint-student">
+              Student name (optional)
+            </label>
+            <input
+              id="new-complaint-student"
+              type="text"
+              maxLength={120}
+              placeholder="Leave blank for general concern"
+              value={newStudentName}
+              onChange={(e) => setNewStudentName(e.target.value)}
+            />
+          </div>
+
+          <div className="field">
+            <label htmlFor="new-complaint-lesson">
+              Lesson / reference ID (optional)
+            </label>
+            <input
+              id="new-complaint-lesson"
+              type="text"
+              maxLength={120}
+              placeholder="e.g. lesson date or ID"
+              value={newLessonRef}
+              onChange={(e) => setNewLessonRef(e.target.value)}
+            />
+          </div>
+
+          <div className="field full">
+            <label htmlFor="new-complaint-message">Message details</label>
+            <textarea
+              id="new-complaint-message"
+              required
+              minLength={10}
+              maxLength={5000}
+              rows={5}
+              placeholder="Describe what happened, relevant dates or classes, and how we can help (at least 10 characters)."
+              value={newMessage}
+              onChange={(e) => setNewMessage(e.target.value)}
+            />
+            <small style={{ color: "var(--muted)", fontSize: 10 }}>
+              {newMessage.length}/5000 characters
+            </small>
+          </div>
+
+          {createError && (
+            <div className="field full">
+              <div role="alert" className="form-error" style={{ marginTop: 0 }}>
+                {createError}
+              </div>
+            </div>
+          )}
+        </form>
+      </PortalModal>
+
+      {/* Confirm Ticket Resolution Modal */}
+      <PortalModal
+        open={Boolean(resolveTarget)}
+        onClose={() => {
+          if (!statusBusy) setResolveTarget(null);
+        }}
+        title="Resolve Support Ticket?"
+        eyebrow={
+          resolveTarget ? `Ticket #${resolveTarget.ticket_number}` : undefined
+        }
+        subtitle="Marking this ticket as resolved immediately sends a resolution email notification to the family and closes parent replies."
+        size="sm"
+        busy={statusBusy}
+        footer={
+          <>
+            <button
+              type="button"
+              className="btn secondary"
+              onClick={() => setResolveTarget(null)}
+              disabled={statusBusy}
+            >
+              Cancel
+            </button>
+            <button
+              type="submit"
+              form="resolve-complaint-form"
+              className="btn primary"
+              disabled={statusBusy}
+            >
+              {statusBusy ? "Resolving…" : "Confirm & Notify Family"}
+            </button>
+          </>
+        }
+      >
+        <form
+          id="resolve-complaint-form"
+          onSubmit={(e) => void handleConfirmResolve(e)}
+        >
+          <div className="notice" style={{ marginBottom: 14, display: "flex", gap: 8, alignItems: "flex-start" }}>
+            <AlertTriangle size={15} style={{ flexShrink: 0, marginTop: 1 }} />
+            <span>
+              An official resolution notice will be emailed to{" "}
+              <strong>{resolveTarget?.parent_email}</strong>.
+            </span>
+          </div>
+
+          <div className="field">
+            <label htmlFor="resolve-notes-input">
+              Resolution note (optional — included in family email)
+            </label>
+            <textarea
+              id="resolve-notes-input"
+              rows={4}
+              maxLength={5000}
+              placeholder="Summarize the outcome or action taken…"
+              value={resolveNotes}
+              onChange={(e) => setResolveNotes(e.target.value)}
+            />
+          </div>
+
+          {resolveError && (
+            <div role="alert" className="form-error">
+              {resolveError}
+            </div>
+          )}
+        </form>
+      </PortalModal>
 
       {/* Floating Notification Toast matching portal standard */}
       {toast && (

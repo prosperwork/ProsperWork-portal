@@ -1,12 +1,14 @@
 "use client";
 
-import type { ReactNode } from "react";
+import Link from "next/link";
+import { useState, type ReactNode } from "react";
 import {
   ArrowDownRight,
   Banknote,
   CalendarDays,
   Clock3,
   FileCheck2,
+  FileDown,
   LockKeyhole,
   Plus,
 } from "lucide-react";
@@ -53,6 +55,43 @@ export default function FinanceView({
   notify: (msg: string) => void;
 }) {
   const { confirm, ConfirmDialog, busy } = useConfirmModal();
+  const [downloadingKey, setDownloadingKey] = useState("");
+
+  async function downloadBillingPdf(
+    payment: Payment,
+    kind: "invoice" | "receipt"
+  ) {
+    const key = `${payment.id}:${kind}`;
+    setDownloadingKey(key);
+    try {
+      const response = await fetch(
+        `/api/reports?kind=${kind}&id=${encodeURIComponent(payment.id)}`,
+        { credentials: "include", cache: "no-store" }
+      );
+      if (!response.ok) {
+        const body = (await response.json().catch(() => ({}))) as {
+          error?: string;
+        };
+        throw new Error(body.error || `Could not download ${kind} PDF.`);
+      }
+      const url = URL.createObjectURL(await response.blob());
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = `prosperwork-${kind}-${payment.id}.pdf`;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.setTimeout(() => URL.revokeObjectURL(url), 10_000);
+    } catch (cause) {
+      notify(
+        cause instanceof Error
+          ? cause.message
+          : `Could not download ${kind} PDF.`
+      );
+    } finally {
+      setDownloadingKey("");
+    }
+  }
 
   const statusButton = (
     label: string,
@@ -70,6 +109,7 @@ export default function FinanceView({
     </button>
   );
 
+  const normalizedQuery = query.trim().toLowerCase();
   const allCurrencies: Currency[] = [
     ...new Set([
       ...currencyCatalog.map((c) => c.code),
@@ -80,11 +120,34 @@ export default function FinanceView({
   const payments = data.payments.filter((payment) =>
     `${payment.parentName} ${payment.studentName} ${payment.status} ${payment.currency}`
       .toLowerCase()
-      .includes(query.toLowerCase())
+      .includes(normalizedQuery)
+  );
+  const expenses = data.expenses.filter((expense) =>
+    `${expense.title} ${expense.category} ${expense.currency} ${expense.date}`
+      .toLowerCase()
+      .includes(normalizedQuery)
   );
   const due = data.payments.filter((payment) => payment.status !== "paid");
   const overdue = due.filter((payment) => payment.dueDate < todayKey()).length;
   const dueSoon = due.filter((payment) => payment.dueDate >= todayKey()).length;
+
+  const currencyRows = allCurrencies.map((currency) => {
+    const subtotal = due
+      .filter((payment) => payment.currency === currency)
+      .reduce(
+        (sum, payment) =>
+          sum + payment.amount - (payment.referralDiscount || 0),
+        0
+      );
+    return { currency, subtotal, rate: fx[currency] };
+  });
+  const nonZeroCurrencies = currencyRows.filter((row) => row.subtotal !== 0);
+  const visibleCurrencyRows =
+    nonZeroCurrencies.length > 0
+      ? nonZeroCurrencies
+      : currencyRows.some((row) => row.currency === "NGN")
+      ? currencyRows.filter((row) => row.currency === "NGN")
+      : currencyRows.slice(0, 1);
 
   return (
     <>
@@ -156,29 +219,19 @@ export default function FinanceView({
             detail="Source-currency totals are recorded amounts. Foreign-currency conversions require configured rates."
           />
           <div className="split-cards">
-            {allCurrencies.map((currency) => {
-              const subtotal = due
-                .filter((payment) => payment.currency === currency)
-                .reduce(
-                  (sum, payment) =>
-                    sum + payment.amount - payment.referralDiscount,
-                  0
-                );
-              const rate = fx[currency];
-              return (
-                <div className="metric-row" key={currency}>
-                  <span>{currency} outstanding</span>
-                  <strong>
-                    {formatMoney(subtotal, currency)} ·{" "}
-                    {currency === "NGN"
-                      ? "Native currency"
-                      : Number.isFinite(rate)
-                      ? `${formatMoney(subtotal * rate, "NGN")} eq.`
-                      : "NGN rate not configured"}
-                  </strong>
-                </div>
-              );
-            })}
+            {visibleCurrencyRows.map(({ currency, subtotal, rate }) => (
+              <div className="metric-row" key={currency}>
+                <span>{currency} outstanding</span>
+                <strong>
+                  {formatMoney(subtotal, currency)} ·{" "}
+                  {currency === "NGN"
+                    ? "Native currency"
+                    : Number.isFinite(rate)
+                    ? `${formatMoney(subtotal * rate, "NGN")} eq.`
+                    : "NGN rate not configured"}
+                </strong>
+              </div>
+            ))}
           </div>
           <div className="locked" style={{ marginTop: 10 }}>
             <LockKeyhole size={15} /> Profit and margin remain available only to
@@ -272,12 +325,37 @@ export default function FinanceView({
                       {financeAccess && payment.status === "paid" && (
                         <span className="table-small">Verified</span>
                       )}
-                      {role === "parent" &&
-                        statusButton("Digital terms", () =>
-                          notify(
-                            "Approved policy documents are not available for this account yet."
-                          )
-                        )}
+                      <button
+                        type="button"
+                        className="btn ghost small"
+                        disabled={Boolean(downloadingKey)}
+                        onClick={() => void downloadBillingPdf(payment, "invoice")}
+                      >
+                        <FileDown size={13} />
+                        {downloadingKey === `${payment.id}:invoice`
+                          ? "Preparing…"
+                          : "Invoice PDF"}
+                      </button>
+                      {payment.status === "paid" && (
+                        <button
+                          type="button"
+                          className="btn secondary small"
+                          disabled={Boolean(downloadingKey)}
+                          onClick={() =>
+                            void downloadBillingPdf(payment, "receipt")
+                          }
+                        >
+                          <FileDown size={13} />
+                          {downloadingKey === `${payment.id}:receipt`
+                            ? "Preparing…"
+                            : "Receipt PDF"}
+                        </button>
+                      )}
+                      {role === "parent" && (
+                        <Link className="btn ghost small" href="/policies">
+                          Digital terms
+                        </Link>
+                      )}
                     </div>
                   </td>
                 </tr>
@@ -297,7 +375,6 @@ export default function FinanceView({
           <SectionTitle
             title="Expense ledger"
             detail="Category, date and source currency remain attached."
-            action={headerActions("Add expense", "expense")}
           />
           <div className="table-wrap">
             <table>
@@ -311,7 +388,7 @@ export default function FinanceView({
                 </tr>
               </thead>
               <tbody>
-                {data.expenses.map((expense) => (
+                {expenses.map((expense) => (
                   <tr key={expense.id}>
                     <td>{niceDate(expense.date)}</td>
                     <td>
@@ -329,10 +406,23 @@ export default function FinanceView({
                 ))}
               </tbody>
             </table>
+            {!expenses.length && (
+              <Empty
+                title="No matching expenses"
+                detail={
+                  normalizedQuery
+                    ? "Try a different search term or clear the filter."
+                    : "Log an academy expense using the toolbar action above."
+                }
+              />
+            )}
           </div>
           <div className="table-small" style={{ marginTop: 9 }}>
-            Foreign-currency rates, tax policy and bank reconciliation are not
-            configured yet.
+            Exchange rates and currency catalogs are managed in{" "}
+            <Link href="/settings" className="subtle-link">
+              Academy Settings
+            </Link>
+            .
           </div>
         </section>
       )}

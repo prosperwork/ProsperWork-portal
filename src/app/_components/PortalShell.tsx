@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   AlertCircle,
   ChevronDown,
@@ -17,7 +17,12 @@ import {
 } from "lucide-react";
 import type { Role } from "@/lib/types";
 import { clearAcademyCache, getCachedWorkspace } from "@/lib/storage";
-import { hasWorkspaceAccess, portalNavigation } from "../_lib/portal-navigation";
+import {
+  hasWorkspaceAccess,
+  portalNavigation,
+  portalNavigationGroups,
+  type PortalNavigationItem,
+} from "../_lib/portal-navigation";
 import WorkspacePageFrame from "./WorkspacePageFrame";
 import PortalAiChatBubble from "./PortalAiChatBubble";
 
@@ -56,10 +61,18 @@ function roleTitle(role?: Role) {
     .replace(/\b\w/g, (letter) => letter.toUpperCase());
 }
 function pageLabel(path: string) {
-  if (path === "/onboarding") return "Academy Onboarding";
-  return (
-    portalNavigation.find((item) => path === item.href)?.label || "Workspace"
+  if (path === "/onboarding" || path.startsWith("/onboarding/"))
+    return "Academy Onboarding";
+  if (path === "/profile" || path.startsWith("/profile/"))
+    return "My Profile";
+  if (path === "/history" || path.startsWith("/history/"))
+    return "Record History";
+  const exact = portalNavigation.find((item) => path === item.href);
+  if (exact) return exact.label;
+  const nested = portalNavigation.find(
+    (item) => item.href !== "/" && path.startsWith(`${item.href}/`)
   );
+  return nested?.label || "Workspace";
 }
 
 export default function PortalShell({
@@ -246,10 +259,14 @@ export default function PortalShell({
       window.clearInterval(refreshTimer);
     };
   }, [refreshProfile]);
+  const drawerOpenRef = useRef(drawerOpen);
+  drawerOpenRef.current = drawerOpen;
   useEffect(() => {
-    if (drawerOpen) {
+    if (drawerOpenRef.current) {
       setDrawerOpen(false);
-      menuButton.current?.focus();
+      if (menuButton.current && menuButton.current.offsetParent !== null) {
+        menuButton.current.focus();
+      }
     }
   }, [pathname]);
   useEffect(() => {
@@ -284,7 +301,7 @@ export default function PortalShell({
     };
   }, [accountMenuOpen]);
 
-  const visibleNav = useMemo(() => {
+  const visibleNav = useMemo<PortalNavigationItem[]>(() => {
     if (!profile) return [];
     let nav = portalNavigation.filter((item) => hasWorkspaceAccess(item, profile));
     if (profile.role !== "parent" && profile.role !== "student") {
@@ -299,6 +316,7 @@ export default function PortalShell({
           href: "/onboarding",
           label: "Onboarding",
           icon: ShieldCheck,
+          group: "Workspace",
           permission: "workspace.onboarding",
           roles: [profile.role],
         },
@@ -307,8 +325,19 @@ export default function PortalShell({
     }
     return nav;
   }, [profile, pathname]);
+
+  const groupedNav = useMemo(
+    () =>
+      portalNavigationGroups
+        .map((group) => ({
+          group,
+          items: visibleNav.filter((item) => item.group === group),
+        }))
+        .filter((section) => section.items.length > 0),
+    [visibleNav]
+  );
+
   const activeLabel = pageLabel(pathname);
-  const activeNavPath = portalNavigation.find((item) => item.href === pathname);
 
   async function signOut() {
     setAccountMenuOpen(false);
@@ -405,23 +434,28 @@ export default function PortalShell({
         )}
         <nav id="portal-navigation" className="portal-nav">
           {!sessionLoading &&
-            visibleNav.map((item) => {
-              const Icon = item.icon;
-              const active =
-                pathname === item.href ||
-                (item.href !== "/" && pathname.startsWith(`${item.href}/`));
-              return (
-                <Link
-                  key={item.href}
-                  href={item.href}
-                  className={`portal-nav-link${active ? " active" : ""}`}
-                  aria-current={active ? "page" : undefined}
-                >
-                  <Icon size={16} strokeWidth={1.8} />
-                  <span>{item.label}</span>
-                </Link>
-              );
-            })}
+            groupedNav.map((section) => (
+              <Fragment key={section.group}>
+                <div className="sidebar-group-label">{section.group}</div>
+                {section.items.map((item) => {
+                  const Icon = item.icon;
+                  const active =
+                    pathname === item.href ||
+                    (item.href !== "/" && pathname.startsWith(`${item.href}/`));
+                  return (
+                    <Link
+                      key={item.href}
+                      href={item.href}
+                      className={`portal-nav-link${active ? " active" : ""}`}
+                      aria-current={active ? "page" : undefined}
+                    >
+                      <Icon size={16} strokeWidth={1.8} />
+                      <span>{item.label}</span>
+                    </Link>
+                  );
+                })}
+              </Fragment>
+            ))}
         </nav>
         {sessionLoading && (
           <div className="portal-nav-skeleton" aria-label="Loading navigation">
@@ -494,7 +528,7 @@ export default function PortalShell({
             <div className="portal-breadcrumb">
               <span>Academy</span>
               <ChevronRight size={13} />
-              <strong>{activeNavPath?.label || activeLabel}</strong>
+              <strong>{activeLabel}</strong>
             </div>
           </div>
           <div className="portal-account" ref={accountMenu}>

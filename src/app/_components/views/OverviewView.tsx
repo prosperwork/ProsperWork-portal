@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useState, useEffect, useRef } from "react";
 import {
   AlertCircle,
@@ -15,10 +16,12 @@ import {
   LockKeyhole,
   Sparkles,
   Users,
+  Video,
 } from "lucide-react";
 import type { ComplaintRecord } from "@/lib/academy/complaints";
 import ProfileAvatar from "../ProfileAvatar";
 import BrandEmblem from "../BrandEmblem";
+import { PortalModal } from "../PortalModal";
 import {
   birthdayDaysAway,
   Empty,
@@ -181,6 +184,14 @@ export default function OverviewView({
   const todays = visibleLessons.filter(
     (lesson) => dayKeyInOwnTz(lesson.startsAt) === ownTodayKey
   );
+  const sortedTodays = [...todays].sort((a, b) =>
+    a.startsAt.localeCompare(b.startsAt)
+  );
+  const shortOwnTz =
+    (ownTimezone || "Africa/Lagos")
+      .split("/")
+      .pop()
+      ?.replaceAll("_", " ") || ownTimezone;
   const due = data.payments.filter(
     (payment) => payment.status === "due"
   ).length;
@@ -199,21 +210,13 @@ export default function OverviewView({
       )
     : 0;
   const attention = [
-    ...openComplaints.map((c) => ({
-      title: `Resolve complaint: ${c.subject}`,
-      sub: `${c.parent_name} · ${c.urgency.toUpperCase()} urgency · ${
-        c.ticket_number
-      }`,
-      tone: "red" as const,
-      link: "/complaints",
-    })),
     ...data.leads
       .filter((lead) => lead.status === "new")
       .map((lead) => ({
         title: `Reply to ${lead.parentName}`,
         sub: `${lead.childName} · enquiry received ${niceDate(lead.arrivedAt)}`,
         tone: "amber" as const,
-        link: undefined as string | undefined,
+        link: "/leads",
       })),
     ...data.payments
       .filter((payment) => payment.status === "receipt_uploaded")
@@ -224,7 +227,7 @@ export default function OverviewView({
           payment.currency
         )}`,
         tone: "blue" as const,
-        link: undefined as string | undefined,
+        link: "/finance",
       })),
     ...data.students
       .filter((student) => !student.consent)
@@ -232,7 +235,7 @@ export default function OverviewView({
         title: `Consent check · ${student.name}`,
         sub: `${student.parentName} · family setting needs review`,
         tone: "red" as const,
-        link: undefined as string | undefined,
+        link: "/students",
       })),
   ].slice(0, 6);
   const upcomingBirthdays = data.students
@@ -242,6 +245,22 @@ export default function OverviewView({
     }))
     .filter((item) => item.days >= 0 && item.days <= 7)
     .sort((a, b) => a.days - b.days);
+
+  const activeBirthdayStudent = activeBirthdayStudentId
+    ? upcomingBirthdays.find((b) => b.student.id === activeBirthdayStudentId)
+        ?.student ||
+      data.students.find((s) => s.id === activeBirthdayStudentId) ||
+      null
+    : null;
+  const activeTribute = activeBirthdayStudent
+    ? birthdayTributes[activeBirthdayStudent.id]
+    : undefined;
+  const activeTributeLoading = Boolean(
+    activeBirthdayStudent && birthdayLoadingId === activeBirthdayStudent.id
+  );
+  const activeTributeCopied = Boolean(
+    activeBirthdayStudent && copiedBirthdayId === activeBirthdayStudent.id
+  );
 
   return (
     <>
@@ -391,7 +410,7 @@ export default function OverviewView({
           <section className="card section-card">
             <SectionTitle
               title="Today's teaching board"
-              detail={`${todays.length} classes · WAT and family time shown side by side`}
+              detail={`${sortedTodays.length} classes · ${shortOwnTz} and family time shown side by side`}
               action={
                 <button
                   className="subtle-link"
@@ -401,14 +420,16 @@ export default function OverviewView({
                 </button>
               }
             />
-            {todays.length ? (
-              todays
-                .sort((a, b) => a.startsAt.localeCompare(b.startsAt))
-                .map((lesson) => (
+            {sortedTodays.length ? (
+              sortedTodays.map((lesson) => {
+                const isGoogleMeet =
+                  lesson.classroomProvider === "google_meet" &&
+                  Boolean(lesson.meetUrl);
+                return (
                   <div className="lesson-row" key={lesson.id}>
                     <div className="lesson-time">
-                      {timeAt(lesson.startsAt, "Africa/Lagos")}
-                      <small> WAT</small>
+                      {timeAt(lesson.startsAt, ownTimezone)}
+                      <small> {shortOwnTz}</small>
                     </div>
                     <div>
                       <div className="lesson-person">
@@ -421,9 +442,37 @@ export default function OverviewView({
                         time
                       </div>
                     </div>
-                    <Pill>{lesson.status.replace("_", " ")}</Pill>
+                    <div
+                      className="row-actions"
+                      style={{ alignItems: "center", gap: 6 }}
+                    >
+                      {lesson.status === "scheduled" &&
+                        (isGoogleMeet ? (
+                          <a
+                            className="btn small secondary"
+                            href={lesson.meetUrl}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            title="Join Google Meet classroom"
+                          >
+                            <Video size={12} /> Join
+                          </a>
+                        ) : (
+                          <Link
+                            className="btn small secondary"
+                            href={`/classroom?lessonId=${encodeURIComponent(
+                              lesson.id
+                            )}`}
+                            title="Enter virtual classroom"
+                          >
+                            <Video size={12} /> Join
+                          </Link>
+                        ))}
+                      <Pill>{lesson.status.replace("_", " ")}</Pill>
+                    </div>
                   </div>
-                ))
+                );
+              })
             ) : (
               <Empty
                 title="A little space in today's diary"
@@ -515,222 +564,97 @@ export default function OverviewView({
                   gap: "8px",
                 }}
               >
-                {upcomingBirthdays.map(({ student, days }) => {
-                  const isSelected = activeBirthdayStudentId === student.id;
-                  const tribute = birthdayTributes[student.id];
-                  const isCopied = copiedBirthdayId === student.id;
-                  return (
+                {upcomingBirthdays.map(({ student, days }) => (
+                  <div
+                    key={student.id}
+                    style={{
+                      padding: "10px 12px",
+                      border: "1px solid #e6ece4",
+                      borderRadius: "9px",
+                      background: "#fcfdf9",
+                    }}
+                  >
                     <div
-                      key={student.id}
                       style={{
-                        padding: "10px 12px",
-                        border: "1px solid #e6ece4",
-                        borderRadius: "9px",
-                        background: "#fcfdf9",
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "space-between",
+                        gap: 10,
+                        flexWrap: "wrap",
                       }}
                     >
+                      <div>
+                        <strong>
+                          {student.name}{" "}
+                          <span
+                            style={{
+                              color: "var(--muted)",
+                              fontWeight: 500,
+                            }}
+                          >
+                            · {student.instrument}
+                          </span>
+                        </strong>
+                        <div
+                          style={{
+                            fontSize: "11px",
+                            color: days === 0 ? "#b45309" : "#4b5563",
+                            fontWeight: days === 0 ? 600 : 400,
+                            marginTop: 2,
+                          }}
+                        >
+                          {days === 0
+                            ? "🎂 Birthday today!"
+                            : days === 1
+                            ? "Tomorrow"
+                            : `In ${days} days`}{" "}
+                          · Teacher: {student.teacherName}
+                        </div>
+                      </div>
                       <div
                         style={{
                           display: "flex",
+                          gap: "6px",
                           alignItems: "center",
-                          justifyContent: "space-between",
-                          gap: 10,
                           flexWrap: "wrap",
                         }}
                       >
-                        <div>
-                          <strong>
-                            {student.name}{" "}
-                            <span
-                              style={{
-                                color: "var(--muted)",
-                                fontWeight: 500,
-                              }}
-                            >
-                              · {student.instrument}
-                            </span>
-                          </strong>
-                          <div
-                            style={{
-                              fontSize: "11px",
-                              color: days === 0 ? "#b45309" : "#4b5563",
-                              fontWeight: days === 0 ? 600 : 400,
-                              marginTop: 2,
-                            }}
-                          >
-                            {days === 0
-                              ? "🎂 Birthday today!"
-                              : days === 1
-                              ? "Tomorrow"
-                              : `In ${days} days`}{" "}
-                            · Teacher: {student.teacherName}
-                          </div>
-                        </div>
-                        <div
+                        <button
+                          type="button"
+                          className="btn small secondary"
+                          onClick={() =>
+                            void generateOverviewTribute(student.id)
+                          }
+                          disabled={birthdayLoadingId === student.id}
                           style={{
-                            display: "flex",
-                            gap: "6px",
+                            display: "inline-flex",
                             alignItems: "center",
-                            flexWrap: "wrap",
+                            gap: 4,
                           }}
                         >
-                          <button
-                            type="button"
-                            className="btn small secondary"
-                            onClick={() =>
-                              void generateOverviewTribute(student.id)
-                            }
-                            disabled={birthdayLoadingId === student.id}
-                            style={{
-                              display: "inline-flex",
-                              alignItems: "center",
-                              gap: 4,
-                            }}
-                          >
-                            {birthdayLoadingId === student.id ? (
-                              <>
-                                <LoaderCircle size={12} className="spin" />{" "}
-                                Composing…
-                              </>
-                            ) : (
-                              <>
-                                <Sparkles size={12} color="#d97706" /> AI
-                                Tribute
-                              </>
-                            )}
-                          </button>
-                          <a
-                            className="btn small ghost"
-                            href={`/api/reports?kind=birthday&id=${encodeURIComponent(
-                              student.id
-                            )}`}
-                          >
-                            <FileText size={12} /> PDF Card
-                          </a>
-                        </div>
-                      </div>
-                      {isSelected && (
-                        <div
-                          style={{
-                            marginTop: 10,
-                            padding: "10px 12px",
-                            background: "#fef9ee",
-                            border: "1px solid #fde68a",
-                            borderRadius: 8,
-                            fontSize: 13,
-                            color: "#78350f",
-                          }}
-                        >
-                          <div
-                            style={{
-                              display: "flex",
-                              justifyContent: "space-between",
-                              alignItems: "center",
-                              marginBottom: 6,
-                            }}
-                          >
-                            <span
-                              style={{
-                                fontWeight: 600,
-                                display: "flex",
-                                alignItems: "center",
-                                gap: 4,
-                              }}
-                            >
-                              <Sparkles size={12} color="#d97706" /> AI Birthday
-                              Tribute for {student.name}
-                            </span>
-                            <div style={{ display: "flex", gap: 6 }}>
-                              {tribute && (
-                                <>
-                                  <button
-                                    type="button"
-                                    className="btn small primary"
-                                    style={{
-                                      padding: "2px 8px",
-                                      fontSize: 11,
-                                    }}
-                                    onClick={() => {
-                                      const targetUrl = `https://wa.me/?text=${encodeURIComponent(
-                                        tribute
-                                      )}`;
-                                      window.open(
-                                        targetUrl,
-                                        "_blank",
-                                        "noopener,noreferrer"
-                                      );
-                                      notify(
-                                        `WhatsApp draft opened for ${student.name}. Click Send in WhatsApp.`
-                                      );
-                                    }}
-                                  >
-                                    Send WhatsApp
-                                  </button>
-                                  <button
-                                    type="button"
-                                    className="btn small secondary"
-                                    style={{
-                                      padding: "2px 8px",
-                                      fontSize: 11,
-                                    }}
-                                    onClick={() =>
-                                      void copyOverviewTribute(
-                                        student.id,
-                                        tribute
-                                      )
-                                    }
-                                  >
-                                    {isCopied ? (
-                                      <>
-                                        <Check size={11} color="#059669" />{" "}
-                                        Copied!
-                                      </>
-                                    ) : (
-                                      "Copy text"
-                                    )}
-                                  </button>
-                                </>
-                              )}
-                              <button
-                                type="button"
-                                className="btn small ghost"
-                                style={{ padding: "2px 8px", fontSize: 11 }}
-                                onClick={() => setActiveBirthdayStudentId(null)}
-                              >
-                                Close
-                              </button>
-                            </div>
-                          </div>
                           {birthdayLoadingId === student.id ? (
-                            <div
-                              style={{
-                                display: "flex",
-                                alignItems: "center",
-                                gap: 6,
-                                padding: "6px 0",
-                                color: "#b45309",
-                              }}
-                            >
-                              <LoaderCircle size={13} className="spin" />{" "}
-                              Generating musical tribute…
-                            </div>
-                          ) : tribute ? (
-                            <p
-                              style={{
-                                margin: 0,
-                                whiteSpace: "pre-wrap",
-                                lineHeight: 1.5,
-                                fontStyle: "italic",
-                              }}
-                            >
-                              {tribute}
-                            </p>
-                          ) : null}
-                        </div>
-                      )}
+                            <>
+                              <LoaderCircle size={12} className="spin" />{" "}
+                              Composing…
+                            </>
+                          ) : (
+                            <>
+                              <Sparkles size={12} color="#d97706" /> AI Tribute
+                            </>
+                          )}
+                        </button>
+                        <a
+                          className="btn small ghost"
+                          href={`/api/reports?kind=birthday&id=${encodeURIComponent(
+                            student.id
+                          )}`}
+                        >
+                          <FileText size={12} /> PDF Card
+                        </a>
+                      </div>
                     </div>
-                  );
-                })}
+                  </div>
+                ))}
               </div>
             ) : (
               <Empty
@@ -745,37 +669,17 @@ export default function OverviewView({
               detail="The next right thing, before it becomes a missed handoff."
             />
             {attention.length ? (
-              attention.map((item, index) =>
-                item.link ? (
-                  <a
-                    key={`${item.title}-${index}`}
-                    href={item.link}
-                    style={{
-                      textDecoration: "none",
-                      color: "inherit",
-                      display: "block",
-                    }}
-                  >
-                    <div className="follow-row" style={{ cursor: "pointer" }}>
-                      <span
-                        className="follow-mark"
-                        style={{
-                          background:
-                            item.tone === "red"
-                              ? "#b55751"
-                              : item.tone === "blue"
-                              ? "#6a8a98"
-                              : undefined,
-                        }}
-                      />
-                      <div className="follow-copy">
-                        <strong>{item.title}</strong>
-                        <span>{item.sub}</span>
-                      </div>
-                    </div>
-                  </a>
-                ) : (
-                  <div className="follow-row" key={`${item.title}-${index}`}>
+              attention.map((item, index) => (
+                <Link
+                  key={`${item.title}-${index}`}
+                  href={item.link}
+                  style={{
+                    textDecoration: "none",
+                    color: "inherit",
+                    display: "block",
+                  }}
+                >
+                  <div className="follow-row" style={{ cursor: "pointer" }}>
                     <span
                       className="follow-mark"
                       style={{
@@ -791,9 +695,13 @@ export default function OverviewView({
                       <strong>{item.title}</strong>
                       <span>{item.sub}</span>
                     </div>
+                    <ChevronRight
+                      size={14}
+                      style={{ color: "var(--muted)", flexShrink: 0 }}
+                    />
                   </div>
-                )
-              )
+                </Link>
+              ))
             ) : (
               <Empty
                 title="Nothing waiting"
@@ -837,31 +745,6 @@ export default function OverviewView({
                         "NGN"
                       )}
                     </strong>
-                  </div>
-                  <div className="metric-row">
-                    <span>Complaints desk</span>
-                    <a
-                      href="/complaints"
-                      style={{
-                        textDecoration: "none",
-                        color:
-                          openComplaints.length > 0 ? "#e11d48" : "inherit",
-                        fontWeight: 600,
-                        display: "inline-flex",
-                        alignItems: "center",
-                        gap: 6,
-                      }}
-                    >
-                      {openComplaints.length > 0 ? (
-                        <Pill tone="amber">
-                          {openComplaints.length} open · Review desk &rarr;
-                        </Pill>
-                      ) : (
-                        <span>
-                          {complaints.length} total · View desk &rarr;
-                        </span>
-                      )}
-                    </a>
                   </div>
                   <div className="metric-row">
                     <span>Profit visibility</span>
@@ -908,6 +791,120 @@ export default function OverviewView({
           )}
         </div>
       </div>
+      <PortalModal
+        open={Boolean(activeBirthdayStudent)}
+        onClose={() => setActiveBirthdayStudentId(null)}
+        eyebrow="Birthday Celebration"
+        title={
+          activeBirthdayStudent
+            ? `AI Birthday Tribute · ${activeBirthdayStudent.name}`
+            : "AI Birthday Tribute"
+        }
+        subtitle={
+          activeBirthdayStudent
+            ? `${activeBirthdayStudent.instrument} · Teacher: ${activeBirthdayStudent.teacherName}`
+            : undefined
+        }
+        size="md"
+        busy={activeTributeLoading}
+        footer={
+          <>
+            {activeBirthdayStudent && activeTribute && (
+              <>
+                <button
+                  type="button"
+                  className="btn secondary"
+                  onClick={() =>
+                    void copyOverviewTribute(
+                      activeBirthdayStudent.id,
+                      activeTribute
+                    )
+                  }
+                >
+                  {activeTributeCopied ? (
+                    <>
+                      <Check size={14} color="#059669" /> Copied!
+                    </>
+                  ) : (
+                    "Copy text"
+                  )}
+                </button>
+                <button
+                  type="button"
+                  className="btn primary"
+                  onClick={() => {
+                    const targetUrl = `https://wa.me/?text=${encodeURIComponent(
+                      activeTribute
+                    )}`;
+                    window.open(targetUrl, "_blank", "noopener,noreferrer");
+                    notify(
+                      `WhatsApp draft opened for ${activeBirthdayStudent.name}. Click Send in WhatsApp.`
+                    );
+                  }}
+                >
+                  Send WhatsApp
+                </button>
+              </>
+            )}
+            <button
+              type="button"
+              className="btn ghost"
+              disabled={activeTributeLoading}
+              onClick={() => setActiveBirthdayStudentId(null)}
+            >
+              Close
+            </button>
+          </>
+        }
+      >
+        {activeTributeLoading ? (
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: 8,
+              padding: "14px 16px",
+              background: "#fef9ee",
+              border: "1px solid #fde68a",
+              borderRadius: 10,
+              color: "#b45309",
+              fontSize: 13,
+            }}
+          >
+            <LoaderCircle size={15} className="spin" />
+            Generating personalized musical tribute…
+          </div>
+        ) : activeTribute ? (
+          <div
+            style={{
+              padding: "14px 16px",
+              background: "#fef9ee",
+              border: "1px solid #fde68a",
+              borderRadius: 10,
+              fontSize: 13.5,
+              color: "#78350f",
+              whiteSpace: "pre-wrap",
+              lineHeight: 1.6,
+              fontStyle: "italic",
+            }}
+          >
+            {activeTribute}
+          </div>
+        ) : (
+          <div
+            style={{
+              padding: "14px 16px",
+              background: "#f8faf9",
+              border: "1px solid var(--line)",
+              borderRadius: 10,
+              fontSize: 13,
+              color: "var(--muted)",
+            }}
+          >
+            Could not generate a tribute right now. Close and try again shortly.
+          </div>
+        )}
+      </PortalModal>
     </>
   );
 }

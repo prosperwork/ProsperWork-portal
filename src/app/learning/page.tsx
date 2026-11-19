@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import {
   useCallback,
   useEffect,
@@ -9,7 +10,14 @@ import {
   type FormEvent,
 } from "react";
 import { createBrowserClient } from "@supabase/ssr";
-import { RefreshCw, X } from "lucide-react";
+import {
+  BookOpen,
+  ClipboardList,
+  FileText,
+  RefreshCw,
+  Video,
+  X,
+} from "lucide-react";
 import type { LearningResponse, LiveBoard } from "@/lib/academy/learning";
 import {
   LEARNING_CACHE_KEY,
@@ -25,6 +33,7 @@ import {
   supportedFileExtensions,
   supportedFileMimes,
   type BoardDraft,
+  type LearningLesson,
   type PendingBoardPost,
   type ResourceDraft,
   type ResourceRow,
@@ -33,13 +42,34 @@ import LearningLiveBoard from "./components/LearningLiveBoard";
 import LearningReportsSection from "./components/LearningReportsSection";
 import LearningResourcesSection from "./components/LearningResourcesSection";
 
+type LearningTab = "board" | "resources" | "reports";
+
 async function jsonOf(response: Response): Promise<Record<string, unknown>> {
   return response.json().catch(() => ({}));
+}
+
+function canUserEditBoard(
+  profile: LearningResponse["profile"] | undefined,
+  lesson: LearningLesson | null | undefined
+): boolean {
+  if (!profile || !lesson) return false;
+  if (profile.status.trim().toLowerCase() !== "active") return false;
+  const roleValue = roleKey(profile.role);
+  const permissions = new Set(profile.permissions ?? []);
+  return (
+    roleValue === "owner" ||
+    roleValue === "super_admin" ||
+    roleValue === "qc" ||
+    roleValue === "quality_control" ||
+    permissions.has("workspace.curriculum") ||
+    lesson.teacherId === profile.id
+  );
 }
 
 export default function LearningPage() {
   const [data, setData] = useState<LearningResponse | null>(null);
   const [selectedLessonId, setSelectedLessonId] = useState("");
+  const [activeTab, setActiveTab] = useState<LearningTab>("board");
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState("");
   const [notice, setNotice] = useState("");
@@ -88,8 +118,9 @@ export default function LearningPage() {
   const revisionRef = useRef<Record<string, number>>({});
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const savingRef = useRef(false);
-  const latestSaveRef = useRef<() => void>(() => {});
-  const saveRef = useRef<() => Promise<void>>(async () => {});
+  const savePromiseRef = useRef<Promise<boolean> | null>(null);
+  const latestSaveRef = useRef<() => Promise<boolean>>(async () => true);
+  const saveRef = useRef<() => Promise<boolean>>(async () => true);
   const ownRevisionRef = useRef<Record<string, number>>({});
   const pendingBoardPostRef = useRef<PendingBoardPost | null>(null);
   const deepLinkLessonRef = useRef<string | null>(null);
@@ -126,15 +157,9 @@ export default function LearningPage() {
       null,
     [data?.boards, selectedLessonId]
   );
-  const canEditBoard = Boolean(
-    data &&
-      isActive &&
-      selectedLesson &&
-      (role === "owner" ||
-        role === "quality_control" ||
-        role === "super_admin" ||
-        perms.has("workspace.curriculum") ||
-        selectedLesson.teacherId === data.profile.id)
+  const canEditBoard = useMemo(
+    () => canUserEditBoard(data?.profile, selectedLesson),
+    [data?.profile, selectedLesson]
   );
 
   const canDownloadRecordings = Boolean(
@@ -152,6 +177,7 @@ export default function LearningPage() {
         perms.has("workspace.studio") ||
         perms.has("workspace.curriculum"))
   );
+
   const visibleResources = useMemo(() => {
     const resources = data?.resources ?? [];
     const query = resourceFilter.trim().toLowerCase();
@@ -292,28 +318,18 @@ export default function LearningPage() {
     if (dirty && !conflictRef.current) setBoardStatus("dirty");
   }, []);
 
-  const saveBoard = useCallback(async () => {
+  const saveBoard = useCallback(async (): Promise<boolean> => {
     const lessonId = selectedIdRef.current;
     const current = dataRef.current;
-    if (
-      !lessonId ||
-      !dirtyRef.current ||
-      conflictRef.current ||
-      savingRef.current ||
-      !current
-    )
-      return;
+    if (!lessonId || !dirtyRef.current || !current) return true;
+    if (conflictRef.current) return false;
+    if (savingRef.current && savePromiseRef.current) {
+      return savePromiseRef.current;
+    }
+
     const lesson = current.lessons.find((item) => item.id === lessonId);
-    const roleValue = roleKey(current.profile.role);
-    const allowed = Boolean(
-      lesson &&
-        current.profile.status.trim().toLowerCase() === "active" &&
-        (["owner", "qc", "quality_control", "super_admin"].includes(
-          roleValue
-        ) ||
-          (roleValue === "teacher" && lesson.teacherId === current.profile.id))
-    );
-    if (!allowed) return;
+    if (!canUserEditBoard(current.profile, lesson)) return true;
+
     const sent = {
       ...draftRef.current,
       completedTopics: [...draftRef.current.completedTopics],
@@ -326,87 +342,99 @@ export default function LearningPage() {
     pendingBoardPostRef.current = pendingPost;
     savingRef.current = true;
     setBoardStatus("saving");
-    try {
-      const response = await fetch("/api/learning", {
-        method: "POST",
-        credentials: "include",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({
-          action: "board",
-          lessonId,
-          revision,
-          notes: sent.notes,
-          nextTopics: sent.nextTopics,
-          completedTopics: sent.completedTopics,
-        }),
-      });
-      const result = await jsonOf(response);
-      if (response.status === 409) {
-        conflictRef.current = true;
-        setBoardStatus("conflict");
-        setConflictMessage(
-          typeof result.error === "string"
-            ? result.error
-            : "This board changed elsewhere. Your draft is still here; reload before saving again."
+
+    const run = (async (): Promise<boolean> => {
+      try {
+        const response = await fetch("/api/learning", {
+          method: "POST",
+          credentials: "include",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({
+            action: "board",
+            lessonId,
+            revision,
+            notes: sent.notes,
+            nextTopics: sent.nextTopics,
+            completedTopics: sent.completedTopics,
+          }),
+        });
+        const result = await jsonOf(response);
+        if (response.status === 409) {
+          conflictRef.current = true;
+          setBoardStatus("conflict");
+          setConflictMessage(
+            typeof result.error === "string"
+              ? result.error
+              : "This board changed elsewhere. Your draft is still here; reload before saving again."
+          );
+          return false;
+        }
+        if (
+          !response.ok ||
+          result.ok !== true ||
+          !result.board ||
+          typeof result.board !== "object"
+        ) {
+          throw new Error(
+            typeof result.error === "string"
+              ? result.error
+              : `Board changes were not saved (${response.status}).`
+          );
+        }
+        const board = result.board as LiveBoard;
+        revisionRef.current[lessonId] = board.revision;
+        ownRevisionRef.current[lessonId] = board.revision;
+        dataRef.current = dataRef.current
+          ? {
+              ...dataRef.current,
+              boards: [
+                ...dataRef.current.boards.filter(
+                  (existing) => existing.lesson_id !== lessonId
+                ),
+                board,
+              ],
+            }
+          : null;
+        if (dataRef.current) setData(dataRef.current);
+        const unchanged =
+          selectedIdRef.current === lessonId &&
+          JSON.stringify(draftRef.current) === JSON.stringify(sent);
+        if (conflictRef.current) {
+          setBoardStatus("conflict");
+          return false;
+        } else if (unchanged) {
+          dirtyRef.current = false;
+          setBoardStatus("saved");
+          return true;
+        } else if (dirtyRef.current && !conflictRef.current) {
+          setBoardStatus("dirty");
+          return false;
+        }
+        return true;
+      } catch (cause) {
+        setBoardStatus("error");
+        setNotice(
+          cause instanceof Error
+            ? cause.message
+            : "The board could not be saved. Your text remains on this device."
         );
-        return;
+        return false;
+      } finally {
+        if (pendingBoardPostRef.current === pendingPost)
+          pendingBoardPostRef.current = null;
+        savingRef.current = false;
+        savePromiseRef.current = null;
+        if (mountedRef.current && dirtyRef.current && !conflictRef.current) {
+          if (saveTimer.current) clearTimeout(saveTimer.current);
+          saveTimer.current = setTimeout(() => {
+            if (mountedRef.current) void saveRef.current();
+          }, 800);
+        }
       }
-      if (
-        !response.ok ||
-        result.ok !== true ||
-        !result.board ||
-        typeof result.board !== "object"
-      ) {
-        throw new Error(
-          typeof result.error === "string"
-            ? result.error
-            : `Board changes were not saved (${response.status}).`
-        );
-      }
-      const board = result.board as LiveBoard;
-      revisionRef.current[lessonId] = board.revision;
-      ownRevisionRef.current[lessonId] = board.revision;
-      dataRef.current = dataRef.current
-        ? {
-            ...dataRef.current,
-            boards: [
-              ...dataRef.current.boards.filter(
-                (existing) => existing.lesson_id !== lessonId
-              ),
-              board,
-            ],
-          }
-        : null;
-      if (dataRef.current) setData(dataRef.current);
-      const unchanged =
-        selectedIdRef.current === lessonId &&
-        JSON.stringify(draftRef.current) === JSON.stringify(sent);
-      if (conflictRef.current) {
-        setBoardStatus("conflict");
-      } else if (unchanged) {
-        dirtyRef.current = false;
-        setBoardStatus("saved");
-      } else if (dirtyRef.current && !conflictRef.current) {
-        setBoardStatus("dirty");
-      }
-    } catch (cause) {
-      setBoardStatus("error");
-      setNotice(
-        cause instanceof Error
-          ? cause.message
-          : "The board could not be saved. Your text remains on this device."
-      );
-    } finally {
-      if (pendingBoardPostRef.current === pendingPost)
-        pendingBoardPostRef.current = null;
-      savingRef.current = false;
-      if (mountedRef.current && dirtyRef.current && !conflictRef.current) {
-        if (saveTimer.current) clearTimeout(saveTimer.current);
-        saveTimer.current = setTimeout(() => {
-          if (mountedRef.current) void saveRef.current();
-        }, 800);
-      }
-    }
+    })();
+
+    savePromiseRef.current = run;
+    return run;
   }, []);
   saveRef.current = saveBoard;
   latestSaveRef.current = saveBoard;
@@ -426,7 +454,9 @@ export default function LearningPage() {
     if (!data) return;
     let cancelled = false;
     let client: ReturnType<typeof createBrowserClient> | null = null;
-    let channel: ReturnType<ReturnType<typeof createBrowserClient>["channel"]> | null = null;
+    let channel: ReturnType<
+      ReturnType<typeof createBrowserClient>["channel"]
+    > | null = null;
     const connect = async () => {
       setConnection("connecting");
       try {
@@ -538,35 +568,48 @@ export default function LearningPage() {
     };
   }, [data?.profile.id, load, selectedLessonId]);
 
-  const selectLesson = useCallback((id: string) => {
-    if (id === selectedIdRef.current) return;
-    if (dirtyRef.current || savingRef.current || conflictRef.current) {
-      setNotice(
-        conflictRef.current
-          ? "Resolve the current board conflict before switching lessons. Your draft has been preserved."
-          : "Save the current board before switching lessons. Your draft has been preserved."
-      );
-      return;
-    }
-    if (saveTimer.current) clearTimeout(saveTimer.current);
-    selectedIdRef.current = id;
-    setSelectedLessonId(id);
-    const current = dataRef.current;
-    const board = current?.boards.find((item) => item.lesson_id === id);
-    const lesson = current?.lessons.find((item) => item.id === id);
-    const next = {
-      notes: board?.notes ?? lesson?.notes ?? "",
-      nextTopics: board?.next_topics ?? lesson?.nextTopics ?? "",
-      completedTopics: board?.completed_topics ?? [],
-    };
-    dirtyRef.current = false;
-    conflictRef.current = false;
-    revisionRef.current[id] = board?.revision ?? 0;
-    draftRef.current = next;
-    setDraft(next);
-    setBoardStatus("clean");
-    setConflictMessage("");
-  }, []);
+  const selectLesson = useCallback(
+    async (id: string) => {
+      if (id === selectedIdRef.current) return;
+      if (conflictRef.current) {
+        setNotice(
+          "Resolve the current board conflict before switching lessons. Your draft has been preserved."
+        );
+        return;
+      }
+      if (saveTimer.current) {
+        clearTimeout(saveTimer.current);
+        saveTimer.current = null;
+      }
+      if (savingRef.current && savePromiseRef.current) {
+        await savePromiseRef.current;
+      }
+      if (dirtyRef.current && !conflictRef.current) {
+        const flushed = await saveBoard();
+        if (!flushed || conflictRef.current || dirtyRef.current) {
+          return;
+        }
+      }
+      selectedIdRef.current = id;
+      setSelectedLessonId(id);
+      const current = dataRef.current;
+      const board = current?.boards.find((item) => item.lesson_id === id);
+      const lesson = current?.lessons.find((item) => item.id === id);
+      const next = {
+        notes: board?.notes ?? lesson?.notes ?? "",
+        nextTopics: board?.next_topics ?? lesson?.nextTopics ?? "",
+        completedTopics: board?.completed_topics ?? [],
+      };
+      dirtyRef.current = false;
+      conflictRef.current = false;
+      revisionRef.current[id] = board?.revision ?? 0;
+      draftRef.current = next;
+      setDraft(next);
+      setBoardStatus("clean");
+      setConflictMessage("");
+    },
+    [saveBoard]
+  );
 
   const reloadBoard = useCallback(async () => {
     if (saveTimer.current) clearTimeout(saveTimer.current);
@@ -603,6 +646,7 @@ export default function LearningPage() {
     setResourceError("");
     setModalOpen(true);
   };
+
   const openEdit = (row: ResourceRow) => {
     const item = row.payload;
     setEditingResource(row);
@@ -619,6 +663,7 @@ export default function LearningPage() {
     setResourceError("");
     setModalOpen(true);
   };
+
   const closeResourceModal = () => {
     if (!resourceBusy) {
       setModalOpen(false);
@@ -897,6 +942,7 @@ export default function LearningPage() {
       : boardStatus === "error"
       ? "Save needs attention"
       : "All changes saved";
+
   const noticeIsSuccess = [
     "Curriculum and attachment saved.",
     "Curriculum changes saved.",
@@ -946,6 +992,7 @@ export default function LearningPage() {
             ? "Live updates disconnected"
             : "Live updates unavailable"}
         </div>
+
         {data && !isActive && (
           <p className="learn-readonly-notice" role="status">
             Profile status: {data.profile.status}. Boards and curriculum are
@@ -998,94 +1045,160 @@ export default function LearningPage() {
           </div>
         ) : data ? (
           <>
-            <div className="learn-lesson-picker">
-              <div className="learn-lesson-picker-control">
-                <label htmlFor="lesson-picker">Your lessons</label>
-                <select
-                  id="lesson-picker"
-                  value={selectedLessonId}
-                  onChange={(event) => selectLesson(event.target.value)}
-                  disabled={!data.lessons.length}
-                >
-                  <option value="" disabled>
-                    {data.lessons.length
-                      ? "Choose a lesson"
-                      : "No lessons assigned"}
-                  </option>
-                  {data.lessons.map((lesson) => (
-                    <option key={lesson.id} value={lesson.id}>
-                      {lesson.title} — {lesson.studentName}
-                    </option>
-                  ))}
-                </select>
-              </div>
-              {selectedLesson ? (
-                <div className="learn-lesson-context">
-                  <div className="learn-lesson-people">
-                    <span className="pw-person-inline">
-                      <ProfileAvatar
-                        profileId={selectedLesson.studentId}
-                        name={selectedLesson.studentName}
-                        size={27}
-                      />
-                      <span>{selectedLesson.studentName}</span>
-                    </span>
-                    <span className="pw-person-inline">
-                      <ProfileAvatar
-                        profileId={selectedLesson.teacherId}
-                        name={selectedLesson.teacherName}
-                        size={27}
-                      />
-                      <span>{selectedLesson.teacherName}</span>
-                    </span>
-                  </div>
-                  <time>
-                    {dateLabel(
-                      selectedLesson.startsAt,
-                      selectedLesson.studentTimezone
-                    )}
-                  </time>
-                </div>
-              ) : (
-                <p className="learn-lesson-picker-note">
-                  Lessons appear here when they are assigned to your account.
-                </p>
-              )}
+            {/* Top-level Learning Tabs */}
+            <div
+              className="portal-tabs"
+              role="tablist"
+              aria-label="Learning sections"
+            >
+              <button
+                type="button"
+                role="tab"
+                aria-selected={activeTab === "board"}
+                className={`portal-tab ${
+                  activeTab === "board" ? "active" : ""
+                }`}
+                onClick={() => setActiveTab("board")}
+              >
+                <ClipboardList size={14} aria-hidden="true" />
+                Lesson Board
+              </button>
+              <button
+                type="button"
+                role="tab"
+                aria-selected={activeTab === "resources"}
+                className={`portal-tab ${
+                  activeTab === "resources" ? "active" : ""
+                }`}
+                onClick={() => setActiveTab("resources")}
+              >
+                <BookOpen size={14} aria-hidden="true" />
+                Curriculum Library
+                {data.resources.length > 0 && (
+                  <span className="portal-tab-badge">
+                    {data.resources.length}
+                  </span>
+                )}
+              </button>
+              <button
+                type="button"
+                role="tab"
+                aria-selected={activeTab === "reports"}
+                className={`portal-tab ${
+                  activeTab === "reports" ? "active" : ""
+                }`}
+                onClick={() => setActiveTab("reports")}
+              >
+                <FileText size={14} aria-hidden="true" />
+                Student Reports
+              </button>
             </div>
 
-            <LearningLiveBoard
-              selectedLesson={selectedLesson}
-              selectedBoard={selectedBoard}
-              boardStatus={boardStatus}
-              saveStatusText={saveStatusText}
-              draft={draft}
-              topicInput={topicInput}
-              setTopicInput={setTopicInput}
-              canEditBoard={canEditBoard}
-              isConflict={conflictRef.current}
-              conflictMessage={conflictMessage}
-              isDirty={dirtyRef.current}
-              onReplaceDraft={replaceDraft}
-              onSaveBoard={saveBoard}
-              onReloadBoard={reloadBoard}
-              onKeepDraftForCopy={keepDraftForCopy}
-              onAddTopic={addTopic}
-              hasLessons={data.lessons.length > 0}
-              recordings={lessonRecordings}
-              canDownloadRecordings={canDownloadRecordings}
-            />
+            {/* Lesson Picker (for Lesson Board & Student Reports tabs) */}
+            {(activeTab === "board" || activeTab === "reports") && (
+              <div className="learn-lesson-picker">
+                <div className="learn-lesson-picker-control">
+                  <label htmlFor="lesson-picker">Your lessons</label>
+                  <select
+                    id="lesson-picker"
+                    value={selectedLessonId}
+                    onChange={(event) => void selectLesson(event.target.value)}
+                    disabled={!data.lessons.length}
+                  >
+                    <option value="" disabled>
+                      {data.lessons.length
+                        ? "Choose a lesson"
+                        : "No lessons assigned"}
+                    </option>
+                    {data.lessons.map((lesson) => (
+                      <option key={lesson.id} value={lesson.id}>
+                        {dateLabel(lesson.startsAt, lesson.studentTimezone)} ·{" "}
+                        {lesson.title} — {lesson.studentName}
+                        {lesson.status ? ` (${lesson.status})` : ""}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                {selectedLesson ? (
+                  <div className="learn-lesson-context">
+                    <div className="learn-lesson-people">
+                      <span className="pw-person-inline">
+                        <ProfileAvatar
+                          profileId={selectedLesson.studentId}
+                          name={selectedLesson.studentName}
+                          size={27}
+                        />
+                        <span>{selectedLesson.studentName}</span>
+                      </span>
+                      <span className="pw-person-inline">
+                        <ProfileAvatar
+                          profileId={selectedLesson.teacherId}
+                          name={selectedLesson.teacherName}
+                          size={27}
+                        />
+                        <span>{selectedLesson.teacherName}</span>
+                      </span>
+                    </div>
+                    <div
+                      style={{
+                        display: "flex",
+                        alignItems: "center",
+                        gap: 10,
+                        flexWrap: "wrap",
+                      }}
+                    >
+                      <time>
+                        {dateLabel(
+                          selectedLesson.startsAt,
+                          selectedLesson.studentTimezone
+                        )}
+                      </time>
+                      <Link
+                        href={`/classroom?lessonId=${encodeURIComponent(
+                          selectedLesson.id
+                        )}`}
+                        className="learn-button primary"
+                        style={{ textDecoration: "none" }}
+                      >
+                        <Video size={13} aria-hidden="true" /> Join Classroom
+                      </Link>
+                    </div>
+                  </div>
+                ) : (
+                  <p className="learn-lesson-picker-note">
+                    Lessons appear here when they are assigned to your account.
+                  </p>
+                )}
+              </div>
+            )}
 
-            <div className="learn-support-work">
-              <LearningReportsSection
+            {/* Tab 1: Lesson Board */}
+            {activeTab === "board" && (
+              <LearningLiveBoard
                 selectedLesson={selectedLesson}
-                reportMonth={reportMonth}
-                setReportMonth={setReportMonth}
-                reportBusy={reportBusy}
-                reportError={reportError}
-                setReportError={setReportError}
-                onDownloadReport={downloadReport}
+                selectedBoard={selectedBoard}
+                boardStatus={boardStatus}
+                saveStatusText={saveStatusText}
+                draft={draft}
+                topicInput={topicInput}
+                setTopicInput={setTopicInput}
+                canEditBoard={canEditBoard}
+                isConflict={conflictRef.current}
+                conflictMessage={conflictMessage}
+                isDirty={dirtyRef.current}
+                onReplaceDraft={replaceDraft}
+                onSaveBoard={() => void saveBoard()}
+                onReloadBoard={reloadBoard}
+                onKeepDraftForCopy={keepDraftForCopy}
+                onAddTopic={addTopic}
+                hasLessons={data.lessons.length > 0}
+                recordings={lessonRecordings}
+                canDownloadRecordings={canDownloadRecordings}
               />
+            )}
 
+            {/* Tab 2: Curriculum Library */}
+            {activeTab === "resources" && (
               <LearningResourcesSection
                 canReadResources={canReadResources}
                 canEditResources={canEditResources}
@@ -1109,7 +1222,20 @@ export default function LearningPage() {
                 archiving={archiving}
                 onArchiveResource={archiveResource}
               />
-            </div>
+            )}
+
+            {/* Tab 3: Student Reports */}
+            {activeTab === "reports" && (
+              <LearningReportsSection
+                selectedLesson={selectedLesson}
+                reportMonth={reportMonth}
+                setReportMonth={setReportMonth}
+                reportBusy={reportBusy}
+                reportError={reportError}
+                setReportError={setReportError}
+                onDownloadReport={downloadReport}
+              />
+            )}
           </>
         ) : null}
       </section>

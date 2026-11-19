@@ -1,9 +1,21 @@
 "use client";
 
 import { useState, type FormEvent } from "react";
-import { AlertCircle, CheckCircle2, Clock3, LoaderCircle } from "lucide-react";
+import {
+  AlertCircle,
+  CheckCircle2,
+  Clock3,
+  LoaderCircle,
+  Plus,
+  UserCheck,
+} from "lucide-react";
 import { type HiringCase, type HiringReview } from "@/lib/academy/hiring";
-import { reviewLabels, type ReviewKind } from "../hiring-types";
+import { PortalModal } from "@/app/_components/PortalModal";
+import {
+  isMusicEducationRole,
+  reviewLabels,
+  type ReviewKind,
+} from "../hiring-types";
 
 export interface HiringReviewFormProps {
   selectedCase: HiringCase;
@@ -16,6 +28,7 @@ export interface HiringReviewFormProps {
   maySelect: boolean;
   isActive: boolean;
   busy: string;
+  actionError?: string;
   staffName: (id: string) => string;
   onSubmitReview: (formData: {
     kind: ReviewKind;
@@ -37,15 +50,21 @@ export default function HiringReviewForm({
   maySelect,
   isActive,
   busy,
+  actionError,
   staffName,
   onSubmitReview,
   onSelectApplicant,
 }: HiringReviewFormProps) {
+  const [reviewModalOpen, setReviewModalOpen] = useState(false);
+  const [selectModalOpen, setSelectModalOpen] = useState(false);
+
   const [reviewKind, setReviewKind] = useState<ReviewKind>("hr_interview");
   const [reviewScore, setReviewScore] = useState("");
   const [reviewPassed, setReviewPassed] = useState(false);
   const [reviewNotes, setReviewNotes] = useState("");
   const [selectionNotes, setSelectionNotes] = useState("");
+
+  const needsAudition = isMusicEducationRole(selectedCase.desired_role);
 
   const reviewOf = (kind: ReviewKind) =>
     reviewsForCase.find((review) => review.kind === kind) ?? null;
@@ -67,21 +86,60 @@ export default function HiringReviewForm({
       setReviewNotes("");
       setReviewPassed(false);
       setReviewScore("");
+      setReviewModalOpen(false);
     }
   };
 
-  const handleSelect = async () => {
+  const handleSelect = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
     const ok = await onSelectApplicant(selectionNotes);
     if (ok) {
       setSelectionNotes("");
+      setSelectModalOpen(false);
     }
   };
 
   return (
     <section className="hire-section" aria-labelledby="review-status-heading">
-      <div className="hire-section-head">
-        <h3 id="review-status-heading">Interview and training record</h3>
-        <span>Saved reviews only</span>
+      <div
+        className="hire-section-head"
+        style={{
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "space-between",
+          gap: 10,
+          flexWrap: "wrap",
+        }}
+      >
+        <div>
+          <h3 id="review-status-heading">Interview and training record</h3>
+          <span>Saved reviews only</span>
+        </div>
+        <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+          {reviewOptions.length > 0 && (
+            <button
+              type="button"
+              className="hire-button primary"
+              onClick={() => {
+                setReviewKind(reviewOptions[0]);
+                setReviewModalOpen(true);
+              }}
+              disabled={!isActive || Boolean(busy)}
+            >
+              <Plus size={13} />+ Record Review
+            </button>
+          )}
+          {maySelect && (
+            <button
+              type="button"
+              className="hire-button primary"
+              onClick={() => setSelectModalOpen(true)}
+              disabled={!isActive || Boolean(busy)}
+            >
+              <UserCheck size={13} /> Select Candidate
+            </button>
+          )}
+        </div>
       </div>
 
       {(
@@ -93,11 +151,7 @@ export default function HiringReviewForm({
         ] as ReviewKind[]
       ).map((kindValue) => {
         const review = reviewOf(kindValue);
-        if (
-          !review &&
-          kindValue === "audition" &&
-          selectedCase.desired_role !== "teacher"
-        ) {
+        if (!review && kindValue === "audition" && !needsAudition) {
           return null;
         }
         return (
@@ -143,13 +197,40 @@ export default function HiringReviewForm({
           <Clock3 size={14} />
           <p>
             The scheduled joint interview has not started yet. Interview reviews
-            become available at the recorded time.
+            become available 15 minutes before the recorded time.
           </p>
         </div>
       )}
 
-      {reviewOptions.length > 0 && (
-        <form className="hire-review-form" onSubmit={handleSubmit}>
+      {maySelect && (
+        <div className="hire-callout" style={{ marginTop: 10 }}>
+          <CheckCircle2 size={14} />
+          <p>
+            Independent passing HR and departmental interviews
+            {needsAudition ? ", plus a passing music audition," : ""} are
+            present in the saved record. You can now select this candidate.
+          </p>
+        </div>
+      )}
+
+      {/* Record Review Modal */}
+      <PortalModal
+        open={reviewModalOpen}
+        onClose={() => setReviewModalOpen(false)}
+        eyebrow="Hiring evaluation"
+        title="Record review"
+        subtitle={`${selectedCase.name} · reviews are immutable once saved`}
+        size="md"
+        busy={busy.startsWith("review:")}
+      >
+        <form onSubmit={handleSubmit} style={{ display: "grid", gap: 12 }}>
+          {actionError && (
+            <div className="hire-alert" role="alert">
+              <AlertCircle size={15} />
+              <p>{actionError}</p>
+            </div>
+          )}
+
           <div className="hire-form-field">
             <label htmlFor="review-kind">Review being recorded</label>
             <select
@@ -206,6 +287,7 @@ export default function HiringReviewForm({
             </label>
             <textarea
               id="review-notes"
+              rows={4}
               value={reviewNotes}
               onChange={(event) => setReviewNotes(event.target.value)}
               minLength={5}
@@ -214,7 +296,15 @@ export default function HiringReviewForm({
             />
           </div>
 
-          <div className="hire-actions">
+          <div className="modal-actions" style={{ marginTop: 4 }}>
+            <button
+              type="button"
+              className="hire-button tertiary"
+              onClick={() => setReviewModalOpen(false)}
+              disabled={busy.startsWith("review:")}
+            >
+              Cancel
+            </button>
             <button
               type="submit"
               className="hire-button primary"
@@ -225,53 +315,84 @@ export default function HiringReviewForm({
                   <LoaderCircle size={13} /> Saving…
                 </>
               ) : (
-                "Append review"
+                "Save review"
               )}
             </button>
           </div>
         </form>
-      )}
+      </PortalModal>
 
-      {maySelect && (
-        <div className="hire-review-form">
+      {/* Select Candidate Modal */}
+      <PortalModal
+        open={selectModalOpen}
+        onClose={() => setSelectModalOpen(false)}
+        eyebrow="Stage progression"
+        title="Select candidate"
+        subtitle={`Move ${selectedCase.name} from Interview to Selected`}
+        size="sm"
+        busy={busy.startsWith("select:")}
+      >
+        <form onSubmit={handleSelect} style={{ display: "grid", gap: 12 }}>
+          {actionError && (
+            <div className="hire-alert" role="alert">
+              <AlertCircle size={15} />
+              <p>{actionError}</p>
+            </div>
+          )}
+
           <div className="hire-callout">
             <CheckCircle2 size={14} />
             <p>
               Independent passing HR and departmental interviews
-              {["teacher", "qc"].includes(selectedCase.desired_role) || selectedCase.desired_role.includes("teacher") || selectedCase.desired_role.includes("tutor")
-                ? ", plus a passing music audition,"
-                : ""}{" "}
-              are present in the saved record.
+              {needsAudition ? ", plus a passing music audition," : ""} are
+              verified.
             </p>
           </div>
-          <div className="hire-form-field" style={{ marginTop: 9 }}>
+
+          <div className="hire-form-field">
             <label htmlFor="select-notes">
               Selection rationale · at least 5 characters
             </label>
             <textarea
               id="select-notes"
+              rows={3}
               minLength={5}
               maxLength={2000}
+              required
               value={selectionNotes}
               onChange={(event) => setSelectionNotes(event.target.value)}
             />
           </div>
-          <div className="hire-actions">
+
+          <div className="modal-actions" style={{ marginTop: 4 }}>
             <button
               type="button"
+              className="hire-button tertiary"
+              onClick={() => setSelectModalOpen(false)}
+              disabled={busy.startsWith("select:")}
+            >
+              Cancel
+            </button>
+            <button
+              type="submit"
               className="hire-button primary"
-              onClick={handleSelect}
               disabled={
                 !isActive ||
                 selectionNotes.trim().length < 5 ||
                 busy.startsWith("select:")
               }
             >
-              Select applicant
+              {busy.startsWith("select:") ? (
+                <>
+                  <LoaderCircle size={13} /> Selecting…
+                </>
+              ) : (
+                "Confirm Selection"
+              )}
             </button>
           </div>
-        </div>
-      )}
+        </form>
+      </PortalModal>
     </section>
   );
 }

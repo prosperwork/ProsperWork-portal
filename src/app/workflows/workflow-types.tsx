@@ -10,7 +10,10 @@ export type Profile = {
   permissions?: string[];
 };
 
-export type WorkflowHomeworkItem = HomeworkItem & { feedback?: string };
+export type WorkflowHomeworkItem = HomeworkItem & {
+  feedback?: string;
+  submissionNote?: string;
+};
 
 export type FileMetadata = {
   id: string;

@@ -5,17 +5,22 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   AlertCircle,
   BriefcaseBusiness,
+  Check,
   CheckCircle2,
   FileCheck2,
   RefreshCw,
+  Search,
   ShieldCheck,
+  UserPlus,
 } from "lucide-react";
 import { hiringAction, type HiringCase } from "@/lib/academy/hiring";
 import { readJson } from "@/lib/academy/web-client";
+import { PortalModal } from "@/app/_components/PortalModal";
 import ProfileAvatar from "@/app/_components/ProfileAvatar";
 import {
   expectedSupervisor,
   formatDate,
+  isMusicEducationRole,
   maxFileBytes,
   roleKey,
   roleLabel,
@@ -29,6 +34,16 @@ import {
 import HiringCandidateForm from "./components/HiringCandidateForm";
 import HiringReviewForm from "./components/HiringReviewForm";
 import HiringCaseDetail from "./components/HiringCaseDetail";
+
+const PIPELINE_STEPS = [
+  { key: "applied", label: "Applied" },
+  { key: "interview", label: "Interview" },
+  { key: "selected", label: "Selected" },
+  { key: "ready", label: "Ready" },
+  { key: "activated", label: "Activated" },
+] as const;
+
+type DetailTab = "next_step" | "reviews" | "timeline";
 
 function messageFrom(result: JsonResult, status: number) {
   if (typeof result.error === "string") return result.error;
@@ -46,6 +61,9 @@ export default function HiringPage() {
   const [notice, setNotice] = useState("");
   const [selectedCaseId, setSelectedCaseId] = useState("");
   const [stageFilter, setStageFilter] = useState<string>("all");
+  const [searchQuery, setSearchQuery] = useState("");
+  const [detailTab, setDetailTab] = useState<DetailTab>("next_step");
+  const [addCandidateOpen, setAddCandidateOpen] = useState(false);
 
   const [deviceTimezone, setDeviceTimezone] = useState("device local time");
   const [fileInputRevision, setFileInputRevision] = useState<
@@ -153,9 +171,18 @@ export default function HiringPage() {
   );
   const visibleCases = isApplicant ? applicantCases : data?.cases ?? [];
   const filteredCases = useMemo(() => {
-    if (stageFilter === "all") return visibleCases;
-    return visibleCases.filter((item) => item.stage === stageFilter);
-  }, [visibleCases, stageFilter]);
+    const q = searchQuery.trim().toLowerCase();
+    return visibleCases.filter((item) => {
+      if (stageFilter !== "all" && item.stage !== stageFilter) return false;
+      if (!q) return true;
+      return (
+        item.name.toLowerCase().includes(q) ||
+        item.email.toLowerCase().includes(q) ||
+        roleLabel(item.desired_role).toLowerCase().includes(q)
+      );
+    });
+  }, [visibleCases, stageFilter, searchQuery]);
+
   const selectedCase =
     filteredCases.find((item) => item.id === selectedCaseId) ??
     visibleCases.find((item) => item.id === selectedCaseId) ??
@@ -318,6 +345,7 @@ export default function HiringPage() {
           "The applicant was submitted but the new case is not visible yet. Refresh before submitting another."
         );
       setSelectedCaseId(created.id);
+      setAddCandidateOpen(false);
       setNotice(`Applicant case created for ${created.name}.`);
       return true;
     } catch (cause) {
@@ -427,8 +455,8 @@ export default function HiringPage() {
       action === "select"
         ? "selected"
         : action === "reject"
-        ? "rejected"
-        : "activated";
+          ? "rejected"
+          : "activated";
     const fresh = await runAndConfirm(
       `${action}:${selectedCase.id}`,
       { action, id: selectedCase.id, notes: notes.trim() },
@@ -441,15 +469,18 @@ export default function HiringPage() {
     return Boolean(fresh);
   };
 
-  const runInvite = async (candidate: HiringCase, inviteTz: string) => {
-    if (!data || !isOwner || !isActive) return;
+  const runInvite = async (
+    candidate: HiringCase,
+    inviteTz: string
+  ): Promise<boolean> => {
+    if (!data || !isOwner || !isActive) return false;
     try {
       new Intl.DateTimeFormat("en", { timeZone: inviteTz }).format();
     } catch {
       setActionError("Choose a valid IANA timezone before inviting.");
-      return;
+      return false;
     }
-    await runAndConfirm(
+    const fresh = await runAndConfirm(
       `invite:${candidate.id}`,
       { action: "invite", id: candidate.id, timezone: inviteTz.trim() },
       "Owner invitation and applicant binding are confirmed.",
@@ -458,6 +489,7 @@ export default function HiringPage() {
           (item) => item.id === candidate.id && Boolean(item.staff_id)
         )
     );
+    return Boolean(fresh);
   };
 
   const matchingApplicants = (candidate: HiringCase) =>
@@ -480,12 +512,12 @@ export default function HiringPage() {
     candidate: HiringCase,
     bindStaffId: string,
     bindNotes: string
-  ) => {
+  ): Promise<boolean> => {
     if (!data || !isOwner || !isActive || bindNotes.trim().length < 5) {
       setActionError(
         "Select the existing matching applicant account and provide a note of at least 5 characters."
       );
-      return;
+      return false;
     }
     const eligible = matchingApplicants(candidate).find(
       (person) => person.id === bindStaffId
@@ -494,9 +526,9 @@ export default function HiringPage() {
       setActionError(
         "The account must match this applicant’s email and requested role and remain in applicant status."
       );
-      return;
+      return false;
     }
-    await runAndConfirm(
+    const fresh = await runAndConfirm(
       `bind:${candidate.id}`,
       {
         action: "bind",
@@ -510,6 +542,7 @@ export default function HiringPage() {
           (item) => item.id === candidate.id && item.staff_id === eligible.id
         )
     );
+    return Boolean(fresh);
   };
 
   const uploadFile = async (
@@ -517,20 +550,20 @@ export default function HiringPage() {
     category: "hiring_evidence" | "hiring_guidelines" | "hiring_agreement",
     file: File | null,
     note: string
-  ) => {
-    if (!data || !isActive) return;
+  ): Promise<boolean> => {
+    if (!data || !isActive) return false;
     const kind =
       category === "hiring_guidelines"
         ? "guidelines"
         : category === "hiring_agreement"
-        ? "agreement"
-        : "evidence";
+          ? "agreement"
+          : "evidence";
     const slot = `${candidate.id}:${kind}`;
     if (kind !== "evidence" && note.trim().length < 5) {
       setActionError(
         "Add document notes of at least 5 characters before uploading and attaching this PDF."
       );
-      return;
+      return false;
     }
     const existingPending = pendingUploads[slot];
     setBusy(`upload:${slot}`);
@@ -643,7 +676,7 @@ export default function HiringPage() {
         });
         resetFileInput("evidence");
         setNotice(`Private evidence uploaded: ${uploaded?.original_name}.`);
-        return;
+        return true;
       }
       if (!uploaded)
         throw new Error(
@@ -668,7 +701,7 @@ export default function HiringPage() {
             kind
           )} PDF is already attached to the current applicant record.`
         );
-        return;
+        return true;
       }
       await actionRequest({
         action: "document",
@@ -696,19 +729,24 @@ export default function HiringPage() {
       setNotice(
         `${titleCase(kind)} PDF attached to the current applicant record.`
       );
+      return true;
     } catch (cause) {
       setActionError(
         cause instanceof Error
           ? cause.message
           : "The private upload could not be completed."
       );
+      return false;
     } finally {
       setBusy("");
     }
   };
 
-  const submitAccept = async (signedName: string, agreed: boolean) => {
-    if (!data || !selectedCase || !isApplicant || !agreed) return;
+  const submitAccept = async (
+    signedName: string,
+    agreed: boolean
+  ): Promise<boolean> => {
+    if (!data || !selectedCase || !isApplicant || !agreed) return false;
     if (
       data.profile.name.trim().toLocaleLowerCase() !==
         selectedCase.name.trim().toLocaleLowerCase() ||
@@ -718,9 +756,9 @@ export default function HiringPage() {
       setActionError(
         "The signature must match your full name on the signed-in applicant account and application. Contact the Owner if either name is wrong."
       );
-      return;
+      return false;
     }
-    await runAndConfirm(
+    const fresh = await runAndConfirm(
       `accept:${selectedCase.id}`,
       {
         action: "accept",
@@ -734,17 +772,21 @@ export default function HiringPage() {
           (item) => item.id === selectedCase.id && Boolean(item.accepted_at)
         )
     );
+    return Boolean(fresh);
   };
 
-  const submitHandoff = async (startDate: string, notes: string) => {
-    if (!selectedCase || !data || !isActive) return;
+  const submitHandoff = async (
+    startDate: string,
+    notes: string
+  ): Promise<boolean> => {
+    if (!selectedCase || !data || !isActive) return false;
     if (!startDate || notes.trim().length < 5) {
       setActionError(
         "Choose the actual start date and add handoff notes of at least 5 characters."
       );
-      return;
+      return false;
     }
-    await runAndConfirm(
+    const fresh = await runAndConfirm(
       `handoff:${selectedCase.id}`,
       {
         action: "handoff",
@@ -761,11 +803,12 @@ export default function HiringPage() {
             item.start_date === startDate
         )
     );
+    return Boolean(fresh);
   };
 
-  const submitActivation = async (notes: string) => {
-    if (!selectedCase) return;
-    await runAndConfirm(
+  const submitActivation = async (notes: string): Promise<boolean> => {
+    if (!selectedCase) return false;
+    const fresh = await runAndConfirm(
       `activate:${selectedCase.id}`,
       { action: "activate", id: selectedCase.id, notes: notes.trim() },
       "Owner activation is confirmed in the staff profile and hiring record.",
@@ -783,14 +826,15 @@ export default function HiringPage() {
         );
       }
     );
+    return Boolean(fresh);
   };
 
-  const submitReturn = async (notes: string) => {
+  const submitReturn = async (notes: string): Promise<boolean> => {
     if (!selectedCase || notes.trim().length < 5) {
       setActionError("Add a correction reason of at least 5 characters.");
-      return;
+      return false;
     }
-    await runAndConfirm(
+    const fresh = await runAndConfirm(
       `return:${selectedCase.id}`,
       { action: "return", id: selectedCase.id, notes: notes.trim() },
       "Case returned to selected for correction. The current agreement and applicant acceptance have been cleared.",
@@ -803,13 +847,15 @@ export default function HiringPage() {
             !item.accepted_at
         )
     );
+    return Boolean(fresh);
   };
 
   const currentCaseReviews = selectedCase ? reviewsForCase : [];
   const reviewOf = (kind: ReviewKind) =>
     currentCaseReviews.find((review) => review.kind === kind) ?? null;
   const reviewWhen = selectedCase?.interview_at
-    ? new Date(selectedCase.interview_at).getTime() - 15 * 60 * 1000 <= serverNow.getTime()
+    ? new Date(selectedCase.interview_at).getTime() - 15 * 60 * 1000 <=
+      serverNow.getTime()
     : false;
   const hrReview = reviewOf("hr_interview");
   const departmentReview = reviewOf("department_interview");
@@ -818,6 +864,12 @@ export default function HiringPage() {
   const hrReviewerRole = hrReview
     ? roleKey(directoryById.get(hrReview.reviewer_id)?.role ?? "")
     : "";
+
+  // Unified music education role check
+  const needsMusicAudition = Boolean(
+    selectedCase && isMusicEducationRole(selectedCase.desired_role)
+  );
+
   const independentInterviews = Boolean(
     hrReview &&
       departmentReview &&
@@ -829,7 +881,7 @@ export default function HiringPage() {
     hrReview?.passed &&
       departmentReview?.passed &&
       independentInterviews &&
-      (selectedCase?.desired_role !== "teacher" ||
+      (!needsMusicAudition ||
         Boolean(
           auditionReview?.passed &&
             auditionReview.reviewer_id === selectedCase?.reviewer_id
@@ -859,20 +911,11 @@ export default function HiringPage() {
       reviewWhen &&
       !departmentReview
   );
-  const isMusicEducationRole = Boolean(
-    selectedCase &&
-      (selectedCase.desired_role === "teacher" ||
-        selectedCase.desired_role === "qc" ||
-        selectedCase.desired_role.includes("teacher") ||
-        selectedCase.desired_role.includes("tutor") ||
-        selectedCase.desired_role.includes("music") ||
-        selectedCase.desired_role.includes("instructor"))
-  );
   const canRecordAudition = Boolean(
     isActive &&
       reviewerIsCurrent &&
-      isMusicEducationRole &&
-      selectedCase.stage === "interview" &&
+      needsMusicAudition &&
+      selectedCase?.stage === "interview" &&
       reviewWhen &&
       !auditionReview
   );
@@ -945,9 +988,7 @@ export default function HiringPage() {
       selectedCase.staff_id &&
       selectedCase.accepted_at &&
       trainingVerified &&
-      (isMusicEducationRole
-        ? isQC && reviewerIsCurrent
-        : isHR)
+      (needsMusicAudition ? isQC && reviewerIsCurrent : isHR)
   );
   const canActivate = Boolean(
     isActive && isOwner && selectedCase?.stage === "ready"
@@ -957,6 +998,10 @@ export default function HiringPage() {
   );
   const showHandoffs = Boolean(isOwner || isFinance || isAdmin || isHead);
   const pendingHandoffs = data?.handoffs ?? [];
+
+  const currentStageIndex = selectedCase
+    ? PIPELINE_STEPS.findIndex((step) => step.key === selectedCase.stage)
+    : -1;
 
   return (
     <main className="pw-family pw-hiring">
@@ -1003,6 +1048,18 @@ export default function HiringPage() {
               <div className="hire-heading">
                 <h1>{isApplicant ? "Applicant case" : "Hiring"}</h1>
                 <div className="hire-heading-actions">
+                  {!isApplicant && (isOwner || isHR) && isActive && (
+                    <button
+                      type="button"
+                      className="hire-button primary"
+                      onClick={() => {
+                        setActionError("");
+                        setAddCandidateOpen(true);
+                      }}
+                    >
+                      <UserPlus size={14} /> + Add Candidate
+                    </button>
+                  )}
                   {(isOwner || isFinance) && (
                     <Link href="/payroll" className="hire-button">
                       Payroll · private pay &amp; bank setup
@@ -1019,6 +1076,7 @@ export default function HiringPage() {
                   </button>
                 </div>
               </div>
+
               {!isActive && !isApplicant && (
                 <div className="hire-alert info" role="status">
                   <ShieldCheck size={15} />
@@ -1029,6 +1087,7 @@ export default function HiringPage() {
                   </p>
                 </div>
               )}
+
               {isApplicant && (
                 <div className="hire-alert info" role="status">
                   <ShieldCheck size={15} />
@@ -1042,6 +1101,7 @@ export default function HiringPage() {
                   </p>
                 </div>
               )}
+
               <div
                 className="hire-layout"
                 data-portal-layout="hiring-workspace"
@@ -1074,45 +1134,107 @@ export default function HiringPage() {
                           aria-hidden="true"
                         />
                       </div>
-                      {!isApplicant && visibleCases.length > 0 && (
+
+                      {visibleCases.length > 0 && (
                         <div
                           style={{
-                            display: "flex",
-                            gap: "6px",
-                            flexWrap: "wrap",
-                            padding: "8px 14px 10px",
+                            padding: "10px 14px 8px",
                             borderBottom: "1px solid #edf1ed",
+                            display: "grid",
+                            gap: 8,
                           }}
                         >
-                          {["all", "applied", "interview", "selected", "ready", "activated", "rejected"].map((stage) => {
-                            const count =
-                              stage === "all"
-                                ? visibleCases.length
-                                : visibleCases.filter((c) => c.stage === stage).length;
-                            if (stage !== "all" && count === 0) return null;
-                            return (
-                              <button
-                                key={stage}
-                                type="button"
-                                onClick={() => setStageFilter(stage)}
-                                style={{
-                                  fontSize: "11px",
-                                  fontWeight: 700,
-                                  padding: "3px 8px",
-                                  borderRadius: "14px",
-                                  border: "1px solid",
-                                  borderColor: stageFilter === stage ? "#1c7a5d" : "#dce8df",
-                                  background: stageFilter === stage ? "#edf6f1" : "#fffefa",
-                                  color: stageFilter === stage ? "#135b45" : "#65796c",
-                                  cursor: "pointer",
-                                }}
-                              >
-                                {stage === "all" ? "All" : titleCase(stage)} ({count})
-                              </button>
-                            );
-                          })}
+                          <label
+                            style={{
+                              position: "relative",
+                              display: "flex",
+                              alignItems: "center",
+                            }}
+                          >
+                            <Search
+                              size={13}
+                              aria-hidden="true"
+                              style={{
+                                position: "absolute",
+                                left: 10,
+                                color: "var(--muted)",
+                                pointerEvents: "none",
+                              }}
+                            />
+                            <input
+                              type="search"
+                              aria-label="Search candidates by name or email"
+                              placeholder="Search name, email, or role…"
+                              value={searchQuery}
+                              onChange={(e) => setSearchQuery(e.target.value)}
+                              style={{
+                                width: "100%",
+                                padding: "6px 10px 6px 30px",
+                                borderRadius: 8,
+                                border: "1px solid var(--line)",
+                                background: "var(--white)",
+                                fontSize: 12.5,
+                              }}
+                            />
+                          </label>
+                          <div
+                            style={{
+                              display: "flex",
+                              gap: "6px",
+                              flexWrap: "wrap",
+                            }}
+                          >
+                            {[
+                              "all",
+                              "applied",
+                              "interview",
+                              "selected",
+                              "ready",
+                              "activated",
+                              "rejected",
+                            ].map((stage) => {
+                              const count =
+                                stage === "all"
+                                  ? visibleCases.length
+                                  : visibleCases.filter(
+                                      (c) => c.stage === stage
+                                    ).length;
+                              if (stage !== "all" && count === 0) return null;
+                              return (
+                                <button
+                                  key={stage}
+                                  type="button"
+                                  onClick={() => setStageFilter(stage)}
+                                  style={{
+                                    fontSize: "11px",
+                                    fontWeight: 700,
+                                    padding: "3px 8px",
+                                    borderRadius: "14px",
+                                    border: "1px solid",
+                                    borderColor:
+                                      stageFilter === stage
+                                        ? "#1c7a5d"
+                                        : "#dce8df",
+                                    background:
+                                      stageFilter === stage
+                                        ? "#edf6f1"
+                                        : "#fffefa",
+                                    color:
+                                      stageFilter === stage
+                                        ? "#135b45"
+                                        : "#65796c",
+                                    cursor: "pointer",
+                                  }}
+                                >
+                                  {stage === "all" ? "All" : titleCase(stage)} (
+                                  {count})
+                                </button>
+                              );
+                            })}
+                          </div>
                         </div>
                       )}
+
                       {filteredCases.length ? (
                         <div className="hire-list">
                           {filteredCases.map((candidate) => (
@@ -1126,6 +1248,7 @@ export default function HiringPage() {
                               }`}
                               onClick={() => {
                                 setSelectedCaseId(candidate.id);
+                                setActionError("");
                                 resetFileInput("evidence");
                               }}
                             >
@@ -1155,22 +1278,18 @@ export default function HiringPage() {
                       ) : (
                         <div className="hire-card-body">
                           <div className="hire-empty">
-                            <strong>No cases in this scope</strong>Cases appear
-                            here only when the service assigns you as HR, Owner,
-                            or departmental reviewer.
+                            <strong>
+                              {searchQuery.trim()
+                                ? "No matching candidates"
+                                : "No cases in this scope"}
+                            </strong>
+                            {searchQuery.trim()
+                              ? "Try clearing the search query or stage filter."
+                              : "Cases appear here only when the service assigns you as HR, Owner, or departmental reviewer."}
                           </div>
                         </div>
                       )}
                     </section>
-                  )}
-
-                  {!isApplicant && (isOwner || isHR) && (
-                    <HiringCandidateForm
-                      data={data}
-                      isActive={isActive}
-                      busy={busy}
-                      onSubmitCreate={submitCreate}
-                    />
                   )}
 
                   {showHandoffs &&
@@ -1197,58 +1316,50 @@ export default function HiringPage() {
                             aria-hidden="true"
                           />
                         </div>
-                        {pendingHandoffs.length ? (
-                          <div className="hire-card-body">
-                            {pendingHandoffs.map((item) => (
-                              <article className="hire-handoff" key={item.id}>
-                                <div className="pw-person-inline">
-                                  <ProfileAvatar
-                                    profileId={item.staff_id}
-                                    name={item.name}
-                                    size={32}
-                                  />
-                                  <span>
-                                    <strong>
-                                      {item.name} · {roleLabel(item.role)}
-                                    </strong>
-                                    <small>
-                                      {titleCase(item.stage)} · start{" "}
-                                      {item.start_date ?? "not recorded"} ·{" "}
-                                      {item.timezone} · finalized{" "}
-                                      {formatDate(
-                                        item.finalized_at,
-                                        item.timezone
-                                      )}
-                                    </small>
-                                  </span>
-                                </div>
-                                <span className={`hire-pill ${item.stage}`}>
-                                  {titleCase(item.stage)}
+                        <div className="hire-card-body">
+                          {pendingHandoffs.map((item) => (
+                            <article className="hire-handoff" key={item.id}>
+                              <div className="pw-person-inline">
+                                <ProfileAvatar
+                                  profileId={item.staff_id}
+                                  name={item.name}
+                                  size={32}
+                                />
+                                <span>
+                                  <strong>
+                                    {item.name} · {roleLabel(item.role)}
+                                  </strong>
+                                  <small>
+                                    {titleCase(item.stage)} · start{" "}
+                                    {item.start_date ?? "not recorded"} ·{" "}
+                                    {item.timezone} · finalized{" "}
+                                    {formatDate(
+                                      item.finalized_at,
+                                      item.timezone
+                                    )}
+                                  </small>
                                 </span>
-                              </article>
-                            ))}
-                            {(isOwner || isFinance) && (
-                              <div
-                                className="hire-callout"
-                                style={{ marginTop: 10 }}
-                              >
-                                <FileCheck2 size={14} />
-                                <p>
-                                  Initial pay and matching bank instructions
-                                  stay in the private{" "}
-                                  <Link href="/payroll">Payroll workspace</Link>
-                                  . They are never read or rendered here.
-                                </p>
                               </div>
-                            )}
-                          </div>
-                        ) : (
-                          <div className="hire-empty">
-                            <strong>No handoffs returned</strong>Only
-                            service-provided ready or activated summaries appear
-                            here.
-                          </div>
-                        )}
+                              <span className={`hire-pill ${item.stage}`}>
+                                {titleCase(item.stage)}
+                              </span>
+                            </article>
+                          ))}
+                          {(isOwner || isFinance) && (
+                            <div
+                              className="hire-callout"
+                              style={{ marginTop: 10 }}
+                            >
+                              <FileCheck2 size={14} />
+                              <p>
+                                Initial pay and matching bank instructions stay
+                                in the private{" "}
+                                <Link href="/payroll">Payroll workspace</Link>.
+                                They are never read or rendered here.
+                              </p>
+                            </div>
+                          )}
+                        </div>
                       </section>
                     )}
                 </div>
@@ -1315,8 +1426,278 @@ export default function HiringPage() {
                           </span>
                         </div>
                       </div>
+
                       <div className="hire-card-body">
-                        {!isApplicant && maySeeReviewDetails && (
+                        {/* TOP OF DETAIL VIEW: 5-step horizontal pipeline progress indicator + Current Stage orientation banner */}
+                        {!isApplicant && (
+                          <>
+                            <ol
+                              aria-label="Hiring pipeline stages"
+                              style={{
+                                display: "grid",
+                                gridTemplateColumns:
+                                  "repeat(5, minmax(0, 1fr))",
+                                gap: 6,
+                                listStyle: "none",
+                                padding: 0,
+                                margin: "0 0 14px",
+                              }}
+                            >
+                              {PIPELINE_STEPS.map((step, index) => {
+                                const isRejected =
+                                  selectedCase.stage === "rejected";
+                                const isCompleted =
+                                  !isRejected &&
+                                  currentStageIndex >= 0 &&
+                                  index < currentStageIndex;
+                                const isCurrent =
+                                  !isRejected && index === currentStageIndex;
+                                return (
+                                  <li
+                                    key={step.key}
+                                    style={{
+                                      display: "flex",
+                                      alignItems: "center",
+                                      gap: 6,
+                                      padding: "7px 9px",
+                                      borderRadius: 9,
+                                      border: "1px solid",
+                                      borderColor: isCurrent
+                                        ? "var(--pine-800, #1c7a5d)"
+                                        : isCompleted
+                                          ? "#bbf7d0"
+                                          : "var(--line)",
+                                      background: isCurrent
+                                        ? "var(--pine-800, #1c7a5d)"
+                                        : isCompleted
+                                          ? "#edf6f1"
+                                          : "var(--white)",
+                                      color: isCurrent
+                                        ? "#ffffff"
+                                        : isCompleted
+                                          ? "#135b45"
+                                          : "var(--muted)",
+                                      fontSize: 11.5,
+                                      fontWeight: isCurrent || isCompleted ? 700 : 600,
+                                      minWidth: 0,
+                                    }}
+                                  >
+                                    <span
+                                      style={{
+                                        width: 18,
+                                        height: 18,
+                                        borderRadius: "50%",
+                                        display: "inline-flex",
+                                        alignItems: "center",
+                                        justifyContent: "center",
+                                        flexShrink: 0,
+                                        fontSize: 10,
+                                        fontWeight: 800,
+                                        background: isCurrent
+                                          ? "rgba(255,255,255,0.22)"
+                                          : isCompleted
+                                            ? "#1c7a5d"
+                                            : "rgba(0,0,0,0.06)",
+                                        color:
+                                          isCurrent || isCompleted
+                                            ? "#ffffff"
+                                            : "var(--muted)",
+                                      }}
+                                    >
+                                      {isCompleted ? (
+                                        <Check size={11} />
+                                      ) : (
+                                        index + 1
+                                      )}
+                                    </span>
+                                    <span
+                                      style={{
+                                        overflow: "hidden",
+                                        textOverflow: "ellipsis",
+                                        whiteSpace: "nowrap",
+                                      }}
+                                    >
+                                      {step.label}
+                                    </span>
+                                  </li>
+                                );
+                              })}
+                            </ol>
+
+                            <section
+                              className="hire-section"
+                              style={{
+                                background:
+                                  selectedCase.stage === "rejected"
+                                    ? "#fef2f2"
+                                    : "#f8faf9",
+                                border:
+                                  selectedCase.stage === "rejected"
+                                    ? "1px solid #fecaca"
+                                    : "1px solid #dce7e1",
+                                marginBottom: 16,
+                              }}
+                            >
+                              <div>
+                                <span
+                                  className={`hire-pill ${selectedCase.stage}`}
+                                  style={{
+                                    textTransform: "uppercase",
+                                    fontSize: "10px",
+                                    fontWeight: 800,
+                                  }}
+                                >
+                                  Current Stage: {titleCase(selectedCase.stage)}
+                                </span>
+                                <h3
+                                  style={{
+                                    margin: "6px 0 2px",
+                                    fontSize: "15px",
+                                    color: "var(--foreground, #0f172a)",
+                                  }}
+                                >
+                                  {selectedCase.stage === "applied" &&
+                                    "Step 1: Schedule Joint Interview"}
+                                  {selectedCase.stage === "interview" &&
+                                    (needsMusicAudition
+                                      ? "Step 2: Complete Audition & Department Reviews"
+                                      : "Step 2: Complete HR & Department Reviews")}
+                                  {selectedCase.stage === "selected" &&
+                                    "Step 3: Account Invitation, Agreements & Training"}
+                                  {selectedCase.stage === "ready" &&
+                                    "Step 4: Finalize Payroll Check & Activate"}
+                                  {selectedCase.stage === "activated" &&
+                                    `Active ${roleLabel(
+                                      selectedCase.desired_role
+                                    )} Account`}
+                                  {selectedCase.stage === "rejected" &&
+                                    "Case Closed (Rejected)"}
+                                </h3>
+                                <p
+                                  style={{
+                                    margin: 0,
+                                    fontSize: "12px",
+                                    color: "var(--muted, #64748b)",
+                                  }}
+                                >
+                                  {selectedCase.stage === "applied" &&
+                                    "Schedule a joint interview date and time to advance this candidate to the interview stage."}
+                                  {selectedCase.stage === "interview" &&
+                                    (needsMusicAudition
+                                      ? "Record the HR interview, departmental review, and music audition in the Reviews tab. Passing reviews unlock selection."
+                                      : "Record the independent HR and departmental interviews in the Reviews tab. Passing reviews unlock selection.")}
+                                  {selectedCase.stage === "selected" &&
+                                    "Link or invite the applicant account, publish guidelines and agreement PDFs, verify training, and finalize handoff."}
+                                  {selectedCase.stage === "ready" &&
+                                    "All onboarding requirements and payroll checks are met. Click Activate Account to grant full academy permissions."}
+                                  {selectedCase.stage === "activated" &&
+                                    `This ${roleLabel(
+                                      selectedCase.desired_role
+                                    ).toLowerCase()} account is active in the academy.`}
+                                  {selectedCase.stage === "rejected" &&
+                                    "This recruitment case has been concluded."}
+                                </p>
+                              </div>
+                            </section>
+
+                            {/* Detail Tabs */}
+                            <div
+                              className="portal-tabs"
+                              role="tablist"
+                              aria-label="Candidate case sections"
+                            >
+                              <button
+                                type="button"
+                                role="tab"
+                                aria-selected={detailTab === "next_step"}
+                                className={`portal-tab ${
+                                  detailTab === "next_step" ? "active" : ""
+                                }`}
+                                onClick={() => setDetailTab("next_step")}
+                              >
+                                Next Step &amp; Docs
+                              </button>
+                              {maySeeReviewDetails && (
+                                <button
+                                  type="button"
+                                  role="tab"
+                                  aria-selected={detailTab === "reviews"}
+                                  className={`portal-tab ${
+                                    detailTab === "reviews" ? "active" : ""
+                                  }`}
+                                  onClick={() => setDetailTab("reviews")}
+                                >
+                                  Reviews
+                                  <span className="portal-tab-badge">
+                                    {reviewsForCase.length}
+                                  </span>
+                                </button>
+                              )}
+                              <button
+                                type="button"
+                                role="tab"
+                                aria-selected={detailTab === "timeline"}
+                                className={`portal-tab ${
+                                  detailTab === "timeline" ? "active" : ""
+                                }`}
+                                onClick={() => setDetailTab("timeline")}
+                              >
+                                Timeline
+                                <span className="portal-tab-badge">
+                                  {eventsForCase.length}
+                                </span>
+                              </button>
+                            </div>
+                          </>
+                        )}
+
+                        {isApplicant ? (
+                          <HiringCaseDetail
+                            key={selectedCase.id}
+                            selectedCase={selectedCase}
+                            data={data}
+                            viewMode="applicant"
+                            isApplicant={isApplicant}
+                            isOwner={isOwner}
+                            isHR={isHR}
+                            isQC={isQC}
+                            isActive={isActive}
+                            busy={busy}
+                            actionError={actionError}
+                            deviceTimezone={deviceTimezone}
+                            staffName={staffName}
+                            currentFiles={currentFiles}
+                            eventsForCase={eventsForCase}
+                            canSchedule={canSchedule}
+                            canGuidelines={canGuidelines}
+                            canAgreement={canAgreement}
+                            canUploadEvidence={canUploadEvidence}
+                            canAccept={canAccept}
+                            canHandoff={canHandoff}
+                            canReturn={canReturn}
+                            canActivate={canActivate}
+                            canReject={canReject}
+                            applicantNameMatches={applicantNameMatches}
+                            matchingApplicants={matchingApplicants}
+                            pendingUploads={pendingUploads}
+                            fileInputRevision={fileInputRevision}
+                            onSubmitSchedule={submitSchedule}
+                            onBindApplicant={runBind}
+                            onInviteApplicant={runInvite}
+                            onUploadFile={uploadFile}
+                            onSubmitAccept={submitAccept}
+                            onSubmitHandoff={submitHandoff}
+                            onSubmitReturn={submitReturn}
+                            onSubmitActivation={submitActivation}
+                            onRejectCase={(notes) =>
+                              postNoteAction(
+                                "reject",
+                                notes,
+                                "The hiring case is marked rejected."
+                              )
+                            }
+                          />
+                        ) : detailTab === "reviews" && maySeeReviewDetails ? (
                           <HiringReviewForm
                             key={selectedCase.id}
                             selectedCase={selectedCase}
@@ -1329,6 +1710,7 @@ export default function HiringPage() {
                             maySelect={maySelect}
                             isActive={isActive}
                             busy={busy}
+                            actionError={actionError}
                             staffName={staffName}
                             onSubmitReview={submitReview}
                             onSelectApplicant={(notes) =>
@@ -1339,56 +1721,82 @@ export default function HiringPage() {
                               )
                             }
                           />
+                        ) : (
+                          <HiringCaseDetail
+                            key={`${selectedCase.id}:${detailTab}`}
+                            selectedCase={selectedCase}
+                            data={data}
+                            viewMode={
+                              detailTab === "timeline"
+                                ? "timeline"
+                                : "next_step"
+                            }
+                            isApplicant={isApplicant}
+                            isOwner={isOwner}
+                            isHR={isHR}
+                            isQC={isQC}
+                            isActive={isActive}
+                            busy={busy}
+                            actionError={actionError}
+                            deviceTimezone={deviceTimezone}
+                            staffName={staffName}
+                            currentFiles={currentFiles}
+                            eventsForCase={eventsForCase}
+                            canSchedule={canSchedule}
+                            canGuidelines={canGuidelines}
+                            canAgreement={canAgreement}
+                            canUploadEvidence={canUploadEvidence}
+                            canAccept={canAccept}
+                            canHandoff={canHandoff}
+                            canReturn={canReturn}
+                            canActivate={canActivate}
+                            canReject={canReject}
+                            applicantNameMatches={applicantNameMatches}
+                            matchingApplicants={matchingApplicants}
+                            pendingUploads={pendingUploads}
+                            fileInputRevision={fileInputRevision}
+                            onSubmitSchedule={submitSchedule}
+                            onBindApplicant={runBind}
+                            onInviteApplicant={runInvite}
+                            onUploadFile={uploadFile}
+                            onSubmitAccept={submitAccept}
+                            onSubmitHandoff={submitHandoff}
+                            onSubmitReturn={submitReturn}
+                            onSubmitActivation={submitActivation}
+                            onRejectCase={(notes) =>
+                              postNoteAction(
+                                "reject",
+                                notes,
+                                "The hiring case is marked rejected."
+                              )
+                            }
+                          />
                         )}
-
-                        <HiringCaseDetail
-                          key={selectedCase.id}
-                          selectedCase={selectedCase}
-                          data={data}
-                          isApplicant={isApplicant}
-                          isOwner={isOwner}
-                          isHR={isHR}
-                          isQC={isQC}
-                          isActive={isActive}
-                          busy={busy}
-                          deviceTimezone={deviceTimezone}
-                          staffName={staffName}
-                          currentFiles={currentFiles}
-                          eventsForCase={eventsForCase}
-                          canSchedule={canSchedule}
-                          canGuidelines={canGuidelines}
-                          canAgreement={canAgreement}
-                          canUploadEvidence={canUploadEvidence}
-                          canAccept={canAccept}
-                          canHandoff={canHandoff}
-                          canReturn={canReturn}
-                          canActivate={canActivate}
-                          canReject={canReject}
-                          applicantNameMatches={applicantNameMatches}
-                          matchingApplicants={matchingApplicants}
-                          pendingUploads={pendingUploads}
-                          fileInputRevision={fileInputRevision}
-                          onSubmitSchedule={submitSchedule}
-                          onBindApplicant={runBind}
-                          onInviteApplicant={runInvite}
-                          onUploadFile={uploadFile}
-                          onSubmitAccept={submitAccept}
-                          onSubmitHandoff={submitHandoff}
-                          onSubmitReturn={submitReturn}
-                          onSubmitActivation={submitActivation}
-                          onRejectCase={async (notes) => {
-                            await postNoteAction(
-                              "reject",
-                              notes,
-                              "The hiring case is marked rejected."
-                            );
-                          }}
-                        />
                       </div>
                     </section>
                   )}
                 </div>
               </div>
+
+              {/* Add Candidate Modal */}
+              <PortalModal
+                open={addCandidateOpen}
+                onClose={() => setAddCandidateOpen(false)}
+                eyebrow="New recruitment case"
+                title="Add candidate"
+                subtitle="Open a hiring case and assign the departmental reviewer."
+                size="lg"
+                busy={busy === "create"}
+              >
+                <HiringCandidateForm
+                  data={data}
+                  isActive={isActive}
+                  busy={busy}
+                  error={actionError}
+                  onCancel={() => setAddCandidateOpen(false)}
+                  onSubmitCreate={submitCreate}
+                />
+              </PortalModal>
             </>
           )
         )}

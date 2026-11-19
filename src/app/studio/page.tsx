@@ -1,6 +1,5 @@
 "use client";
 
-import Link from "next/link";
 import {
   useCallback,
   useEffect,
@@ -13,64 +12,34 @@ import {
   Activity,
   AlertCircle,
   BookOpen,
-  CalendarDays,
-  Camera,
   Check,
-  FileText,
-  Headphones,
-  LoaderCircle,
-  Mic,
-  Music2,
-  Pause,
-  Play,
+  MessageSquare,
   RefreshCw,
-  Send,
   ShieldAlert,
   ShieldCheck,
-  Sparkles,
-  Square,
-  Star,
-  Timer,
-  Trophy,
-  Upload,
+  X,
 } from "lucide-react";
 
 import { useConfirmModal } from "@/app/_components/ConfirmModal";
 import { readJson } from "@/lib/academy/web-client";
 import {
-  type Payload,
   type StudentRow,
-  type PracticeRow,
   type RequestKind,
   type RequestStatus,
   type RequestRow,
-  type ReplyRow,
-  type EvaluationRow,
-  type RepertoireEvent,
-  type LessonRow,
-  type FileRow,
   type StudioData,
-  type JsonResult,
-  quizPrompts,
   rubric,
   mimeChoices,
   roleKey,
-  textValue,
-  numberValue,
   studentName,
   dateOfBirth,
   studentTimezone,
   avatarId,
   initials,
   validDate,
-  localParts,
-  ageOn,
-  dayKey,
   completedPracticeStreak,
   birthdayDaysAway,
   formatDate,
-  formatDuration,
-  songsSummary,
   songIsListed,
   dueLessons,
   errorMessage,
@@ -86,25 +55,10 @@ import StudioPracticeHistorySection from "./components/StudioPracticeHistorySect
 import StudioEvaluationsSection from "./components/StudioEvaluationsSection";
 import StudioPracticeControlsSection from "./components/StudioPracticeControlsSection";
 
-/**
- * ============================================================================
- * PROSPERWORK MUSIC ACADEMY - STUDIO WORKSPACE CONTROLLER
- * ============================================================================
- * Coordinates the music student practice studio, audio recording clips,
- * teacher pedagogical evaluations, repertoire milestone tracking,
- * birthday tribute generators, and asynchronous studio requests.
- *
- * Modularized Components:
- * - StudioBirthdaySection: AI-powered personalized birthday cards & tributes.
- * - StudioAskSection: Family / student request submission form.
- * - StudioThreadsSection: Saved request queue with staff decisions & replies.
- * - ConfirmModal: Centralized confirmation dialogs (e.g. rejecting requests).
- * - studio-types: Strongly typed contracts and pure domain helpers.
- */
+type StudioTab = "practice" | "repertoire" | "requests";
+
 export default function StudioPage() {
-  // --------------------------------------------------------------------------
   // Core Server Data & Clock Sync State
-  // --------------------------------------------------------------------------
   const [data, setData] = useState<StudioData | null>(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -113,15 +67,16 @@ export default function StudioPage() {
   const [notice, setNotice] = useState("");
   const [busy, setBusy] = useState("");
   const [selectedChildId, setSelectedChildId] = useState("");
+  const [activeTab, setActiveTab] = useState<StudioTab>("practice");
+  const tabInitializedRef = useRef(false);
+  const [showAllStudentsRequests, setShowAllStudentsRequests] = useState(false);
   const [serverClockAnchor, setServerClockAnchor] = useState<{
     serverMs: number;
     clientMs: number;
   } | null>(null);
   const [tick, setTick] = useState(0);
 
-  // --------------------------------------------------------------------------
   // Request & Conversation State
-  // --------------------------------------------------------------------------
   const [requestKind, setRequestKind] = useState<RequestKind>("song");
   const [requestBody, setRequestBody] = useState("");
   const [requestLessonId, setRequestLessonId] = useState("");
@@ -130,18 +85,11 @@ export default function StudioPage() {
     Record<string, Exclude<RequestStatus, "open">>
   >({});
 
-  // --------------------------------------------------------------------------
-  // Curriculum, Repertoire & Evaluation Draft State
-  // --------------------------------------------------------------------------
-  const [repertoireDrafts, setRepertoireDrafts] = useState<
-    Record<string, string>
-  >({});
+  // Quiz & Reports State
   const [quizAnswers, setQuizAnswers] = useState<string[]>(Array(6).fill(""));
   const [reportMonths, setReportMonths] = useState<Record<string, string>>({});
 
-  // --------------------------------------------------------------------------
   // Media Recorder & Audio Synthesis State
-  // --------------------------------------------------------------------------
   const [recording, setRecording] = useState(false);
   const [recordingMode, setRecordingMode] = useState<"audio" | "video" | null>(
     null
@@ -154,9 +102,7 @@ export default function StudioPage() {
   const [clipUploading, setClipUploading] = useState(false);
   const [keyboardNote, setKeyboardNote] = useState("");
 
-  // --------------------------------------------------------------------------
   // Modal Confirmations & Hardware Refs
-  // --------------------------------------------------------------------------
   const { confirm, ConfirmDialog } = useConfirmModal();
   const recorderRef = useRef<MediaRecorder | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
@@ -200,6 +146,19 @@ export default function StudioPage() {
         clientMs: Date.now(),
       });
       setData(payload);
+      if (!tabInitializedRef.current) {
+        tabInitializedRef.current = true;
+        const r = roleKey(payload.profile.role ?? "");
+        const familyRole = [
+          "parent",
+          "guardian",
+          "student",
+          "family",
+          "family_parent",
+          "parent_student",
+        ].includes(r);
+        setActiveTab(familyRole ? "practice" : "repertoire");
+      }
       return payload;
     } catch (cause) {
       setError(
@@ -217,6 +176,7 @@ export default function StudioPage() {
   useEffect(() => {
     void load();
   }, [load]);
+
   const hasRunningPractice = Boolean(
     data?.practice.some((row) => row.status === "running")
   );
@@ -226,6 +186,7 @@ export default function StudioPage() {
     const interval = window.setInterval(() => setTick(Date.now()), 1000);
     return () => window.clearInterval(interval);
   }, [hasRunningPractice]);
+
   useEffect(() => {
     if (!clipBlob) {
       setClipPreviewUrl("");
@@ -235,6 +196,7 @@ export default function StudioPage() {
     setClipPreviewUrl(url);
     return () => URL.revokeObjectURL(url);
   }, [clipBlob]);
+
   useEffect(() => {
     unmountedRef.current = false;
     return () => {
@@ -264,15 +226,32 @@ export default function StudioPage() {
   }, []);
 
   const role = roleKey(data?.profile.role ?? "");
-  const perms = useMemo(() => new Set(data?.profile.permissions ?? []), [data?.profile?.permissions]);
+  const perms = useMemo(
+    () => new Set(data?.profile.permissions ?? []),
+    [data?.profile?.permissions]
+  );
   const isActive = data?.profile.status.trim().toLowerCase() === "active";
   const isOwner = role === "owner" || role === "super_admin";
   const isQualityControl =
-    role === "qc" || role === "quality_control" || role === "quality_assurance" || perms.has("reports.learning");
-  const isTeacher = role === "teacher" || data?.profile.department === "Music Education" || role.includes("teacher") || perms.has("workspace.learning");
-  const isHeadAdmin = role === "head_admin" || role === "headadmin" || perms.has("workspace.management");
+    role === "qc" ||
+    role === "quality_control" ||
+    role === "quality_assurance" ||
+    perms.has("reports.learning");
+  const isTeacher =
+    role === "teacher" ||
+    data?.profile.department === "Music Education" ||
+    role.includes("teacher") ||
+    perms.has("workspace.learning");
+  const isHeadAdmin =
+    role === "head_admin" ||
+    role === "headadmin" ||
+    perms.has("workspace.management");
   const isAdmin =
-    role === "admin" || role === "administrator" || isHeadAdmin || isOwner || perms.has("workspace.studio");
+    role === "admin" ||
+    role === "administrator" ||
+    isHeadAdmin ||
+    isOwner ||
+    perms.has("workspace.studio");
   const isStaff = !["parent", "guardian", "student", "family"].includes(role);
   const isFamily = [
     "parent",
@@ -282,6 +261,7 @@ export default function StudioPage() {
     "family_parent",
     "parent_student",
   ].includes(role);
+
   const selectedChild =
     data?.students.find((student) => student.id === selectedChildId) ??
     data?.students[0] ??
@@ -298,6 +278,7 @@ export default function StudioPage() {
   const canManageSong = Boolean(
     isActive && (isTeacher || isQualityControl || isOwner)
   );
+
   const clientNowMs = tick || Date.now();
   const clockNowMs = serverClockAnchor
     ? serverClockAnchor.serverMs + (clientNowMs - serverClockAnchor.clientMs)
@@ -309,6 +290,7 @@ export default function StudioPage() {
         : new Date(clockNowMs),
     [data?.serverNow, clockNowMs]
   );
+
   const selectedPractice =
     data?.practice
       .filter((row) => row.student_id === selectedChild?.id)
@@ -382,22 +364,16 @@ export default function StudioPage() {
         : [],
     [data?.requests, isHeadAdmin, clockNowMs]
   );
-  const activeStudentIds = new Set(
-    data?.practice
-      .filter((row) => row.status === "running" || row.status === "paused")
-      .map((row) => row.student_id) ?? []
+  const activeStudentIds = useMemo(
+    () =>
+      new Set(
+        data?.practice
+          .filter((row) => row.status === "running" || row.status === "paused")
+          .map((row) => row.student_id) ?? []
+      ),
+    [data?.practice]
   );
   const profileActive = Boolean(isActive);
-
-  const currentPracticeForStudent = (studentId: string) =>
-    data?.practice
-      .filter(
-        (row) =>
-          row.student_id === studentId &&
-          (row.status === "running" || row.status === "paused")
-      )
-      .slice()
-      .sort((a, b) => b.started_at.localeCompare(a.started_at))[0] ?? null;
 
   const apiPost = async (body: Record<string, unknown>) => {
     const response = await fetch("/api/studio", {
@@ -415,12 +391,12 @@ export default function StudioPage() {
   const practiceOperation = async (
     operation: "create" | "pause" | "resume" | "complete" | "quiz",
     answers?: number[]
-  ) => {
-    if (!canPractice || !selectedChild) return;
-    if (operation === "create" && activeRun) return;
-    if (operation !== "create" && !activeRun) return;
+  ): Promise<boolean> => {
+    if (!canPractice || !selectedChild) return false;
+    if (operation === "create" && activeRun) return false;
+    if (operation !== "create" && !activeRun) return false;
     if (operation === "quiz" && (!activeRun || activeRun.status !== "running"))
-      return;
+      return false;
     setBusy(`practice:${operation}`);
     setActionError("");
     setNotice("");
@@ -442,7 +418,7 @@ export default function StudioPage() {
       );
       if (!row)
         throw new Error(
-          "The operation was accepted, but no matching saved practice record was returned. Refresh before relying on its state."
+          "Your practice update was received, but could not be verified yet. Please refresh."
         );
       const valid =
         operation === "create" || operation === "resume"
@@ -456,12 +432,10 @@ export default function StudioPage() {
             row.game_total !== null &&
             row.game_total !== undefined;
       if (!valid)
-        throw new Error(
-          "The studio has not returned the requested saved practice state yet."
-        );
+        throw new Error("The updated practice status is not visible yet.");
       setNotice(
         operation === "quiz"
-          ? `Saved score: ${row.game_score} / ${row.game_total}.`
+          ? `Quiz score saved: ${row.game_score} / ${row.game_total}.`
           : operation === "complete"
           ? `Practice finished at ${formatDate(
               row.ended_at,
@@ -473,35 +447,39 @@ export default function StudioPage() {
                 : operation === "pause"
                 ? "paused"
                 : "resumed"
-            } and saved.`
+            }.`
       );
       if (operation === "quiz") setQuizAnswers(Array(6).fill(""));
+      return true;
     } catch (cause) {
       setActionError(
         cause instanceof Error
           ? cause.message
           : "The practice action could not be saved."
       );
+      return false;
     } finally {
       setBusy("");
     }
   };
 
-  const createRequest = async (event: FormEvent<HTMLFormElement>) => {
+  const createRequest = async (
+    event: FormEvent<HTMLFormElement>
+  ): Promise<boolean> => {
     event.preventDefault();
-    if (!canCreateRequest || !selectedChild) return;
+    if (!canCreateRequest || !selectedChild) return false;
     const bodyText = requestBody.trim();
     if (!bodyText) {
-      setActionError("Add a message before sending the request.");
-      return;
+      setActionError("Add a message before sending your request.");
+      return false;
     }
     let lessonId: string | undefined;
     if (requestKind === "class_not_started") {
       if (!selectedDueLessons.some((lesson) => lesson.id === requestLessonId)) {
         setActionError(
-          "Choose a currently due lesson from the selected student."
+          "Choose a currently due lesson for the selected student."
         );
-        return;
+        return false;
       }
       lessonId = requestLessonId;
     }
@@ -530,30 +508,31 @@ export default function StudioPage() {
             );
       if (!saved)
         throw new Error(
-          "The request endpoint responded, but the saved request is not visible yet. Refresh to check its status."
+          "Your request was sent, but is not visible yet. Refresh to confirm."
         );
       setRequestBody("");
       setRequestLessonId("");
-      setNotice(
-        "Request recorded in the studio queue. Email delivery is not part of this queue."
-      );
+      setNotice("Your request has been sent to the studio team.");
+      setActiveTab("requests");
+      return true;
     } catch (cause) {
       setActionError(
         cause instanceof Error
           ? cause.message
-          : "The request could not be recorded."
+          : "The request could not be sent."
       );
+      return false;
     } finally {
       setBusy("");
     }
   };
 
-  const sendReply = async (request: RequestRow) => {
-    if (!canReply) return;
+  const sendReply = async (request: RequestRow): Promise<boolean> => {
+    if (!canReply) return false;
     const body = (replyBodies[request.id] ?? "").trim();
     if (!body) {
       setActionError("Write a reply before sending it.");
-      return;
+      return false;
     }
     setBusy(`reply:${request.id}`);
     setActionError("");
@@ -576,14 +555,16 @@ export default function StudioPage() {
             );
       if (!saved)
         throw new Error(
-          "The reply endpoint responded, but the saved reply is not visible yet. Refresh to check the thread."
+          "Your reply was posted, but is not visible yet. Refresh to confirm."
         );
       setReplyBodies((previous) => ({ ...previous, [request.id]: "" }));
-      setNotice("Reply saved to the request thread.");
+      setNotice("Reply posted to the thread.");
+      return true;
     } catch (cause) {
       setActionError(
         cause instanceof Error ? cause.message : "The reply could not be saved."
       );
+      return false;
     } finally {
       setBusy("");
     }
@@ -595,16 +576,17 @@ export default function StudioPage() {
     if (request.kind === "song") return canManageSong;
     return isAdmin;
   };
+
   const decideRequest = async (
     request: RequestRow,
     status: Exclude<RequestStatus, "open">,
     note: string
-  ) => {
-    if (!canDecideRequest(request)) return;
+  ): Promise<boolean> => {
+    if (!canDecideRequest(request)) return false;
     const body = note.trim();
     if (!body) {
       setActionError("A decision note is required.");
-      return;
+      return false;
     }
     setBusy(`decide:${request.id}`);
     setActionError("");
@@ -629,21 +611,19 @@ export default function StudioPage() {
       );
       if (!saved || saved.status !== status || !replySaved)
         throw new Error(
-          "The request status and decision note are not both visible in the saved thread yet. Refresh before treating this decision as complete."
+          "The updated status and note are not visible yet. Please refresh to confirm."
         );
       if (typeof result.ok === "boolean" && result.ok === false)
-        throw new Error("The request decision was not accepted.");
-      setNotice(
-        `Request marked ${titleCase(
-          status
-        )}. The note is recorded in the thread.`
-      );
+        throw new Error("The request update was not accepted.");
+      setNotice(`Request marked ${titleCase(status)}.`);
+      return true;
     } catch (cause) {
       setActionError(
         cause instanceof Error
           ? cause.message
           : "The request decision could not be saved."
       );
+      return false;
     } finally {
       setBusy("");
     }
@@ -701,9 +681,9 @@ export default function StudioPage() {
             );
       if (!saved)
         throw new Error(
-          "The evaluation endpoint responded, but no matching saved evaluation is visible yet. Refresh to verify it."
+          "The evaluation was submitted, but is not visible yet. Refresh to verify."
         );
-      setNotice("Evaluation saved and visible in the student record.");
+      setNotice("Evaluation saved.");
       return true;
     } catch (cause) {
       setActionError(
@@ -719,13 +699,14 @@ export default function StudioPage() {
 
   const updateRepertoire = async (
     student: StudentRow,
-    operation: "plan" | "complete"
-  ) => {
-    if (!canEditRepertoire) return;
-    const song = (repertoireDrafts[student.id] ?? "").trim();
+    operation: "plan" | "complete",
+    songTitle: string
+  ): Promise<boolean> => {
+    if (!canEditRepertoire) return false;
+    const song = songTitle.trim();
     if (song.length < 2 || song.length > 150) {
       setActionError("Enter a song title between 2 and 150 characters.");
-      return;
+      return false;
     }
     setBusy(`repertoire:${student.id}`);
     setActionError("");
@@ -773,21 +754,22 @@ export default function StudioPage() {
             );
       if (!fresh || savedEvents <= priorCount || !canonicalUpdated) {
         throw new Error(
-          "The repertoire action was accepted, but its updated student song list and audit record are not both visible yet. Refresh before retrying."
+          "The song list update was accepted, but not yet reflected. Refresh before retrying."
         );
       }
-      setRepertoireDrafts((previous) => ({ ...previous, [student.id]: "" }));
       setNotice(
         operation === "plan"
-          ? "Song added to the student’s practice plan."
-          : "Song marked complete in the student’s song list."
+          ? `Added "${song}" to ${studentName(student)}'s practice plan.`
+          : `Marked "${song}" complete!`
       );
+      return true;
     } catch (cause) {
       setActionError(
         cause instanceof Error
           ? cause.message
           : "The song list could not be updated."
       );
+      return false;
     } finally {
       setBusy("");
     }
@@ -837,9 +819,7 @@ export default function StudioPage() {
         if (event.data.size > 0) chunksRef.current.push(event.data);
       };
       recorder.onerror = () => {
-        setCaptureError(
-          "The browser recording failed. Your studio session is unchanged."
-        );
+        setCaptureError("Recording failed. Your practice session is unchanged.");
         stream.getTracks().forEach((track) => track.stop());
         streamRef.current = null;
         chunksRef.current = [];
@@ -856,14 +836,14 @@ export default function StudioPage() {
         setRecording(false);
         if (!/^(audio|video)\/(webm|mp4)/i.test(mime)) {
           setCaptureError(
-            "This browser produced a format outside the supported WebM/MP4 upload formats."
+            "This browser produced an unsupported format. Please use WebM or MP4."
           );
           return;
         }
         setClipBlob(blob);
         if (blob.size > 50 * 1024 * 1024)
           setClipError(
-            "This recording is larger than 50 MiB and cannot be uploaded. Discard it and record a shorter practice clip."
+            "This recording is larger than 50 MiB. Discard it and record a shorter clip."
           );
       };
       recorder.start();
@@ -887,12 +867,14 @@ export default function StudioPage() {
     const recorder = recorderRef.current;
     if (recorder && recorder.state !== "inactive") recorder.stop();
   };
+
   const discardClip = () => {
     setClipBlob(null);
     setClipPracticeId(null);
     setClipError("");
     setCaptureError("");
   };
+
   const uploadClip = async () => {
     if (!clipBlob || !clipPracticeId || clipBlob.size > 50 * 1024 * 1024)
       return;
@@ -901,7 +883,7 @@ export default function StudioPage() {
     );
     if (!sessionExists) {
       setClipError(
-        "The original practice record is no longer available in this account. The recording has been kept for retry after refresh."
+        "The original practice session could not be found. Refresh and try uploading again."
       );
       return;
     }
@@ -936,20 +918,22 @@ export default function StudioPage() {
         throw new Error(errorMessage(result, response.status));
       setClipBlob(null);
       setClipPracticeId(null);
-      setNotice("Practice recording upload was accepted by the file service.");
+      setNotice("Practice recording saved.");
       await load();
     } catch (cause) {
       setClipError(
         cause instanceof Error
           ? cause.message
-          : "Practice recording upload failed. The recording is retained so you can retry."
+          : "Upload failed. Your clip is still here so you can retry."
       );
     } finally {
       setClipUploading(false);
     }
   };
 
-  const submitQuiz = async (event: FormEvent<HTMLFormElement>) => {
+  const submitQuiz = async (
+    event: FormEvent<HTMLFormElement>
+  ): Promise<boolean> => {
     event.preventDefault();
     const answers = quizAnswers.map((value) => Number(value));
     if (
@@ -957,11 +941,11 @@ export default function StudioPage() {
       quizAnswers.some((value) => value === "") ||
       answers.some((value) => !Number.isInteger(value) || value < 0)
     ) {
-      setActionError("Enter a whole-number answer for all six prompts.");
-      return;
+      setActionError("Enter a whole-number answer for all six questions.");
+      return false;
     }
     setActionError("");
-    await practiceOperation("quiz", answers);
+    return practiceOperation("quiz", answers);
   };
 
   const playNote = (frequency: number, label: string) => {
@@ -1010,19 +994,51 @@ export default function StudioPage() {
         serverNowDate
       )
     : 0;
-  const openRequests =
-    data?.requests
+
+  const filteredRequests = useMemo(() => {
+    const all = (data?.requests ?? [])
       .slice()
-      .sort((a, b) => b.created_at.localeCompare(a.created_at)) ?? [];
+      .sort((a, b) => b.created_at.localeCompare(a.created_at));
+    if (!selectedChild) return all;
+    if (isStaff && showAllStudentsRequests) return all;
+    return all.filter((row) => row.student_id === selectedChild.id);
+  }, [data?.requests, selectedChild, isStaff, showAllStudentsRequests]);
+
+  const pendingRequestCount = useMemo(
+    () =>
+      filteredRequests.filter(
+        (row) => row.status === "open" || row.status === "in_progress"
+      ).length,
+    [filteredRequests]
+  );
+
   const evaluationsForChild =
     data?.evaluations
       .filter((row) => row.student_id === selectedChild?.id)
       .slice()
       .sort((a, b) => b.created_at.localeCompare(a.created_at)) ?? [];
+
   const monthDefault =
     data?.serverNow && /^\d{4}-\d{2}/.test(data.serverNow)
       ? data.serverNow.slice(0, 7)
       : new Date().toISOString().slice(0, 7);
+
+  const askButtonElement = (
+    <StudioAskSection
+      selectedChild={selectedChild}
+      selectedStudentTimezone={selectedStudentTimezone}
+      selectedDueLessons={selectedDueLessons}
+      canRequest={canCreateRequest}
+      busy={busy}
+      createRequest={createRequest}
+      requestKind={requestKind}
+      setRequestKind={setRequestKind}
+      requestLessonId={requestLessonId}
+      setRequestLessonId={setRequestLessonId}
+      requestBody={requestBody}
+      setRequestBody={setRequestBody}
+    />
+  );
 
   return (
     <main className="pw-family studio-page">
@@ -1030,7 +1046,7 @@ export default function StudioPage() {
         {error && (
           <div className="family-alert studio-alert" role="alert">
             <AlertCircle size={16} />
-            <p>{error}</p>
+            <p style={{ flex: 1 }}>{error}</p>
             <button
               type="button"
               className="family-button subtle"
@@ -1038,30 +1054,52 @@ export default function StudioPage() {
             >
               Try again
             </button>
+            <button
+              type="button"
+              className="family-button subtle"
+              onClick={() => setError("")}
+              aria-label="Dismiss error"
+              style={{ padding: "0 8px", minHeight: 30 }}
+            >
+              <X size={14} />
+            </button>
           </div>
         )}
         {actionError && (
           <div className="family-alert studio-alert" role="alert">
             <AlertCircle size={16} />
-            <p>{actionError}</p>
+            <p style={{ flex: 1 }}>{actionError}</p>
+            <button
+              type="button"
+              className="family-button subtle"
+              onClick={() => setActionError("")}
+              aria-label="Dismiss error"
+              style={{ padding: "0 8px", minHeight: 30 }}
+            >
+              <X size={14} />
+            </button>
           </div>
         )}
         {notice && (
           <div className="family-alert success studio-alert" role="status">
             <Check size={16} />
-            <p>{notice}</p>
+            <p style={{ flex: 1 }}>{notice}</p>
+            <button
+              type="button"
+              className="family-button subtle"
+              onClick={() => setNotice("")}
+              aria-label="Dismiss message"
+              style={{ padding: "0 8px", minHeight: 30 }}
+            >
+              <X size={14} />
+            </button>
           </div>
         )}
+
         {loading && !data ? (
-          <div className="family-grid">
-            <div className="family-card family-card-body">
-              <div className="family-stack">
-                <div className="family-skeleton" />
-                <div className="family-skeleton" />
-                <div className="family-skeleton" />
-              </div>
-            </div>
-            <div className="family-card family-card-body">
+          <div className="family-card family-card-body">
+            <div className="family-stack">
+              <div className="family-skeleton" />
               <div className="family-skeleton" />
               <div className="family-skeleton" />
             </div>
@@ -1071,26 +1109,37 @@ export default function StudioPage() {
             <>
               <div className="studio-heading">
                 <h1>Studio</h1>
-                <button
-                  type="button"
-                  className="family-button subtle"
-                  onClick={() => void load()}
-                  disabled={refreshing}
+                <div
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 8,
+                    flexWrap: "wrap",
+                  }}
                 >
-                  <RefreshCw size={14} />{" "}
-                  {refreshing ? "Refreshing…" : "Refresh"}
-                </button>
+                  {canCreateRequest && activeTab !== "requests" && askButtonElement}
+                  <button
+                    type="button"
+                    className="family-button subtle"
+                    onClick={() => void load()}
+                    disabled={refreshing}
+                  >
+                    <RefreshCw size={14} />{" "}
+                    {refreshing ? "Refreshing…" : "Refresh"}
+                  </button>
+                </div>
               </div>
+
               {!profileActive && (
                 <div className="family-alert info studio-alert" role="status">
                   <ShieldCheck size={16} />
                   <p>
-                    This profile is not active. Studio writing controls are
-                    unavailable; saved records remain viewable according to your
-                    account access.
+                    This profile is currently inactive. Records remain viewable,
+                    while editing actions are paused.
                   </p>
                 </div>
               )}
+
               {escalations.length > 0 && (
                 <section
                   className="studio-card studio-escalation"
@@ -1109,12 +1158,11 @@ export default function StudioPage() {
                         Class-not-started escalation queue
                       </h2>
                       <p>
-                        Head Admin view · unresolved reports at least 15 minutes
-                        old.
+                        Head Admin view · unresolved reports waiting 15+ minutes.
                       </p>
                     </div>
                     <span className="studio-status open">
-                      {escalations.length} aged
+                      {escalations.length} urgent
                     </span>
                   </div>
                   <div className="studio-card-body">
@@ -1144,7 +1192,7 @@ export default function StudioPage() {
                                     60000
                                 )
                               )}{" "}
-                              minutes · Request {request.id}
+                              minutes
                             </div>
                           </div>
                           <span className={`studio-status ${request.status}`}>
@@ -1164,31 +1212,234 @@ export default function StudioPage() {
                 setActionError={setActionError}
               />
 
+              {/* Top Student Selector Bar */}
+              {data.students.length > 0 && selectedChild && (
+                <div
+                  className="studio-card"
+                  style={{
+                    padding: "12px 16px",
+                    marginBottom: 16,
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "space-between",
+                    gap: 14,
+                    flexWrap: "wrap",
+                  }}
+                >
+                  <div
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      gap: 12,
+                      flexWrap: "wrap",
+                      minWidth: 0,
+                      flex: "1 1 260px",
+                    }}
+                  >
+                    <span className="studio-avatar">
+                      {avatarId(selectedChild) ? (
+                        <img
+                          src={`/api/files?id=${encodeURIComponent(
+                            avatarId(selectedChild) as string
+                          )}`}
+                          alt=""
+                        />
+                      ) : (
+                        initials(studentName(selectedChild))
+                      )}
+                    </span>
+                    <div style={{ display: "grid", gap: 3, minWidth: 200 }}>
+                      <label
+                        htmlFor="studio-top-student-select"
+                        style={{
+                          fontSize: 10,
+                          fontWeight: 800,
+                          textTransform: "uppercase",
+                          letterSpacing: "0.06em",
+                          color: "#516259",
+                        }}
+                      >
+                        Active Student
+                      </label>
+                      {data.students.length > 1 ? (
+                        <select
+                          id="studio-top-student-select"
+                          value={selectedChild.id}
+                          onChange={(event) =>
+                            setSelectedChildId(event.target.value)
+                          }
+                          disabled={recording}
+                          style={{
+                            border: "1px solid #dce7df",
+                            borderRadius: 8,
+                            padding: "6px 10px",
+                            fontSize: 13,
+                            fontWeight: 700,
+                            color: "#0c3527",
+                            background: "#f7faf8",
+                          }}
+                        >
+                          {data.students.map((student) => (
+                            <option value={student.id} key={student.id}>
+                              {studentName(student)}
+                            </option>
+                          ))}
+                        </select>
+                      ) : (
+                        <strong style={{ fontSize: 15, color: "#0c3527" }}>
+                          {studentName(selectedChild)}
+                        </strong>
+                      )}
+                    </div>
+                  </div>
+                  <div
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      gap: 8,
+                      flexWrap: "wrap",
+                    }}
+                  >
+                    <span className="studio-status">
+                      {selectedStreak}-day streak
+                    </span>
+                    <span
+                      className={`studio-status ${
+                        activeStudentIds.has(selectedChild.id) ? "running" : ""
+                      }`}
+                    >
+                      {activeStudentIds.has(selectedChild.id)
+                        ? "Practice active"
+                        : "Timer idle"}
+                    </span>
+                  </div>
+                </div>
+              )}
+
+              {/* Top-level Workspace Tabs */}
               <div
-                className="studio-layout"
-                data-portal-layout="studio-workspace"
-                data-studio-has-student={selectedChild ? "true" : "false"}
+                className="portal-tabs"
+                role="tablist"
+                aria-label="Studio sections"
               >
-                <div className="studio-record-column">
+                <button
+                  type="button"
+                  role="tab"
+                  aria-selected={activeTab === "practice"}
+                  className={`portal-tab ${
+                    activeTab === "practice" ? "active" : ""
+                  }`}
+                  onClick={() => setActiveTab("practice")}
+                >
+                  <Activity size={14} aria-hidden="true" />
+                  Practice Room
+                </button>
+                <button
+                  type="button"
+                  role="tab"
+                  aria-selected={activeTab === "repertoire"}
+                  className={`portal-tab ${
+                    activeTab === "repertoire" ? "active" : ""
+                  }`}
+                  onClick={() => setActiveTab("repertoire")}
+                >
+                  <BookOpen size={14} aria-hidden="true" />
+                  Repertoire &amp; Evaluations
+                </button>
+                <button
+                  type="button"
+                  role="tab"
+                  aria-selected={activeTab === "requests"}
+                  className={`portal-tab ${
+                    activeTab === "requests" ? "active" : ""
+                  }`}
+                  onClick={() => setActiveTab("requests")}
+                >
+                  <MessageSquare size={14} aria-hidden="true" />
+                  Studio Requests
+                  {pendingRequestCount > 0 && (
+                    <span className="portal-tab-badge">
+                      {pendingRequestCount}
+                    </span>
+                  )}
+                </button>
+              </div>
+
+              {/* Tab 1: Practice Room */}
+              {activeTab === "practice" && (
+                <div>
+                  {selectedChild ? (
+                    canPractice ? (
+                      <div
+                        className="studio-layout"
+                        data-portal-layout="studio-workspace"
+                        data-studio-has-student="true"
+                      >
+                        <StudioPracticeControlsSection
+                          selectedChild={selectedChild}
+                          selectedStudentTimezone={selectedStudentTimezone}
+                          canPractice={canPractice}
+                          activeRun={activeRun}
+                          runningElapsed={runningElapsed}
+                          busy={busy}
+                          recording={recording}
+                          recordingMode={recordingMode ?? "audio"}
+                          captureError={captureError}
+                          clipError={clipError}
+                          clipBlob={clipBlob}
+                          clipPreviewUrl={clipPreviewUrl}
+                          clipPracticeId={clipPracticeId ?? ""}
+                          clipUploading={clipUploading}
+                          keyboardNote={keyboardNote}
+                          quizAnswers={quizAnswers}
+                          setQuizAnswers={setQuizAnswers}
+                          onPracticeOperation={practiceOperation}
+                          onSubmitQuiz={submitQuiz}
+                          onStartRecording={startRecording}
+                          onStopRecording={stopRecording}
+                          onUploadClip={uploadClip}
+                          onDiscardClip={discardClip}
+                          onPlayNote={playNote}
+                        />
+                        <StudioPracticeHistorySection
+                          practiceList={selectedPractice}
+                          files={data.files}
+                          studentTimezone={selectedStudentTimezone}
+                        />
+                      </div>
+                    ) : (
+                      /* Staff view: hide StudioPracticeControlsSection & keyboard completely */
+                      <StudioPracticeHistorySection
+                        practiceList={selectedPractice}
+                        files={data.files}
+                        studentTimezone={selectedStudentTimezone}
+                      />
+                    )
+                  ) : (
+                    <div className="studio-card">
+                      <div className="studio-empty">
+                        <strong>No student selected</strong>
+                        Practice logs will appear here once a student is linked
+                        to this account.
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* Tab 2: Repertoire & Evaluations */}
+              {activeTab === "repertoire" && (
+                <div style={{ display: "grid", gap: 16 }}>
                   <StudioStudentDossier
                     students={data.students}
                     selectedChild={selectedChild}
-                    recording={recording}
                     activeStudentIds={activeStudentIds}
                     data={data}
                     serverNowDate={serverNowDate}
                     canEditRepertoire={canEditRepertoire}
-                    repertoireDrafts={repertoireDrafts}
                     reportMonths={reportMonths}
                     monthDefault={monthDefault}
                     busy={busy}
-                    onSelectStudent={setSelectedChildId}
-                    onRepertoireChange={(studentId, value) =>
-                      setRepertoireDrafts((previous) => ({
-                        ...previous,
-                        [studentId]: value,
-                      }))
-                    }
                     onReportMonthChange={(studentId, month) =>
                       setReportMonths((previous) => ({
                         ...previous,
@@ -1199,88 +1450,43 @@ export default function StudioPage() {
                   />
 
                   {selectedChild && (
-                    <div className="studio-support-ledgers">
-                      <StudioPracticeHistorySection
-                        practiceList={selectedPractice}
-                        files={data.files}
-                        studentTimezone={selectedStudentTimezone}
-                      />
-
-                      <StudioEvaluationsSection
-                        canEvaluate={canEvaluate}
-                        evaluationsForChild={evaluationsForChild}
-                        timezone={data.profile.timezone || "Africa/Lagos"}
-                        busy={busy}
-                        studentCount={data.students.length}
-                        onSubmitEvaluation={submitEvaluation}
-                      />
-                    </div>
+                    <StudioEvaluationsSection
+                      canEvaluate={canEvaluate}
+                      evaluationsForChild={evaluationsForChild}
+                      timezone={data.profile.timezone || "Africa/Lagos"}
+                      busy={busy}
+                      studentCount={data.students.length}
+                      studentDisplayName={studentName(selectedChild)}
+                      currentProfileId={data.profile.id}
+                      currentProfileName={data.profile.name}
+                      onSubmitEvaluation={submitEvaluation}
+                    />
                   )}
                 </div>
+              )}
 
-                {selectedChild && (
-                  <div className="studio-practice-column">
-                    <StudioPracticeControlsSection
-                      selectedChild={selectedChild}
-                      selectedStudentTimezone={selectedStudentTimezone}
-                      canPractice={canPractice}
-                      isStaff={isStaff}
-                      activeRun={activeRun}
-                      runningElapsed={runningElapsed}
-                      busy={busy}
-                      recording={recording}
-                      recordingMode={recordingMode ?? "audio"}
-                      captureError={captureError}
-                      clipError={clipError}
-                      clipBlob={clipBlob}
-                      clipPreviewUrl={clipPreviewUrl}
-                      clipPracticeId={clipPracticeId ?? ""}
-                      clipUploading={clipUploading}
-                      keyboardNote={keyboardNote}
-                      quizAnswers={quizAnswers}
-                      setQuizAnswers={setQuizAnswers}
-                      onPracticeOperation={practiceOperation}
-                      onSubmitQuiz={submitQuiz}
-                      onStartRecording={startRecording}
-                      onStopRecording={stopRecording}
-                      onUploadClip={uploadClip}
-                      onDiscardClip={discardClip}
-                      onPlayNote={playNote}
-                    />
-
-                    <StudioAskSection
-                      selectedChild={selectedChild}
-                      selectedStudentTimezone={selectedStudentTimezone}
-                      selectedDueLessons={selectedDueLessons}
-                      canRequest={canCreateRequest}
-                      busy={busy}
-                      createRequest={createRequest}
-                      requestKind={requestKind}
-                      setRequestKind={setRequestKind}
-                      requestLessonId={requestLessonId}
-                      setRequestLessonId={setRequestLessonId}
-                      requestBody={requestBody}
-                      setRequestBody={setRequestBody}
-                    />
-                  </div>
-                )}
-              </div>
-
-              <StudioThreadsSection
-                data={data}
-                selectedChild={selectedChild}
-                openRequests={openRequests}
-                canReply={canReply}
-                canDecideRequest={canDecideRequest}
-                busy={busy}
-                sendReply={sendReply}
-                decideRequest={decideRequest}
-                replyBodies={replyBodies}
-                setReplyBodies={setReplyBodies}
-                decisionStatuses={decisionStatuses}
-                setDecisionStatuses={setDecisionStatuses}
-                confirm={confirm}
-              />
+              {/* Tab 3: Studio Requests */}
+              {activeTab === "requests" && (
+                <StudioThreadsSection
+                  data={data}
+                  selectedChild={selectedChild}
+                  openRequests={filteredRequests}
+                  isStaff={isStaff}
+                  showAllStudents={showAllStudentsRequests}
+                  onToggleShowAllStudents={setShowAllStudentsRequests}
+                  canReply={canReply}
+                  canDecideRequest={canDecideRequest}
+                  busy={busy}
+                  sendReply={sendReply}
+                  decideRequest={decideRequest}
+                  replyBodies={replyBodies}
+                  setReplyBodies={setReplyBodies}
+                  decisionStatuses={decisionStatuses}
+                  setDecisionStatuses={setDecisionStatuses}
+                  confirm={confirm}
+                  askAction={canCreateRequest ? askButtonElement : undefined}
+                />
+              )}
             </>
           )
         )}

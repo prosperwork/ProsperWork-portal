@@ -1,12 +1,13 @@
 "use client";
 
 import { useEffect, useState, type FormEvent } from "react";
+import { Upload } from "lucide-react";
+import { PortalModal } from "@/app/_components/PortalModal";
 import {
   bytesLabel,
   dateLabel,
   Empty,
   maxReceiptBytes,
-  receiptRoles,
   type FileMetadata,
   type Payment,
   type WorkflowData,
@@ -14,6 +15,7 @@ import {
 
 export interface WorkflowPaymentsSectionProps {
   data: WorkflowData;
+  canSeeReceipts: boolean;
   isFamily: boolean;
   isHomeworkRoute: boolean;
   initialPaymentId?: string;
@@ -31,6 +33,7 @@ export interface WorkflowPaymentsSectionProps {
 
 export default function WorkflowPaymentsSection({
   data,
+  canSeeReceipts,
   isFamily,
   isHomeworkRoute,
   initialPaymentId = "",
@@ -39,21 +42,19 @@ export default function WorkflowPaymentsSection({
   submitReceipt,
   setActionError,
 }: WorkflowPaymentsSectionProps) {
-  const [paymentId, setPaymentId] = useState(initialPaymentId);
+  const [uploadTarget, setUploadTarget] = useState<Payment | null>(null);
 
   useEffect(() => {
     if (!initialPaymentId) return;
-    if (
-      data.payments.some(
-        (payment) =>
-          payment.id === initialPaymentId && payment.status === "due"
-      )
-    ) {
-      setPaymentId(initialPaymentId);
+    const match = data.payments.find(
+      (payment) => payment.id === initialPaymentId && payment.status === "due"
+    );
+    if (match && data.profile.role === "parent") {
+      setUploadTarget(match);
     }
-  }, [initialPaymentId, data.payments]);
+  }, [initialPaymentId, data.payments, data.profile.role]);
 
-  if (isHomeworkRoute || !receiptRoles.includes(data.profile.role)) {
+  if (isHomeworkRoute || !canSeeReceipts) {
     return null;
   }
 
@@ -67,6 +68,7 @@ export default function WorkflowPaymentsSection({
         </div>
         <span className="wf-count">{data.payments.length} listed</span>
       </header>
+
       {data.payments.length ? (
         <div className="wf-records">
           {data.payments.map((payment) => {
@@ -81,24 +83,20 @@ export default function WorkflowPaymentsSection({
                         payment.status === "paid"
                           ? "good"
                           : payment.status === "receipt_uploaded"
-                          ? "wait"
-                          : ""
+                            ? "wait"
+                            : ""
                       }`}
                     >
                       {payment.status.replace(/_/g, " ")}
                     </span>
                   </div>
                   <div className="wf-record-meta">
-                    Payment record · {payment.currency}{" "}
-                    {payment.amount.toFixed(2)} · due{" "}
+                    {isFamily
+                      ? `Invoice #${payment.id.slice(0, 8)} · `
+                      : "Payment record · "}
+                    {payment.currency} {payment.amount.toFixed(2)} · due{" "}
                     {dateLabel(payment.dueDate)}
                   </div>
-                  {isFamily && (
-                    <div className="wf-record-meta">
-                      Invoice {payment.id.slice(0, 8)} · {payment.studentName} ·{" "}
-                      {payment.currency} {payment.amount.toFixed(2)}
-                    </div>
-                  )}
                   {files.map((file) => (
                     <p className="wf-record-meta" key={file.id}>
                       <a
@@ -118,84 +116,19 @@ export default function WorkflowPaymentsSection({
                     </div>
                   )}
                   {data.profile.role === "parent" &&
-                    payment.status === "due" &&
-                    paymentId !== payment.id && (
-                      <button
-                        className="wf-button secondary"
-                        type="button"
-                        onClick={() => {
-                          setActionError("");
-                          setPaymentId(payment.id);
-                        }}
-                      >
-                        Upload receipt for this payment
-                      </button>
-                    )}
-                  {data.profile.role === "parent" &&
-                    paymentId === payment.id &&
                     payment.status === "due" && (
-                      <form
-                        className="wf-form"
-                        onSubmit={async (event) => {
-                          const ok = await submitReceipt(event, payment.id);
-                          if (ok) setPaymentId("");
-                        }}
-                      >
-                        <div className="wf-form-grid">
-                          <div className="wf-field full">
-                            <span className="wf-help">
-                              Invoice {payment.id.slice(0, 8)} ·{" "}
-                              {payment.studentName} · {payment.currency}{" "}
-                              {payment.amount.toFixed(2)} · due{" "}
-                              {dateLabel(payment.dueDate)} (Max{" "}
-                              {maxReceiptBytes / (1024 * 1024)}MB)
-                            </span>
-                          </div>
-                          <div className="wf-field full">
-                            <label htmlFor={`receipt-file-${payment.id}`}>
-                              Receipt file
-                            </label>
-                            <input
-                              className="wf-file"
-                              id={`receipt-file-${payment.id}`}
-                              name="receiptFile"
-                              type="file"
-                              required
-                              accept=".pdf,.png,.jpg,.jpeg,application/pdf,image/png,image/jpeg"
-                            />
-                          </div>
-                          <div className="wf-field full">
-                            <label htmlFor={`receipt-note-${payment.id}`}>
-                              Note <span aria-hidden="true">(optional)</span>
-                            </label>
-                            <input
-                              id={`receipt-note-${payment.id}`}
-                              name="receiptNote"
-                              type="text"
-                              maxLength={400}
-                              placeholder="Reference for this payment"
-                            />
-                          </div>
-                        </div>
-                        <div className="wf-form-actions">
-                          <button
-                            className="wf-button"
-                            type="submit"
-                            disabled={!!busy}
-                          >
-                            {busy === "receipt"
-                              ? "Uploading…"
-                              : "Submit receipt"}
-                          </button>
-                          <button
-                            className="wf-button secondary"
-                            type="button"
-                            onClick={() => setPaymentId("")}
-                          >
-                            Cancel
-                          </button>
-                        </div>
-                      </form>
+                      <div style={{ marginTop: 8 }}>
+                        <button
+                          className="wf-button secondary"
+                          type="button"
+                          onClick={() => {
+                            setActionError("");
+                            setUploadTarget(payment);
+                          }}
+                        >
+                          <Upload size={13} /> Upload receipt
+                        </button>
+                      </div>
                     )}
                 </div>
               </article>
@@ -208,6 +141,78 @@ export default function WorkflowPaymentsSection({
           detail="When a payment is shared with this account, its current status will appear here."
         />
       )}
+
+      {/* Upload Receipt Modal */}
+      <PortalModal
+        open={Boolean(uploadTarget)}
+        onClose={() => setUploadTarget(null)}
+        eyebrow="Payment proof"
+        title="Upload payment receipt"
+        subtitle={
+          uploadTarget
+            ? `Invoice #${uploadTarget.id.slice(0, 8)} · ${
+                uploadTarget.studentName
+              } · ${uploadTarget.currency} ${uploadTarget.amount.toFixed(
+                2
+              )} · due ${dateLabel(uploadTarget.dueDate)}`
+            : undefined
+        }
+        size="md"
+        busy={busy === "receipt"}
+      >
+        {uploadTarget && (
+          <form
+            className="wf-form"
+            style={{ padding: 0, border: "none", background: "transparent" }}
+            onSubmit={async (event) => {
+              const ok = await submitReceipt(event, uploadTarget.id);
+              if (ok) setUploadTarget(null);
+            }}
+          >
+            <div className="wf-form-grid">
+              <div className="wf-field full">
+                <label htmlFor={`receipt-file-${uploadTarget.id}`}>
+                  Receipt file (PDF, PNG, or JPEG · Max{" "}
+                  {maxReceiptBytes / (1024 * 1024)}MB)
+                </label>
+                <input
+                  className="wf-file"
+                  id={`receipt-file-${uploadTarget.id}`}
+                  name="receiptFile"
+                  type="file"
+                  required
+                  accept=".pdf,.png,.jpg,.jpeg,application/pdf,image/png,image/jpeg"
+                />
+              </div>
+              <div className="wf-field full">
+                <label htmlFor={`receipt-note-${uploadTarget.id}`}>
+                  Note <span aria-hidden="true">(optional)</span>
+                </label>
+                <input
+                  id={`receipt-note-${uploadTarget.id}`}
+                  name="receiptNote"
+                  type="text"
+                  maxLength={400}
+                  placeholder="Reference for this payment"
+                />
+              </div>
+            </div>
+            <div className="modal-actions" style={{ marginTop: 8 }}>
+              <button
+                className="wf-button secondary"
+                type="button"
+                onClick={() => setUploadTarget(null)}
+                disabled={busy === "receipt"}
+              >
+                Cancel
+              </button>
+              <button className="wf-button" type="submit" disabled={!!busy}>
+                {busy === "receipt" ? "Uploading…" : "Submit receipt"}
+              </button>
+            </div>
+          </form>
+        )}
+      </PortalModal>
     </section>
   );
 }
