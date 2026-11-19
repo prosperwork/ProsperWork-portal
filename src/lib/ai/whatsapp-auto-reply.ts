@@ -2,6 +2,7 @@
  * ProsperWork Music Academy - Strict Admissions Intake AI Engine
  * Powered by Groq AI (openai/gpt-oss-120b)
  *
+ * Dynamically fetches instruments from pw_catalog_items and pricing from pw_settings.
  * Strictly collects:
  * 1. Student Name
  * 2. Student Age
@@ -10,6 +11,8 @@
  * Once all three are collected, immediately notifies customer:
  * "Thank you! One of our administrators will contact you shortly."
  */
+
+import { provisioningClient } from "@/lib/supabase/server";
 
 interface WhatsAppReplyContext {
   parentName?: string;
@@ -34,18 +37,50 @@ export interface StrictIntakeResult {
   isComplete: boolean;
 }
 
-const KNOWN_INSTRUMENTS = [
-  "Piano",
-  "Guitar",
-  "Violin",
-  "Voice",
-  "Singing",
-  "Drums",
-  "Saxophone",
-  "Keyboard",
-  "Flute",
-  "Bass",
-];
+/**
+ * Dynamically fetch active catalog instruments and pricing from database
+ */
+export async function fetchAcademyCatalogAndSettings(): Promise<{
+  instruments: string[];
+  pricingText: string;
+}> {
+  try {
+    const db = provisioningClient();
+    const [instRes, settRes] = await Promise.all([
+      db
+        .from("pw_catalog_items")
+        .select("label, code")
+        .eq("catalog", "instruments")
+        .eq("enabled", true)
+        .order("sort_order", { ascending: true }),
+      db
+        .from("pw_settings")
+        .select("settings")
+        .eq("singleton", true)
+        .maybeSingle(),
+    ]);
+
+    const instruments = (instRes.data || [])
+      .map((d: any) => d.label || d.code)
+      .filter(Boolean);
+
+    const settings = (settRes.data?.settings as any) || {};
+    const pricingText =
+      settings.pricing?.standardRate ||
+      settings.pricing?.summary ||
+      "Weekly 1-on-1 personalized sessions";
+
+    return {
+      instruments: instruments.length > 0 ? instruments : ["Piano", "Guitar", "Violin", "Singing", "Drums", "Saxophone"],
+      pricingText,
+    };
+  } catch {
+    return {
+      instruments: ["Piano", "Guitar", "Violin", "Singing", "Drums", "Saxophone"],
+      pricingText: "Weekly 1-on-1 personalized sessions",
+    };
+  }
+}
 
 export async function generateSmartWhatsAppAIReply(
   ctx: WhatsAppReplyContext
@@ -73,16 +108,19 @@ export async function generateSmartWhatsAppAIReply(
     };
   }
 
+  // Dynamically fetch active instruments and pricing from the database
+  const { instruments, pricingText } = await fetchAcademyCatalogAndSettings();
+
   // Pre-seed known values if provided
   const existingName = ctx.knownStudentName && ctx.knownStudentName !== "Unknown" ? ctx.knownStudentName : null;
   const existingAge = ctx.knownAge && ctx.knownAge !== "Unknown" ? ctx.knownAge : null;
   let existingInstrument = ctx.knownInstrument && ctx.knownInstrument !== "Unknown" ? ctx.knownInstrument : null;
 
-  // Local heuristic for instrument detection
+  // Dynamic heuristic for instrument matching from catalog
   const lowerMsg = ctx.incomingMessage.toLowerCase();
-  for (const inst of KNOWN_INSTRUMENTS) {
+  for (const inst of instruments) {
     if (lowerMsg.includes(inst.toLowerCase())) {
-      existingInstrument = inst === "Voice" ? "Singing" : inst;
+      existingInstrument = inst;
       break;
     }
   }
@@ -91,7 +129,7 @@ export async function generateSmartWhatsAppAIReply(
 Your sole job is to strictly collect exactly three pieces of information from the customer:
 1. student_name: The name of the student/child. (Do NOT assume the parent's name unless they explicitly say they are the student).
 2. student_age: The age of the student (e.g. 7, 10, or adult).
-3. instrument: The musical instrument they want to learn (e.g. Piano, Guitar, Singing/Voice, Violin, Drums, Saxophone).
+3. instrument: The musical instrument they want to learn. Available academy instruments: ${instruments.join(", ")}.
 
 Current known values:
 - student_name: ${existingName ? JSON.stringify(existingName) : "null"}
@@ -99,8 +137,7 @@ Current known values:
 - instrument: ${existingInstrument ? JSON.stringify(existingInstrument) : "null"}
 
 Academy context:
-- Personalized 1-on-1 lessons in Piano, Guitar, Singing, Violin, Drums, and Saxophone.
-- Lessons start from £45 / ₦78,000 monthly for weekly 1-on-1 sessions.
+- Lesson rates: ${pricingText}.
 - Complimentary trial assessment is available.
 
 Strict Rules:

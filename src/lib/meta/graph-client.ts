@@ -22,12 +22,12 @@ export function getMetaConfig() {
     pageId: process.env.META_PAGE_ID?.trim() || "",
     accessToken: process.env.META_SYSTEM_USER_ACCESS_TOKEN?.trim() || "",
     portfolioId: process.env.META_BUSINESS_PORTFOLIO_ID?.trim() || "",
-    pixelId: process.env.META_PIXEL_ID?.trim() || "808471361998730",
-    adAccountId: process.env.META_AD_ACCOUNT_ID?.trim() || "act_937170145457887",
+    pixelId: process.env.META_PIXEL_ID?.trim() || "",
+    adAccountId: process.env.META_AD_ACCOUNT_ID?.trim() || "",
     verifyToken: process.env.META_WEBHOOK_VERIFY_TOKEN?.trim() || "",
     graphVersion: process.env.META_GRAPH_API_VERSION?.trim() || "v22.0",
-    whatsAppPhoneNumberId: process.env.WHATSAPP_PHONE_NUMBER_ID?.trim() || "1438014379400273",
-    whatsAppBusinessAccountId: process.env.WHATSAPP_BUSINESS_ACCOUNT_ID?.trim() || "1759883001963705",
+    whatsAppPhoneNumberId: process.env.WHATSAPP_PHONE_NUMBER_ID?.trim() || "",
+    whatsAppBusinessAccountId: process.env.WHATSAPP_BUSINESS_ACCOUNT_ID?.trim() || "",
   };
 }
 

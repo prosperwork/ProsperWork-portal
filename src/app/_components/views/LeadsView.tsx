@@ -184,6 +184,17 @@ export default function LeadsView({
       if (json.messages) {
         setWhatsAppMessages(json.messages);
       }
+      if (Array.isArray(json.admins) && json.admins.length > 0) {
+        setDynamicAdmins(json.admins);
+        setSelectedAdminName((curr) => curr || json.admins[0].name);
+        setSelectedAdminPhone((curr) => curr || json.admins[0].phone);
+      }
+      if (json.pricing?.summary) {
+        setDynamicPricing(json.pricing.summary);
+      }
+      if (json.schoolPhone) {
+        setDynamicSchoolPhone(json.schoolPhone);
+      }
     } catch {
       // quiet fallback
     } finally {
@@ -249,17 +260,20 @@ export default function LeadsView({
     }
   };
 
-  // Admin Handover State
+  // Admin Handover State (Dynamically populated from database settings)
   const [showAdminHandover, setShowAdminHandover] = useState(false);
-  const [selectedAdminName, setSelectedAdminName] = useState("Stephen Matthew");
+  const [dynamicAdmins, setDynamicAdmins] = useState<Array<{ name: string; phone: string; role?: string }>>([]);
+  const [dynamicPricing, setDynamicPricing] = useState<string>("");
+  const [dynamicSchoolPhone, setDynamicSchoolPhone] = useState<string>("");
+  const [selectedAdminName, setSelectedAdminName] = useState("");
   const [customAdminName, setCustomAdminName] = useState("");
-  const [selectedAdminPhone, setSelectedAdminPhone] = useState("+234 703 192 6969");
+  const [selectedAdminPhone, setSelectedAdminPhone] = useState("");
   const [assignAsOwner, setAssignAsOwner] = useState(true);
 
   const effectiveAdminName =
     selectedAdminName === "Custom"
       ? customAdminName.trim() || "Administrator"
-      : selectedAdminName;
+      : selectedAdminName || "Administrator";
 
   const [resettingChat, setResettingChat] = useState(false);
 
@@ -1664,7 +1678,9 @@ export default function LeadsView({
         }
         subtitle={
           whatsAppLead
-            ? `Prosperwork music (+44 7742 534931) ⟷ ${resolveLeadPhone(whatsAppLead)}`
+            ? dynamicSchoolPhone
+              ? `Academy (${dynamicSchoolPhone}) ⟷ ${resolveLeadPhone(whatsAppLead)}`
+              : `WhatsApp Live Chat ⟷ ${resolveLeadPhone(whatsAppLead)}`
             : undefined
         }
         size="lg"
@@ -1857,7 +1873,8 @@ export default function LeadsView({
                   onClick={() => {
                     if (sendingWhatsApp) return;
                     setWhatsAppDraft(
-                      `Our premium 1-on-1 weekly lessons start from £45 / ₦78,000 monthly for 4 sessions, complete with curriculum books, performance assessments, and interactive classroom access.`
+                      dynamicPricing ||
+                        "Our premium 1-on-1 weekly lessons include curriculum books, performance assessments, and interactive classroom access. Our admissions team will share plan details shortly."
                     );
                   }}
                 >
@@ -1928,13 +1945,21 @@ export default function LeadsView({
                         onChange={(e) => {
                           const val = e.target.value;
                           setSelectedAdminName(val);
-                          if (val === "Stephen Matthew") setSelectedAdminPhone("+234 703 192 6969");
-                          else if (val === "ProsperWork Admin") setSelectedAdminPhone("+44 7742 534931");
+                          const matched = dynamicAdmins.find((a) => a.name === val);
+                          if (matched) {
+                            setSelectedAdminPhone(matched.phone);
+                          }
                         }}
                         style={{ width: "100%", padding: "5px 8px", fontSize: "0.78rem", borderRadius: "6px", border: "1px solid #cbd5e1", background: "#fff" }}
                       >
-                        <option value="Stephen Matthew">Stephen Matthew (+234 703 192 6969)</option>
-                        <option value="ProsperWork Admin">ProsperWork Admin (+44 7742 534931)</option>
+                        {dynamicAdmins.length === 0 && (
+                          <option value="">Loading administrators...</option>
+                        )}
+                        {dynamicAdmins.map((adm) => (
+                          <option key={adm.name} value={adm.name}>
+                            {adm.name} {adm.phone ? `(${adm.phone})` : ""}
+                          </option>
+                        ))}
                         <option value="Custom">Custom Administrator...</option>
                       </select>
                       {selectedAdminName === "Custom" && (
@@ -1956,7 +1981,7 @@ export default function LeadsView({
                         type="text"
                         value={selectedAdminPhone}
                         onChange={(e) => setSelectedAdminPhone(e.target.value)}
-                        placeholder="+234..."
+                        placeholder="Enter direct phone number"
                         style={{ width: "100%", padding: "5px 8px", fontSize: "0.78rem", borderRadius: "6px", border: "1px solid #cbd5e1", background: "#fff" }}
                       />
                     </div>

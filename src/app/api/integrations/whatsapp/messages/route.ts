@@ -54,9 +54,37 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: error.message }, { status: 500 });
     }
 
+    // Dynamically fetch active catalog instruments
+    const { data: instrumentRows } = await db
+      .from("pw_catalog_items")
+      .select("label, code")
+      .eq("catalog", "instruments")
+      .eq("enabled", true)
+      .order("sort_order", { ascending: true });
+
+    const instruments = (instrumentRows || []).map((x: any) => x.label || x.code);
+
+    // Dynamically fetch admin contacts, pricing, and school info from database settings
+    const { data: settingsRow } = await db
+      .from("pw_settings")
+      .select("settings")
+      .eq("singleton", true)
+      .maybeSingle();
+
+    const settings = (settingsRow?.settings as any) || {};
+    const adminContacts: Array<{ name: string; phone: string; role?: string }> =
+      Array.isArray(settings.adminContacts) ? settings.adminContacts : [];
+
+    const pricing = settings.pricing || null;
+    const schoolPhone = settings.schoolPhone || process.env.WHATSAPP_DISPLAY_PHONE || "";
+
     return NextResponse.json({
       messages: messages || [],
       phoneConfigured: Boolean(getMetaConfig().whatsAppPhoneNumberId),
+      admins: adminContacts,
+      instruments,
+      pricing,
+      schoolPhone,
     });
   } catch (err) {
     return NextResponse.json(
