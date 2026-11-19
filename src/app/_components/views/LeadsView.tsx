@@ -114,6 +114,29 @@ export default function LeadsView({
     );
   };
 
+  // Helper to extract phone from top-level or customAnswers fallback
+  const resolveLeadPhone = (lead: Lead): string => {
+    if (lead.phone && lead.phone.trim() && !lead.phone.includes("<test lead:")) {
+      return lead.phone.trim();
+    }
+    const ca = lead.customAnswers || {};
+    for (const [k, v] of Object.entries(ca)) {
+      const keyLower = k.toLowerCase();
+      if (
+        keyLower.includes("whatsapp") ||
+        keyLower.includes("phone") ||
+        keyLower.includes("mobile") ||
+        keyLower.includes("contact")
+      ) {
+        const valStr = String(v || "").trim();
+        if (valStr && !valStr.includes("<test lead:")) {
+          return valStr;
+        }
+      }
+    }
+    return "";
+  };
+
   // Helper to parse readiness intent
   const parseReadiness = (val?: string) => {
     if (!val) return null;
@@ -171,7 +194,9 @@ export default function LeadsView({
   };
 
   const searchedLeads = data.leads.filter((lead) => {
-    const matchesQuery = `${lead.parentName} ${lead.childName} ${lead.instrument} ${lead.source} ${lead.status} ${lead.email} ${lead.phone}`
+    const phone = resolveLeadPhone(lead);
+    const displayName = cleanName(lead.parentName);
+    const matchesQuery = `${displayName} ${lead.childName} ${lead.instrument} ${lead.source} ${lead.status} ${lead.email} ${phone}`
       .toLowerCase()
       .includes(query.toLowerCase());
 
@@ -530,6 +555,7 @@ export default function LeadsView({
                 const hasMeta = isMetaLead(lead);
                 const intent = parseReadiness(lead.readiness);
                 const displayName = cleanName(lead.parentName);
+                const phone = resolveLeadPhone(lead);
 
                 return (
                   <tr key={lead.id}>
@@ -572,8 +598,15 @@ export default function LeadsView({
                           <div style={{ fontSize: "0.78rem", color: "#0f766e", fontWeight: 600 }}>
                             {lead.instrument || "Piano"} · {lead.childName && lead.childName !== lead.parentName ? `Child: ${cleanName(lead.childName)}` : "Applicant"}
                           </div>
-                          <div style={{ fontSize: "0.75rem", color: "#64748b", display: "flex", alignItems: "center", gap: 4, marginTop: 1 }}>
-                            <span>{lead.phone || "No phone"}</span>
+                          <div style={{ fontSize: "0.75rem", color: "#64748b", display: "flex", alignItems: "center", gap: 5, marginTop: 2, flexWrap: "wrap" }}>
+                            {phone ? (
+                              <span style={{ fontWeight: 700, color: "#0f766e", display: "inline-flex", alignItems: "center", gap: 3 }}>
+                                <PhoneCall size={10} />
+                                {phone}
+                              </span>
+                            ) : (
+                              <span style={{ color: "#94a3b8" }}>No phone</span>
+                            )}
                             {lead.email && <span>· {lead.email}</span>}
                           </div>
                         </div>
@@ -738,26 +771,39 @@ export default function LeadsView({
                         <button
                           className="icon-btn"
                           aria-label={`WhatsApp ${displayName}`}
-                          title={`WhatsApp ${lead.phone}`}
-                          style={{ color: "#059669", fontWeight: 700, fontSize: "0.7rem" }}
-                          onClick={() =>
+                          title={phone ? `WhatsApp ${phone}` : "No phone available"}
+                          disabled={!phone}
+                          style={{
+                            color: phone ? "#059669" : "#cbd5e1",
+                            fontWeight: 700,
+                            fontSize: "0.7rem",
+                            cursor: phone ? "pointer" : "not-allowed",
+                          }}
+                          onClick={() => {
+                            if (!phone) return;
                             openExternal(
                               "whatsapp",
-                              lead.phone,
+                              phone,
                               displayName,
-                              `Hello ${displayName}, this is ProsperWork Music Academy regarding ${lead.childName || "your"}'s music lessons enquiry. How can we assist you today?`
-                            )
-                          }
+                              `Hello ${displayName}, this is ProsperWork Music Academy regarding your music lessons enquiry. How can we assist you today?`
+                            );
+                          }}
                         >
                           WA
                         </button>
                         <button
                           className="icon-btn"
                           aria-label={`Call ${displayName}`}
-                          title={`Call ${lead.phone}`}
-                          onClick={() =>
-                            openExternal("phone", lead.phone, displayName)
-                          }
+                          title={phone ? `Call ${phone}` : "No phone available"}
+                          disabled={!phone}
+                          style={{
+                            color: phone ? "inherit" : "#cbd5e1",
+                            cursor: phone ? "pointer" : "not-allowed",
+                          }}
+                          onClick={() => {
+                            if (!phone) return;
+                            openExternal("phone", phone, displayName);
+                          }}
                         >
                           <PhoneCall size={12} />
                         </button>
@@ -858,62 +904,71 @@ export default function LeadsView({
         }
         size="lg"
         footer={
-          <div style={{ display: "flex", justifyContent: "space-between", width: "100%", alignItems: "center" }}>
-            <div style={{ display: "flex", gap: "0.5rem" }}>
-              {selectedLead && (
-                <>
-                  <button
-                    type="button"
-                    className="btn small secondary"
-                    onClick={() => {
-                      openExternal(
-                        "whatsapp",
-                        selectedLead.phone,
-                        cleanName(selectedLead.parentName),
-                        `Hello ${cleanName(selectedLead.parentName)}, this is ProsperWork Music Academy regarding your music lessons inquiry. How can we assist you today?`
-                      );
-                    }}
-                    style={{ display: "inline-flex", alignItems: "center", gap: 5, color: "#065f46" }}
-                  >
-                    <span style={{ fontWeight: 800 }}>WA</span> Chat on WhatsApp
-                  </button>
-                  <button
-                    type="button"
-                    className="btn small ghost"
-                    onClick={() => {
-                      openExternal("phone", selectedLead.phone, cleanName(selectedLead.parentName));
-                    }}
-                  >
-                    <PhoneCall size={13} style={{ marginRight: 4 }} />
-                    Call Phone
-                  </button>
-                  <button
-                    type="button"
-                    className="btn small ghost"
-                    onClick={() => {
-                      openEmailComposer(
-                        "lead",
-                        selectedLead.id,
-                        selectedLead.email,
-                        cleanName(selectedLead.parentName)
-                      );
-                      setSelectedLead(null);
-                    }}
-                  >
-                    <Send size={13} style={{ marginRight: 4 }} />
-                    Send Email
-                  </button>
-                </>
-              )}
-            </div>
-            <button
-              type="button"
-              className="btn small"
-              onClick={() => setSelectedLead(null)}
-            >
-              Close
-            </button>
-          </div>
+          (() => {
+            const modalPhone = selectedLead ? resolveLeadPhone(selectedLead) : "";
+            return (
+              <div style={{ display: "flex", justifyContent: "space-between", width: "100%", alignItems: "center" }}>
+                <div style={{ display: "flex", gap: "0.5rem" }}>
+                  {selectedLead && (
+                    <>
+                      <button
+                        type="button"
+                        className="btn small secondary"
+                        disabled={!modalPhone}
+                        onClick={() => {
+                          if (!modalPhone) return;
+                          openExternal(
+                            "whatsapp",
+                            modalPhone,
+                            cleanName(selectedLead.parentName),
+                            `Hello ${cleanName(selectedLead.parentName)}, this is ProsperWork Music Academy regarding your music lessons inquiry. How can we assist you today?`
+                          );
+                        }}
+                        style={{ display: "inline-flex", alignItems: "center", gap: 5, color: modalPhone ? "#065f46" : "#94a3b8" }}
+                      >
+                        <span style={{ fontWeight: 800 }}>WA</span> Chat on WhatsApp
+                      </button>
+                      <button
+                        type="button"
+                        className="btn small ghost"
+                        disabled={!modalPhone}
+                        onClick={() => {
+                          if (!modalPhone) return;
+                          openExternal("phone", modalPhone, cleanName(selectedLead.parentName));
+                        }}
+                      >
+                        <PhoneCall size={13} style={{ marginRight: 4 }} />
+                        Call Phone
+                      </button>
+                      <button
+                        type="button"
+                        className="btn small ghost"
+                        onClick={() => {
+                          openEmailComposer(
+                            "lead",
+                            selectedLead.id,
+                            selectedLead.email,
+                            cleanName(selectedLead.parentName)
+                          );
+                          setSelectedLead(null);
+                        }}
+                      >
+                        <Send size={13} style={{ marginRight: 4 }} />
+                        Send Email
+                      </button>
+                    </>
+                  )}
+                </div>
+                <button
+                  type="button"
+                  className="btn small"
+                  onClick={() => setSelectedLead(null)}
+                >
+                  Close
+                </button>
+              </div>
+            );
+          })()
         }
       >
         {selectedLead && (
@@ -947,7 +1002,7 @@ export default function LeadsView({
                   Contact Information
                 </div>
                 <div style={{ fontSize: "0.95rem", fontWeight: 700, marginTop: 2, color: "#0f172a" }}>
-                  {selectedLead.phone || "No phone provided"}
+                  {resolveLeadPhone(selectedLead) || "No phone provided"}
                 </div>
                 <div style={{ fontSize: "0.82rem", color: "#64748b", marginTop: 2 }}>
                   {selectedLead.email || "No email provided"}

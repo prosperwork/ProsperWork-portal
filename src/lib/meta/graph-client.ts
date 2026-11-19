@@ -350,8 +350,16 @@ export function normalizeLeadFieldData(
       lastName = value;
     } else if (key === "email") {
       email = value.toLowerCase();
-    } else if (key === "phone_number" || key === "phone") {
+    } else if (
+      key === "phone_number" ||
+      key === "phone" ||
+      key.includes("phone") ||
+      key.includes("whatsapp") ||
+      key.includes("mobile") ||
+      key.includes("contact")
+    ) {
       phone = value;
+      customQuestions[field.name] = value;
     } else if (
       key.includes("child") ||
       key.includes("student") ||
