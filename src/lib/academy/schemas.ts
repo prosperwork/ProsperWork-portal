@@ -76,9 +76,11 @@ export const recordSchemas = {
     trialClassroomProvider: z.enum(["inbuilt", "google_meet"]).optional(),
     trialMeetUrl: z.string().max(500).optional(),
     manual_takeover: z.boolean().optional(),
+    manual_contacted_at: z.string().optional(),
+    manual_contacted_by: text.optional(),
     ai_disabled: z.boolean().optional(),
     force_next_welcome_reply: z.boolean().optional(),
-  }).strict(),
+  }).passthrough(),
   payments: z.object({
     id, parentName: name, studentName: name, amount, currency, dueDate: date,
     status: z.enum(["due", "receipt_uploaded", "paid"]), terms: z.enum(["upfront", "after_service"]), referralDiscount: amount,

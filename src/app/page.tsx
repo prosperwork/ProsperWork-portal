@@ -522,7 +522,7 @@ export default function HomePage() {
   }
 
   async function setLeadStatus(lead: Lead, status: Lead["status"], extraPayload?: Partial<Lead>): Promise<void> {
-    await updateData((current) => ({
+    const ok = await updateData((current) => ({
       ...current,
       leads: current.leads.map((item) =>
         item.id === lead.id
@@ -549,6 +549,10 @@ export default function HomePage() {
         ...current.audit,
       ],
     }));
+
+    if (!ok) {
+      throw new Error("Database rejected the lead update. Please try again.");
+    }
 
     // 2-Way Sync: Fire Meta Conversions API (CAPI) event for ad delivery optimization
     if (["trial_booked", "converted", "contacted"].includes(status)) {

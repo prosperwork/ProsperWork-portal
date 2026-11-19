@@ -134,6 +134,11 @@ export interface Lead {
   trialTimezone?: string;
   trialClassroomProvider?: "inbuilt" | "google_meet";
   trialMeetUrl?: string;
+  manual_takeover?: boolean;
+  manual_contacted_at?: string;
+  manual_contacted_by?: string;
+  ai_disabled?: boolean;
+  force_next_welcome_reply?: boolean;
 }
 
 export interface Payment {

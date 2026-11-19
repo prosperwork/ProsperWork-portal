@@ -1373,15 +1373,19 @@ export default function LeadsView({
 
                     <td>
                       <div style={{ fontSize: "0.82rem", color: "#334155" }}>
-                        {lead.preferredSlots && lead.preferredSlots.length > 0 ? (
+                        {(lead.preferredSlots && lead.preferredSlots.length > 0) || lead.status === "trial_booked" || lead.trialScheduledAt ? (
                           <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>
                             <strong style={{ color: "#15803d", display: "inline-flex", alignItems: "center", gap: 4 }}>
                               <CalendarCheck2 size={13} color="#15803d" />
-                              {lead.preferredSlots.join(" · ")}
+                              {lead.preferredSlots && lead.preferredSlots.length > 0
+                                ? lead.preferredSlots.join(" · ")
+                                : lead.trialScheduledAt
+                                ? `${niceDate(lead.trialScheduledAt)} at ${timeAt(lead.trialScheduledAt)}`
+                                : "Trial Booked"}
                             </strong>
-                            {(lead as any).trialMeetUrl && (
+                            {(lead.trialMeetUrl || (lead as any).meetUrl) && (
                               <a
-                                href={(lead as any).trialMeetUrl}
+                                href={lead.trialMeetUrl || (lead as any).meetUrl}
                                 target="_blank"
                                 rel="noreferrer"
                                 style={{
@@ -1399,9 +1403,9 @@ export default function LeadsView({
                               </a>
                             )}
                             <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                              {(lead as any).trialTeacher && (
+                              {((lead as any).trialTeacher || lead.teacherName) && (
                                 <span style={{ fontSize: "0.70rem", color: "#64748b" }}>
-                                  Teacher: {(lead as any).trialTeacher}
+                                  Teacher: {(lead as any).trialTeacher || lead.teacherName}
                                 </span>
                               )}
                               <button
