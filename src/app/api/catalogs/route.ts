@@ -10,19 +10,27 @@ import {
 
 export const dynamic = "force-dynamic";
 
-export async function GET() {
+export async function GET(request: Request) {
   try {
     const { client, profile } = await identity();
     if (!profile || profile.status !== "active") {
       return NextResponse.json({ error: "Active academy session required." }, { status: 401 });
     }
+    const { searchParams } = new URL(request.url);
+    const catalogFilter = searchParams.get("catalog");
+
     const [items, config] = await Promise.all([
       fetchCatalogItems(client),
       fetchPublicAcademyConfig(client),
     ]);
+
+    const filteredItems = catalogFilter
+      ? items.filter((item) => item.catalog === catalogFilter && item.enabled !== false)
+      : items;
+
     return NextResponse.json(
       {
-        items,
+        items: filteredItems,
         config,
         catalogs: CATALOG_META,
       },

@@ -219,7 +219,11 @@ export default function LeadsView({
       .then((res) => res.json())
       .then((json) => {
         if (Array.isArray(json?.items) && json.items.length > 0) {
-          const list = json.items.map((i: any) => i.label || i.name || i.code).filter(Boolean);
+          const list = json.items
+            .filter((i: any) => (!i.catalog || i.catalog === "instruments") && i.enabled !== false)
+            .sort((a: any, b: any) => (a.sort_order ?? 100) - (b.sort_order ?? 100))
+            .map((i: any) => i.label || i.name || i.code)
+            .filter(Boolean);
           if (list.length) setCatalogInstruments(list);
         }
       })
