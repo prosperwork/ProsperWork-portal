@@ -1261,6 +1261,33 @@ export async function ingestWhatsAppWebhook(payload: any): Promise<{
               leadId: matchedLeadId,
               body: `Hello ${matchedLeadPayload.parentName || senderName || "there"}! 🎹 We have received your trial booking request for ${matchedLeadPayload.instrument || "lessons"}. An academy director is assigning the best teacher for you and will confirm your lesson time shortly!`,
             }).catch(() => null);
+          } else {
+            // Automated Instant Welcome & Assessment Reply
+            // Checks if an automated welcome was sent to this customer in the past 24 hours
+            const oneDayAgo = new Date(Date.now() - 24 * 3600 * 1000).toISOString();
+            const { data: recentOutbound } = await db
+              .from("pw_whatsapp_messages")
+              .select("id")
+              .eq("phone_number", senderPhone)
+              .eq("direction", "outbound")
+              .gte("created_at", oneDayAgo)
+              .limit(1);
+
+            if (!recentOutbound || recentOutbound.length === 0) {
+              let rawName = matchedLeadPayload?.parentName || senderName || "there";
+              if (rawName.includes("<test") || rawName.toLowerCase().includes("dummy")) {
+                rawName = "there";
+              }
+              const cleanFirstName = rawName.trim().split(" ")[0] || "there";
+
+              const welcomeMessage = `Hello ${cleanFirstName}! Welcome to ProsperWork Music Academy 🎵\n\nWe received your application and are so excited to help your child start a fun, confidence-building musical journey! To match your child with the perfect expert teacher for their FREE assessment...\n\nWhat musical instrument are they interested in learning, and how old is your child?`;
+
+              await sendWhatsAppMessage({
+                to: senderPhone,
+                leadId: matchedLeadId || undefined,
+                body: welcomeMessage,
+              }).catch(() => null);
+            }
           }
         }
       }

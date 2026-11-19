@@ -1666,6 +1666,33 @@ export default function LeadsView({
                   style={{
                     fontSize: "0.76rem",
                     padding: "3px 9px",
+                    background: "#f0fdf4",
+                    borderColor: "#86efac",
+                    color: "#15803d",
+                    fontWeight: 700,
+                    cursor: sendingWhatsApp ? "not-allowed" : "pointer",
+                    opacity: sendingWhatsApp ? 0.6 : 1,
+                    display: "inline-flex",
+                    alignItems: "center",
+                    gap: 4,
+                  }}
+                  onClick={() => {
+                    if (sendingWhatsApp) return;
+                    const parentName = cleanName(whatsAppLead.parentName).split(" ")[0];
+                    setWhatsAppDraft(
+                      `Hello ${parentName}! Welcome to ProsperWork Music Academy 🎵\n\nWe received your application and are so excited to help your child start a fun, confidence-building musical journey! To match your child with the perfect expert teacher for their FREE assessment...\n\nWhat musical instrument are they interested in learning, and how old is your child?`
+                    );
+                  }}
+                >
+                  👋 Welcome & Assessment Query
+                </button>
+                <button
+                  type="button"
+                  className="btn small"
+                  disabled={sendingWhatsApp}
+                  style={{
+                    fontSize: "0.76rem",
+                    padding: "3px 9px",
                     background: "#ecfdf5",
                     borderColor: "#a7f3d0",
                     color: "#065f46",
