@@ -144,6 +144,17 @@ export default function LeadsView({
   const [selectedLead, setSelectedLead] = useState<Lead | null>(null);
   const [activeDropdownLeadId, setActiveDropdownLeadId] = useState<string | null>(null);
   const [syncingMeta, setSyncingMeta] = useState(false);
+  const [updatingStageLeadId, setUpdatingStageLeadId] = useState<string | null>(null);
+
+  const handleStageChange = (lead: Lead, newStage: Lead["status"]) => {
+    if (updatingStageLeadId === lead.id) return;
+    setUpdatingStageLeadId(lead.id);
+    try {
+      setLeadStatus(lead, newStage);
+    } finally {
+      setTimeout(() => setUpdatingStageLeadId(null), 700);
+    }
+  };
 
   // In-App WhatsApp Live Chat State
   const [whatsAppLead, setWhatsAppLead] = useState<Lead | null>(null);
@@ -634,7 +645,13 @@ export default function LeadsView({
               onClick={() => handleSyncMeta(false)}
               disabled={syncingMeta}
               title="Live background auto-sync is active. Click to force an instant reconciliation with Meta now."
-              style={{ display: "inline-flex", alignItems: "center", gap: 6 }}
+              style={{
+                display: "inline-flex",
+                alignItems: "center",
+                gap: 6,
+                cursor: syncingMeta ? "not-allowed" : "pointer",
+                opacity: syncingMeta ? 0.65 : 1,
+              }}
             >
               <RefreshCw size={13} className={syncingMeta ? "spin" : ""} />
               {syncingMeta ? "Syncing..." : "Sync Now"}
@@ -1083,99 +1100,109 @@ export default function LeadsView({
 
                     <td style={{ textAlign: "center", position: "relative" }}>
                       {/* Move Stage Dropdown - Always displays Current Status */}
-                      <div style={{ position: "relative", display: "inline-block" }}>
-                        <button
-                          type="button"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            setActiveDropdownLeadId((prev) => (prev === lead.id ? null : lead.id));
-                          }}
-                          style={{
-                            display: "inline-flex",
-                            alignItems: "center",
-                            gap: "7px",
-                            padding: "6px 12px",
-                            borderRadius: "9999px",
-                            fontSize: "0.80rem",
-                            fontWeight: 700,
-                            background: getStageDisplay(lead.status).pillColor.bg,
-                            color: getStageDisplay(lead.status).pillColor.text,
-                            border: `1.5px solid ${getStageDisplay(lead.status).pillColor.border}`,
-                            cursor: "pointer",
-                            whiteSpace: "nowrap",
-                            transition: "all 0.15s ease",
-                            boxShadow: "0 1px 3px rgba(0,0,0,0.04)",
-                          }}
-                          title={`Current Stage: ${getStageDisplay(lead.status).label} (Click to change)`}
-                        >
-                          <span
-                            style={{
-                              width: "7px",
-                              height: "7px",
-                              borderRadius: "50%",
-                              backgroundColor: getStageDisplay(lead.status).pillColor.dot,
-                              display: "inline-block",
-                            }}
-                          />
-                          <span>{getStageDisplay(lead.status).label}</span>
-                          <ChevronDown size={13} style={{ opacity: 0.75 }} />
-                        </button>
-
-                        {/* Move Stage Popover Dropdown matching image */}
-                        {activeDropdownLeadId === lead.id && (
-                          <>
-                            <div
-                              style={{
-                                position: "fixed",
-                                top: 0,
-                                left: 0,
-                                right: 0,
-                                bottom: 0,
-                                zIndex: 998,
-                              }}
+                      {(() => {
+                        const isUpdatingThisLead = updatingStageLeadId === lead.id;
+                        return (
+                          <div style={{ position: "relative", display: "inline-block" }}>
+                            <button
+                              type="button"
+                              disabled={isUpdatingThisLead}
                               onClick={(e) => {
                                 e.stopPropagation();
-                                setActiveDropdownLeadId(null);
+                                setActiveDropdownLeadId((prev) => (prev === lead.id ? null : lead.id));
                               }}
-                            />
-                            <div
                               style={{
-                                position: "absolute",
-                                top: "calc(100% + 4px)",
-                                right: 0,
-                                zIndex: 999,
-                                background: "#ffffff",
-                                borderRadius: "14px",
-                                boxShadow:
-                                  "0 10px 25px -5px rgba(0, 0, 0, 0.15), 0 8px 10px -6px rgba(0, 0, 0, 0.08), 0 0 0 1px rgba(0, 0, 0, 0.08)",
-                                padding: "8px 6px",
-                                minWidth: "195px",
-                                textAlign: "left",
+                                display: "inline-flex",
+                                alignItems: "center",
+                                gap: "7px",
+                                padding: "6px 12px",
+                                borderRadius: "9999px",
+                                fontSize: "0.80rem",
+                                fontWeight: 700,
+                                background: getStageDisplay(lead.status).pillColor.bg,
+                                color: getStageDisplay(lead.status).pillColor.text,
+                                border: `1.5px solid ${getStageDisplay(lead.status).pillColor.border}`,
+                                cursor: isUpdatingThisLead ? "not-allowed" : "pointer",
+                                opacity: isUpdatingThisLead ? 0.65 : 1,
+                                whiteSpace: "nowrap",
+                                transition: "all 0.15s ease",
+                                boxShadow: "0 1px 3px rgba(0,0,0,0.04)",
                               }}
-                              onClick={(e) => e.stopPropagation()}
+                              title={`Current Stage: ${getStageDisplay(lead.status).label} (Click to change)`}
                             >
-                              <div
-                                style={{
-                                  fontSize: "0.72rem",
-                                  fontWeight: 700,
-                                  color: "#94a3b8",
-                                  padding: "4px 10px 6px 10px",
-                                  letterSpacing: "0.02em",
-                                }}
-                              >
-                                Move Stage
-                              </div>
-                              <div style={{ display: "flex", flexDirection: "column", gap: "2px" }}>
-                                {PIPELINE_STAGES.map((s) => {
-                                  const isSelected = getStageDisplay(lead.status).id === s.id;
-                                  return (
-                                    <button
-                                      key={s.id}
-                                      type="button"
-                                      onClick={() => {
-                                        setLeadStatus(lead, s.id);
-                                        setActiveDropdownLeadId(null);
-                                      }}
+                              {isUpdatingThisLead ? (
+                                <RefreshCw size={11} className="spin" />
+                              ) : (
+                                <span
+                                  style={{
+                                    width: "7px",
+                                    height: "7px",
+                                    borderRadius: "50%",
+                                    backgroundColor: getStageDisplay(lead.status).pillColor.dot,
+                                    display: "inline-block",
+                                  }}
+                                />
+                              )}
+                              <span>{isUpdatingThisLead ? "Updating..." : getStageDisplay(lead.status).label}</span>
+                              <ChevronDown size={13} style={{ opacity: 0.75 }} />
+                            </button>
+
+                            {/* Move Stage Popover Dropdown matching image */}
+                            {activeDropdownLeadId === lead.id && (
+                              <>
+                                <div
+                                  style={{
+                                    position: "fixed",
+                                    top: 0,
+                                    left: 0,
+                                    right: 0,
+                                    bottom: 0,
+                                    zIndex: 998,
+                                  }}
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    setActiveDropdownLeadId(null);
+                                  }}
+                                />
+                                <div
+                                  style={{
+                                    position: "absolute",
+                                    top: "calc(100% + 4px)",
+                                    right: 0,
+                                    zIndex: 999,
+                                    background: "#ffffff",
+                                    borderRadius: "14px",
+                                    boxShadow:
+                                      "0 10px 25px -5px rgba(0, 0, 0, 0.15), 0 8px 10px -6px rgba(0, 0, 0, 0.08), 0 0 0 1px rgba(0, 0, 0, 0.08)",
+                                    padding: "8px 6px",
+                                    minWidth: "195px",
+                                    textAlign: "left",
+                                  }}
+                                  onClick={(e) => e.stopPropagation()}
+                                >
+                                  <div
+                                    style={{
+                                      fontSize: "0.72rem",
+                                      fontWeight: 700,
+                                      color: "#94a3b8",
+                                      padding: "4px 10px 6px 10px",
+                                      letterSpacing: "0.02em",
+                                    }}
+                                  >
+                                    Move Stage
+                                  </div>
+                                  <div style={{ display: "flex", flexDirection: "column", gap: "2px" }}>
+                                    {PIPELINE_STAGES.map((s) => {
+                                      const isSelected = getStageDisplay(lead.status).id === s.id;
+                                      return (
+                                        <button
+                                          key={s.id}
+                                          type="button"
+                                          disabled={isUpdatingThisLead}
+                                          onClick={() => {
+                                            handleStageChange(lead, s.id);
+                                            setActiveDropdownLeadId(null);
+                                          }}
                                       style={{
                                         display: "flex",
                                         alignItems: "center",
@@ -1220,8 +1247,10 @@ export default function LeadsView({
                           </>
                         )}
                       </div>
-                    </td>
-                  </tr>
+                    );
+                  })()}
+                </td>
+              </tr>
                 );
               })}
             </tbody>
@@ -1498,10 +1527,12 @@ export default function LeadsView({
               <div style={{ display: "flex", gap: "0.4rem", flexWrap: "wrap" }}>
                 {PIPELINE_STAGES.map((s) => {
                   const isSelected = getStageDisplay(selectedLead.status).id === s.id;
+                  const isUpdatingModalLead = updatingStageLeadId === selectedLead.id;
                   return (
                     <button
                       key={s.id}
                       type="button"
+                      disabled={isUpdatingModalLead}
                       className={`btn small ${isSelected ? "primary" : "ghost"}`}
                       style={{
                         display: "inline-flex",
@@ -1511,13 +1542,19 @@ export default function LeadsView({
                         borderColor: isSelected ? "#4f46e5" : undefined,
                         color: isSelected ? "#ffffff" : undefined,
                         fontWeight: isSelected ? 700 : 500,
+                        cursor: isUpdatingModalLead ? "not-allowed" : "pointer",
+                        opacity: isUpdatingModalLead ? 0.65 : 1,
                       }}
                       onClick={() => {
-                        setLeadStatus(selectedLead, s.id);
+                        handleStageChange(selectedLead, s.id);
                         setSelectedLead((prev) => (prev ? { ...prev, status: s.id } : null));
                       }}
                     >
-                      {isSelected && <Check size={13} style={{ strokeWidth: 2.5 }} />}
+                      {isUpdatingModalLead && isSelected ? (
+                        <RefreshCw size={12} className="spin" />
+                      ) : isSelected ? (
+                        <Check size={13} style={{ strokeWidth: 2.5 }} />
+                      ) : null}
                       {s.label}
                     </button>
                   );
@@ -1608,21 +1645,26 @@ export default function LeadsView({
                     borderColor: "#a7f3d0",
                     color: "#065f46",
                     fontWeight: 600,
+                    cursor: sendingWhatsApp ? "not-allowed" : "pointer",
+                    opacity: sendingWhatsApp ? 0.6 : 1,
+                    display: "inline-flex",
+                    alignItems: "center",
+                    gap: 4,
                   }}
                   onClick={() => {
+                    if (sendingWhatsApp) return;
                     const parentName = cleanName(whatsAppLead.parentName).split(" ")[0];
+                    const promptText = `Hello ${parentName}! 🎹 Would you like to schedule your trial lesson for ${whatsAppLead.instrument || "Piano"} with our director? Tap a button below to confirm:`;
                     handleSendWhatsApp(
-                      undefined,
+                      promptText,
                       [
                         { id: "pw_book_trial", title: "Book Trial Lesson" },
                         { id: "pw_view_schedule", title: "View Schedule" },
                       ]
                     );
-                    setWhatsAppDraft(
-                      `Hello ${parentName}! 🎹 Would you like to schedule your trial lesson for ${whatsAppLead.instrument || "Piano"} with our director? Tap a button below to confirm:`
-                    );
                   }}
                 >
+                  {sendingWhatsApp && <RefreshCw size={11} className="spin" />}
                   🚀 Trial Booking Prompt with Buttons
                 </button>
                 <button
@@ -1636,8 +1678,11 @@ export default function LeadsView({
                     borderColor: "#bfdbfe",
                     color: "#1d4ed8",
                     fontWeight: 600,
+                    cursor: sendingWhatsApp ? "not-allowed" : "pointer",
+                    opacity: sendingWhatsApp ? 0.6 : 1,
                   }}
                   onClick={() => {
+                    if (sendingWhatsApp) return;
                     const parentName = cleanName(whatsAppLead.parentName).split(" ")[0];
                     setWhatsAppDraft(
                       `Hello ${parentName}! 👋 Thank you for enquiring about music lessons with ProsperWork Music Academy. Which days of the week work best for your child's 1-on-1 lesson?`
@@ -1657,8 +1702,11 @@ export default function LeadsView({
                     borderColor: "#e9d5ff",
                     color: "#7e22ce",
                     fontWeight: 600,
+                    cursor: sendingWhatsApp ? "not-allowed" : "pointer",
+                    opacity: sendingWhatsApp ? 0.6 : 1,
                   }}
                   onClick={() => {
+                    if (sendingWhatsApp) return;
                     setWhatsAppDraft(
                       `Our premium 1-on-1 weekly lessons start from £45 / ₦78,000 monthly for 4 sessions, complete with curriculum books, performance assessments, and interactive classroom access.`
                     );
@@ -1797,15 +1845,22 @@ export default function LeadsView({
             {/* Message Input & Send Bar */}
             <div style={{ display: "flex", gap: "0.5rem", alignItems: "flex-end" }}>
               <textarea
+                disabled={sendingWhatsApp}
                 value={whatsAppDraft}
                 onChange={(e) => setWhatsAppDraft(e.target.value)}
                 onKeyDown={(e) => {
                   if (e.key === "Enter" && !e.shiftKey) {
                     e.preventDefault();
-                    handleSendWhatsApp();
+                    if (!sendingWhatsApp && whatsAppDraft.trim()) {
+                      handleSendWhatsApp();
+                    }
                   }
                 }}
-                placeholder="Type your WhatsApp reply (Press Enter to send)..."
+                placeholder={
+                  sendingWhatsApp
+                    ? "Dispatching message via Meta Cloud API..."
+                    : "Type your WhatsApp reply (Press Enter to send)..."
+                }
                 rows={2}
                 style={{
                   flex: 1,
@@ -1815,29 +1870,44 @@ export default function LeadsView({
                   fontSize: "0.85rem",
                   resize: "none",
                   fontFamily: "inherit",
+                  opacity: sendingWhatsApp ? 0.65 : 1,
+                  background: sendingWhatsApp ? "#f8fafc" : "#ffffff",
+                  cursor: sendingWhatsApp ? "not-allowed" : "text",
                 }}
               />
               <button
                 type="button"
                 className="btn primary"
                 disabled={sendingWhatsApp || !whatsAppDraft.trim()}
-                onClick={() => handleSendWhatsApp()}
+                onClick={() => {
+                  if (!sendingWhatsApp && whatsAppDraft.trim()) {
+                    handleSendWhatsApp();
+                  }
+                }}
                 style={{
                   height: "46px",
                   display: "inline-flex",
                   alignItems: "center",
                   gap: 6,
-                  background: "#059669",
-                  borderColor: "#047857",
+                  background: sendingWhatsApp || !whatsAppDraft.trim() ? "#94a3b8" : "#059669",
+                  borderColor: sendingWhatsApp || !whatsAppDraft.trim() ? "#94a3b8" : "#047857",
                   fontWeight: 700,
+                  cursor: sendingWhatsApp || !whatsAppDraft.trim() ? "not-allowed" : "pointer",
+                  opacity: sendingWhatsApp || !whatsAppDraft.trim() ? 0.65 : 1,
+                  transition: "all 0.15s ease",
                 }}
               >
                 {sendingWhatsApp ? (
-                  <RefreshCw size={14} className="animate-spin" />
+                  <>
+                    <RefreshCw size={14} className="spin" />
+                    <span>Sending...</span>
+                  </>
                 ) : (
-                  <Send size={14} />
+                  <>
+                    <Send size={14} />
+                    <span>Send</span>
+                  </>
                 )}
-                Send
               </button>
             </div>
           </div>
