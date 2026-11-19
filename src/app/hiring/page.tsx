@@ -5,13 +5,18 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   AlertCircle,
   BriefcaseBusiness,
+  CalendarClock,
   Check,
   CheckCircle2,
+  ClipboardCheck,
   FileCheck2,
+  FileText,
   RefreshCw,
+  RotateCcw,
   Search,
   ShieldCheck,
   UserPlus,
+  XCircle,
 } from "lucide-react";
 import { hiringAction, type HiringCase } from "@/lib/academy/hiring";
 import { readJson } from "@/lib/academy/web-client";
@@ -33,7 +38,7 @@ import {
 } from "./hiring-types";
 import HiringCandidateForm from "./components/HiringCandidateForm";
 import HiringReviewForm from "./components/HiringReviewForm";
-import HiringCaseDetail from "./components/HiringCaseDetail";
+import HiringCaseDetail, { type ActiveModal } from "./components/HiringCaseDetail";
 
 const PIPELINE_STEPS = [
   { key: "applied", label: "Applied" },
@@ -63,6 +68,7 @@ export default function HiringPage() {
   const [stageFilter, setStageFilter] = useState<string>("all");
   const [searchQuery, setSearchQuery] = useState("");
   const [detailTab, setDetailTab] = useState<DetailTab>("next_step");
+  const [activeModal, setActiveModal] = useState<ActiveModal>(null);
   const [addCandidateOpen, setAddCandidateOpen] = useState(false);
 
   const [deviceTimezone, setDeviceTimezone] = useState("device local time");
@@ -1527,32 +1533,76 @@ export default function HiringPage() {
                             <section
                               className="hire-section"
                               style={{
+                                display: "flex",
+                                alignItems: "center",
+                                justifyContent: "space-between",
+                                gap: 16,
+                                flexWrap: "wrap",
                                 background:
                                   selectedCase.stage === "rejected"
                                     ? "#fef2f2"
-                                    : "#f8faf9",
+                                    : selectedCase.stage === "activated"
+                                      ? "#f0fdf4"
+                                      : "#f8faf9",
                                 border:
                                   selectedCase.stage === "rejected"
                                     ? "1px solid #fecaca"
-                                    : "1px solid #dce7e1",
+                                    : selectedCase.stage === "activated"
+                                      ? "1px solid #bbf7d0"
+                                      : "1px solid #dce7e1",
                                 marginBottom: 16,
+                                padding: "16px 20px",
+                                borderRadius: 12,
                               }}
                             >
-                              <div>
-                                <span
-                                  className={`hire-pill ${selectedCase.stage}`}
+                              <div style={{ flex: "1 1 300px" }}>
+                                <div
                                   style={{
-                                    textTransform: "uppercase",
-                                    fontSize: "10px",
-                                    fontWeight: 800,
+                                    display: "flex",
+                                    alignItems: "center",
+                                    gap: 8,
+                                    marginBottom: 6,
+                                    flexWrap: "wrap",
                                   }}
                                 >
-                                  Current Stage: {titleCase(selectedCase.stage)}
-                                </span>
+                                  <span
+                                    className={`hire-pill ${selectedCase.stage}`}
+                                    style={{
+                                      textTransform: "uppercase",
+                                      fontSize: "10px",
+                                      fontWeight: 800,
+                                      letterSpacing: "0.04em",
+                                    }}
+                                  >
+                                    Current Stage: {titleCase(selectedCase.stage)}
+                                  </span>
+                                  {selectedCase.interview_at && (
+                                    <span
+                                      style={{
+                                        fontSize: "11px",
+                                        color: "#166534",
+                                        fontWeight: 600,
+                                        display: "inline-flex",
+                                        alignItems: "center",
+                                        gap: 4,
+                                        background: "rgba(22, 101, 52, 0.08)",
+                                        padding: "2px 8px",
+                                        borderRadius: 6,
+                                      }}
+                                    >
+                                      <CalendarClock size={12} />
+                                      {formatDate(
+                                        selectedCase.interview_at,
+                                        data.profile.timezone
+                                      )}
+                                    </span>
+                                  )}
+                                </div>
                                 <h3
                                   style={{
-                                    margin: "6px 0 2px",
-                                    fontSize: "15px",
+                                    margin: "4px 0 3px",
+                                    fontSize: "16px",
+                                    fontWeight: 700,
                                     color: "var(--foreground, #0f172a)",
                                   }}
                                 >
@@ -1576,8 +1626,9 @@ export default function HiringPage() {
                                 <p
                                   style={{
                                     margin: 0,
-                                    fontSize: "12px",
+                                    fontSize: "12.5px",
                                     color: "var(--muted, #64748b)",
+                                    lineHeight: 1.45,
                                   }}
                                 >
                                   {selectedCase.stage === "applied" &&
@@ -1598,6 +1649,207 @@ export default function HiringPage() {
                                     "This recruitment case has been concluded."}
                                 </p>
                               </div>
+
+                              {/* Prominent Primary Stage Action Call-to-Action */}
+                              <div
+                                style={{
+                                  display: "flex",
+                                  alignItems: "center",
+                                  gap: 8,
+                                  flexWrap: "wrap",
+                                }}
+                              >
+                                {selectedCase.stage === "applied" &&
+                                  (isOwner || isHR) &&
+                                  canSchedule && (
+                                    <button
+                                      type="button"
+                                      className="hire-button primary"
+                                      onClick={() => {
+                                        setDetailTab("next_step");
+                                        setActiveModal("schedule");
+                                      }}
+                                      disabled={!isActive || Boolean(busy)}
+                                      style={{
+                                        display: "inline-flex",
+                                        alignItems: "center",
+                                        gap: 6,
+                                        fontWeight: 700,
+                                      }}
+                                    >
+                                      <CalendarClock size={14} />
+                                      {selectedCase.interview_at
+                                        ? "Reschedule Interview"
+                                        : "Schedule Joint Interview"}
+                                    </button>
+                                  )}
+
+                                {selectedCase.stage === "interview" && (
+                                  <>
+                                    {maySeeReviewDetails && (
+                                      <button
+                                        type="button"
+                                        className="hire-button primary"
+                                        onClick={() => setDetailTab("reviews")}
+                                        style={{
+                                          display: "inline-flex",
+                                          alignItems: "center",
+                                          gap: 6,
+                                          fontWeight: 700,
+                                        }}
+                                      >
+                                        <ClipboardCheck size={14} />
+                                        Record / View Reviews ({reviewsForCase.length})
+                                      </button>
+                                    )}
+                                    {(isOwner || isHR) && canSchedule && (
+                                      <button
+                                        type="button"
+                                        className="hire-button tertiary"
+                                        onClick={() => {
+                                          setDetailTab("next_step");
+                                          setActiveModal("schedule");
+                                        }}
+                                        disabled={!isActive || Boolean(busy)}
+                                        style={{
+                                          display: "inline-flex",
+                                          alignItems: "center",
+                                          gap: 5,
+                                        }}
+                                      >
+                                        <CalendarClock size={13} />
+                                        Reschedule
+                                      </button>
+                                    )}
+                                  </>
+                                )}
+
+                                {selectedCase.stage === "selected" && (
+                                  <>
+                                    {!selectedCase.staff_id && isOwner && isActive ? (
+                                      <button
+                                        type="button"
+                                        className="hire-button primary"
+                                        onClick={() => {
+                                          setDetailTab("next_step");
+                                          setActiveModal("identity");
+                                        }}
+                                        disabled={Boolean(busy)}
+                                        style={{
+                                          display: "inline-flex",
+                                          alignItems: "center",
+                                          gap: 6,
+                                          fontWeight: 700,
+                                        }}
+                                      >
+                                        <UserPlus size={14} />
+                                        {matchingApplicants(selectedCase).length > 0
+                                          ? "Link Account"
+                                          : "Invite Account"}
+                                      </button>
+                                    ) : (
+                                      <button
+                                        type="button"
+                                        className="hire-button primary"
+                                        onClick={() => setDetailTab("next_step")}
+                                        style={{
+                                          display: "inline-flex",
+                                          alignItems: "center",
+                                          gap: 6,
+                                          fontWeight: 700,
+                                        }}
+                                      >
+                                        <FileText size={14} />
+                                        View Agreements &amp; Handoff
+                                      </button>
+                                    )}
+                                  </>
+                                )}
+
+                                {selectedCase.stage === "ready" && (
+                                  <>
+                                    {canActivate && (
+                                      <button
+                                        type="button"
+                                        className="hire-button primary"
+                                        onClick={() => {
+                                          setDetailTab("next_step");
+                                          setActiveModal("activate");
+                                        }}
+                                        disabled={!isActive || Boolean(busy)}
+                                        style={{
+                                          display: "inline-flex",
+                                          alignItems: "center",
+                                          gap: 6,
+                                          fontWeight: 700,
+                                        }}
+                                      >
+                                        <ShieldCheck size={14} />
+                                        Activate Account
+                                      </button>
+                                    )}
+                                    {canReturn && (
+                                      <button
+                                        type="button"
+                                        className="hire-button tertiary"
+                                        onClick={() => {
+                                          setDetailTab("next_step");
+                                          setActiveModal("return");
+                                        }}
+                                        disabled={!isActive || Boolean(busy)}
+                                        style={{
+                                          display: "inline-flex",
+                                          alignItems: "center",
+                                          gap: 5,
+                                        }}
+                                      >
+                                        <RotateCcw size={13} />
+                                        Return to Selected
+                                      </button>
+                                    )}
+                                  </>
+                                )}
+
+                                {selectedCase.stage === "activated" && (
+                                  <span
+                                    style={{
+                                      display: "inline-flex",
+                                      alignItems: "center",
+                                      gap: 6,
+                                      color: "#166534",
+                                      fontWeight: 700,
+                                      fontSize: "12.5px",
+                                      background: "#dcfce7",
+                                      border: "1px solid #bbf7d0",
+                                      padding: "6px 14px",
+                                      borderRadius: 8,
+                                    }}
+                                  >
+                                    <CheckCircle2 size={15} />
+                                    Account Active
+                                  </span>
+                                )}
+
+                                {selectedCase.stage === "rejected" && (
+                                  <span
+                                    style={{
+                                      display: "inline-flex",
+                                      alignItems: "center",
+                                      gap: 6,
+                                      color: "#991b1b",
+                                      fontWeight: 700,
+                                      fontSize: "12.5px",
+                                      background: "#fee2e2",
+                                      border: "1px solid #fecaca",
+                                      padding: "6px 14px",
+                                      borderRadius: 8,
+                                    }}
+                                  >
+                                    <XCircle size={15} />
+                                    Case Rejected
+                                  </span>
+                                )}
+                              </div>
                             </section>
 
                             {/* Detail Tabs */}
@@ -1615,7 +1867,7 @@ export default function HiringPage() {
                                 }`}
                                 onClick={() => setDetailTab("next_step")}
                               >
-                                Next Step &amp; Docs
+                                Overview &amp; Documents
                               </button>
                               {maySeeReviewDetails && (
                                 <button
@@ -1696,6 +1948,8 @@ export default function HiringPage() {
                                 "The hiring case is marked rejected."
                               )
                             }
+                            requestedModal={activeModal}
+                            onRequestModalChange={setActiveModal}
                           />
                         ) : detailTab === "reviews" && maySeeReviewDetails ? (
                           <HiringReviewForm
@@ -1770,6 +2024,8 @@ export default function HiringPage() {
                                 "The hiring case is marked rejected."
                               )
                             }
+                            requestedModal={activeModal}
+                            onRequestModalChange={setActiveModal}
                           />
                         )}
                       </div>

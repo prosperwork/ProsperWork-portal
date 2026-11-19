@@ -86,9 +86,11 @@ export interface HiringCaseDetailProps {
   onSubmitReturn: (notes: string) => Promise<boolean>;
   onSubmitActivation: (notes: string) => Promise<boolean>;
   onRejectCase: (notes: string) => Promise<boolean>;
+  requestedModal?: ActiveModal;
+  onRequestModalChange?: (modal: ActiveModal) => void;
 }
 
-type ActiveModal =
+export type ActiveModal =
   | null
   | "schedule"
   | "identity"
@@ -137,8 +139,18 @@ export default function HiringCaseDetail({
   onSubmitReturn,
   onSubmitActivation,
   onRejectCase,
+  requestedModal,
+  onRequestModalChange,
 }: HiringCaseDetailProps) {
-  const [activeModal, setActiveModal] = useState<ActiveModal>(null);
+  const [internalModal, setInternalModal] = useState<ActiveModal>(null);
+  const activeModal =
+    requestedModal !== undefined ? requestedModal : internalModal;
+  const setActiveModal = (modal: ActiveModal) => {
+    if (onRequestModalChange) {
+      onRequestModalChange(modal);
+    }
+    setInternalModal(modal);
+  };
 
   const [interviewAt, setInterviewAt] = useState("");
   const [interviewNotes, setInterviewNotes] = useState("");
