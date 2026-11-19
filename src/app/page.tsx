@@ -521,13 +521,14 @@ export default function HomePage() {
     notify(`Class marked as ${nextStatus.replace("_", " ")}.`);
   }
 
-  function setLeadStatus(lead: Lead, status: Lead["status"]) {
+  function setLeadStatus(lead: Lead, status: Lead["status"], extraPayload?: Partial<Lead>) {
     updateData((current) => ({
       ...current,
       leads: current.leads.map((item) =>
         item.id === lead.id
           ? {
               ...item,
+              ...extraPayload,
               status,
               firstResponseAt:
                 !item.firstResponseAt && status !== "new"

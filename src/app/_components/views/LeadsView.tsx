@@ -15,7 +15,9 @@ import {
   CreditCard,
   Download,
   ExternalLink,
+  Globe,
   HelpCircle,
+  Link2,
   MessageCircle,
   MessageSquare,
   Music2,
@@ -23,10 +25,12 @@ import {
   RefreshCw,
   RotateCcw,
   Send,
+  Sparkles,
   Timer,
   UserCheck,
   UserCog,
   Users,
+  Video,
   XCircle,
 } from "lucide-react";
 import ProfileAvatar from "../ProfileAvatar";
@@ -106,6 +110,35 @@ type PipelineFilterKey =
   | "converted"
   | "lost";
 
+const COMMON_TIMEZONES = [
+  { value: "Africa/Lagos", label: "West Africa Time · Lagos (GMT+1)" },
+  { value: "Europe/London", label: "UK Time · London (GMT+0)" },
+  { value: "Europe/Dublin", label: "Ireland Time · Dublin (GMT+0)" },
+  { value: "Europe/Paris", label: "Central Europe · Paris (GMT+1)" },
+  { value: "Europe/Berlin", label: "Central Europe · Berlin (GMT+1)" },
+  { value: "America/New_York", label: "US Eastern · New York (GMT-5)" },
+  { value: "America/Chicago", label: "US Central · Chicago (GMT-6)" },
+  { value: "America/Denver", label: "US Mountain · Denver (GMT-7)" },
+  { value: "America/Los_Angeles", label: "US Pacific · Los Angeles (GMT-8)" },
+  { value: "America/Toronto", label: "Canada Eastern · Toronto (GMT-5)" },
+  { value: "America/Vancouver", label: "Canada Pacific · Vancouver (GMT-8)" },
+  { value: "Africa/Accra", label: "Ghana Time · Accra (GMT+0)" },
+  { value: "Africa/Nairobi", label: "East Africa Time · Nairobi (GMT+3)" },
+  { value: "Africa/Johannesburg", label: "South Africa Time · Johannesburg (GMT+2)" },
+  { value: "Africa/Cairo", label: "Egypt Time · Cairo (GMT+2)" },
+  { value: "Asia/Dubai", label: "Gulf Standard Time · Dubai (GMT+4)" },
+  { value: "Asia/Singapore", label: "Singapore Time (GMT+8)" },
+  { value: "Asia/Tokyo", label: "Japan Time · Tokyo (GMT+9)" },
+  { value: "Australia/Sydney", label: "Australian Eastern · Sydney (GMT+11)" },
+];
+
+function generateGoogleMeetLink() {
+  const chars = "abcdefghijklmnopqrstuvwxyz";
+  const part = (len: number) =>
+    Array.from({ length: len }, () => chars[Math.floor(Math.random() * chars.length)]).join("");
+  return `https://meet.google.com/${part(3)}-${part(4)}-${part(3)}`;
+}
+
 export default function LeadsView({
   data,
   role,
@@ -140,7 +173,7 @@ export default function LeadsView({
     name: string,
     defaultText?: string
   ) => void;
-  setLeadStatus: (lead: Lead, status: Lead["status"]) => void;
+  setLeadStatus: (lead: Lead, status: Lead["status"], extraPayload?: Partial<Lead>) => void | Promise<void>;
   changeView: (view: AppView) => void;
   notify: (msg: string) => void;
   reload?: () => Promise<void>;
@@ -154,7 +187,180 @@ export default function LeadsView({
   const [syncingMeta, setSyncingMeta] = useState(false);
   const [updatingStageLeadId, setUpdatingStageLeadId] = useState<string | null>(null);
 
+  // Active Music Teachers from Academy Staff
+  const activeTeachers = (data?.staff || []).filter(
+    (s) =>
+      s.status === "active" &&
+      (["teacher", "qc"].includes(s.role) ||
+        s.department === "Music Education" ||
+        s.role.includes("teacher") ||
+        s.role.includes("tutor") ||
+        s.role.includes("instructor")) &&
+      s.role !== "parent" &&
+      s.role !== "student"
+  );
+
+  // Catalog Instruments
+  const [catalogInstruments, setCatalogInstruments] = useState<string[]>([
+    "Piano",
+    "Violin",
+    "Guitar",
+    "Voice / Singing",
+    "Drums",
+    "Saxophone",
+    "Keyboard",
+    "Flute",
+    "Music Theory",
+  ]);
+
+  useEffect(() => {
+    fetch("/api/catalogs?catalog=instruments")
+      .then((res) => res.json())
+      .then((json) => {
+        if (Array.isArray(json?.items) && json.items.length > 0) {
+          const list = json.items.map((i: any) => i.label || i.name || i.code).filter(Boolean);
+          if (list.length) setCatalogInstruments(list);
+        }
+      })
+      .catch(() => null);
+  }, []);
+
+  // Trial Booking Modal State
+  const [trialBookingLead, setTrialBookingLead] = useState<Lead | null>(null);
+  const [trialForm, setTrialForm] = useState({
+    childName: "",
+    date: "",
+    time: "16:00",
+    instrument: "Piano",
+    teacherName: "",
+    timezone: "Africa/Lagos",
+    classroomProvider: "inbuilt" as "inbuilt" | "google_meet",
+    meetUrl: "",
+    notes: "",
+    sendWhatsAppConfirmation: true,
+  });
+  const [bookingTrialLoading, setBookingTrialLoading] = useState(false);
+
+  const openTrialBookingModal = (lead: Lead) => {
+    const tomorrow = new Date();
+    tomorrow.setDate(tomorrow.getDate() + 1);
+    const dateStr = tomorrow.toISOString().split("T")[0];
+
+    const defaultTeacher = activeTeachers[0]?.name || lead.teacherName || "";
+    const phone = resolveLeadPhone(lead);
+    let defaultTz = "Africa/Lagos";
+    if (phone.startsWith("+44") || phone.startsWith("44")) defaultTz = "Europe/London";
+    else if (phone.startsWith("+1") || phone.startsWith("1")) defaultTz = "America/New_York";
+    else if (phone.startsWith("+971")) defaultTz = "Asia/Dubai";
+
+    const origin = typeof window !== "undefined" ? window.location.origin : "https://prosperworkmusic.com";
+    const cleanId = lead.id.replace(/[^a-zA-Z0-9]/g, "").slice(-8);
+    const existingMeetUrl = (lead as any).trialMeetUrl;
+    const existingProvider = (lead as any).trialClassroomProvider || "inbuilt";
+
+    setTrialForm({
+      childName: lead.childName && lead.childName !== lead.parentName ? lead.childName : lead.parentName,
+      date: (lead as any).trialScheduledAt ? (lead as any).trialScheduledAt.split("T")[0] : dateStr,
+      time: (lead as any).trialScheduledAt ? (lead as any).trialScheduledAt.split("T")[1]?.slice(0, 5) || "16:00" : "16:00",
+      instrument: lead.instrument || "Piano",
+      teacherName: (lead as any).trialTeacher || lead.teacherName || defaultTeacher,
+      timezone: (lead as any).trialTimezone || defaultTz,
+      classroomProvider: existingProvider,
+      meetUrl: existingMeetUrl || (existingProvider === "google_meet" ? generateGoogleMeetLink() : `${origin}/classroom?room=trial_${cleanId}`),
+      notes: "Free 30-minute trial assessment",
+      sendWhatsAppConfirmation: Boolean(phone),
+    });
+    setTrialBookingLead(lead);
+  };
+
+  const handleSelectProvider = (provider: "inbuilt" | "google_meet") => {
+    if (!trialBookingLead) return;
+    const origin = typeof window !== "undefined" ? window.location.origin : "https://prosperworkmusic.com";
+    const cleanId = trialBookingLead.id.replace(/[^a-zA-Z0-9]/g, "").slice(-8);
+
+    if (provider === "google_meet") {
+      setTrialForm((prev) => ({
+        ...prev,
+        classroomProvider: "google_meet",
+        meetUrl: prev.meetUrl && prev.meetUrl.includes("meet.google.com") ? prev.meetUrl : generateGoogleMeetLink(),
+      }));
+    } else {
+      setTrialForm((prev) => ({
+        ...prev,
+        classroomProvider: "inbuilt",
+        meetUrl: `${origin}/classroom?room=trial_${cleanId}`,
+      }));
+    }
+  };
+
+  const handleConfirmTrialBooking = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!trialBookingLead) return;
+    if (!trialForm.date) {
+      notify("Please select an assessment date.");
+      return;
+    }
+    if (!trialForm.time) {
+      notify("Please select an assessment time.");
+      return;
+    }
+    if (!trialForm.teacherName) {
+      notify("Please select an instructor for the assessment.");
+      return;
+    }
+
+    setBookingTrialLoading(true);
+    try {
+      const startsAt = new Date(`${trialForm.date}T${trialForm.time}:00`).toISOString();
+      const slotText = `${niceDate(startsAt)} at ${timeAt(startsAt)} (${trialForm.teacherName})`;
+
+      const updatedExtra: Partial<Lead> = {
+        childName: trialForm.childName.trim() || trialBookingLead.childName,
+        instrument: trialForm.instrument.trim() || trialBookingLead.instrument,
+        teacherName: trialForm.teacherName,
+        preferredSlots: [slotText],
+        trialScheduledAt: startsAt,
+        trialTeacher: trialForm.teacherName,
+        trialTimezone: trialForm.timezone,
+        trialClassroomProvider: trialForm.classroomProvider,
+        trialMeetUrl: trialForm.meetUrl,
+      };
+
+      await setLeadStatus(trialBookingLead, "trial_booked", updatedExtra);
+
+      // Send WhatsApp Confirmation if enabled
+      const phone = resolveLeadPhone(trialBookingLead);
+      if (trialForm.sendWhatsAppConfirmation && phone) {
+        const parentFirst = cleanName(trialBookingLead.parentName).split(" ")[0];
+        const childDisp = cleanName(trialForm.childName || trialBookingLead.childName || "your child");
+        const waText = `Hello ${parentFirst}! 🎵 Great news! We have scheduled ${childDisp}'s free 1-on-1 trial assessment for ${trialForm.instrument || "Piano"}:\n\n📅 Date: ${niceDate(startsAt)}\n⏰ Time: ${timeAt(startsAt)} (${trialForm.timezone})\n👨‍🏫 Teacher: ${trialForm.teacherName}\n🔗 Meeting Link: ${trialForm.meetUrl}\n\nOur teacher will be ready in the studio room to welcome you. If you have any questions or need to reschedule, simply reply to this message!`;
+
+        await fetch("/api/integrations/whatsapp/messages", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            phone,
+            leadId: trialBookingLead.id,
+            message: waText,
+          }),
+        }).catch(() => null);
+      }
+
+      notify(`Trial assessment booked for ${cleanName(trialForm.childName || trialBookingLead.parentName)} on ${niceDate(startsAt)}!`);
+      setTrialBookingLead(null);
+      if (reload) await reload();
+    } catch (err: any) {
+      notify(err?.message || "Failed to save trial booking. Please try again.");
+    } finally {
+      setBookingTrialLoading(false);
+    }
+  };
+
   const handleStageChange = (lead: Lead, newStage: Lead["status"]) => {
+    if (newStage === "trial_booked") {
+      openTrialBookingModal(lead);
+      return;
+    }
     if (updatingStageLeadId === lead.id) return;
     setUpdatingStageLeadId(lead.id);
     try {
@@ -1155,12 +1361,80 @@ export default function LeadsView({
                     <td>
                       <div style={{ fontSize: "0.82rem", color: "#334155" }}>
                         {lead.preferredSlots && lead.preferredSlots.length > 0 ? (
-                          <strong>{lead.preferredSlots.join(" · ")}</strong>
+                          <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>
+                            <strong style={{ color: "#15803d", display: "inline-flex", alignItems: "center", gap: 4 }}>
+                              <CalendarCheck2 size={13} color="#15803d" />
+                              {lead.preferredSlots.join(" · ")}
+                            </strong>
+                            {(lead as any).trialMeetUrl && (
+                              <a
+                                href={(lead as any).trialMeetUrl}
+                                target="_blank"
+                                rel="noreferrer"
+                                style={{
+                                  fontSize: "0.74rem",
+                                  color: (lead as any).trialClassroomProvider === "google_meet" ? "#1a73e8" : "#4f46e5",
+                                  fontWeight: 600,
+                                  textDecoration: "underline",
+                                  display: "inline-flex",
+                                  alignItems: "center",
+                                  gap: 3,
+                                }}
+                              >
+                                <Video size={11} />
+                                {(lead as any).trialClassroomProvider === "google_meet" ? "Open Google Meet →" : "Open Studio Room →"}
+                              </a>
+                            )}
+                            <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                              {(lead as any).trialTeacher && (
+                                <span style={{ fontSize: "0.70rem", color: "#64748b" }}>
+                                  Teacher: {(lead as any).trialTeacher}
+                                </span>
+                              )}
+                              <button
+                                type="button"
+                                style={{
+                                  background: "none",
+                                  border: "none",
+                                  padding: 0,
+                                  fontSize: "0.70rem",
+                                  color: "#0f766e",
+                                  cursor: "pointer",
+                                  textDecoration: "underline",
+                                }}
+                                onClick={() => openTrialBookingModal(lead)}
+                              >
+                                Edit Trial
+                              </button>
+                            </div>
+                          </div>
                         ) : (
-                          <span style={{ color: "#94a3b8" }}>No trial booked yet</span>
+                          <div style={{ display: "flex", flexDirection: "column", gap: 4, alignItems: "flex-start" }}>
+                            <span style={{ color: "#94a3b8" }}>No trial booked yet</span>
+                            <button
+                              type="button"
+                              className="btn small ghost"
+                              style={{
+                                fontSize: "0.72rem",
+                                padding: "1px 7px",
+                                color: "#15803d",
+                                borderColor: "#bbf7d0",
+                                background: "#f0fdf4",
+                                display: "inline-flex",
+                                alignItems: "center",
+                                gap: 3,
+                                cursor: "pointer",
+                              }}
+                              onClick={() => openTrialBookingModal(lead)}
+                              title="Schedule date, time, teacher & video room for free trial assessment"
+                            >
+                              <CalendarCheck2 size={11} />
+                              Book Trial
+                            </button>
+                          </div>
                         )}
                       </div>
-                      <div style={{ marginTop: 3 }}>
+                      <div style={{ marginTop: 4 }}>
                         <button
                           type="button"
                           onClick={() => setSelectedLead(lead)}
@@ -1707,6 +1981,10 @@ export default function LeadsView({
                         opacity: isUpdatingModalLead ? 0.65 : 1,
                       }}
                       onClick={() => {
+                        if (s.id === "trial_booked") {
+                          openTrialBookingModal(selectedLead);
+                          return;
+                        }
                         handleStageChange(selectedLead, s.id);
                         setSelectedLead((prev) => (prev ? { ...prev, status: s.id } : null));
                       }}
@@ -2360,6 +2638,392 @@ export default function LeadsView({
               </button>
             </div>
           </div>
+        )}
+      </PortalModal>
+
+      {/* Book Trial Assessment Modal */}
+      <PortalModal
+        open={Boolean(trialBookingLead)}
+        onClose={() => !bookingTrialLoading && setTrialBookingLead(null)}
+        title={
+          trialBookingLead
+            ? `Book Trial Assessment — ${cleanName(trialBookingLead.parentName)}`
+            : "Book Trial Assessment"
+        }
+        subtitle={
+          trialBookingLead
+            ? `Schedule trial lesson date, time, instructor & meeting link for ${cleanName(trialBookingLead.childName || "learner")}`
+            : undefined
+        }
+        size="md"
+      >
+        {trialBookingLead && (
+          <form onSubmit={handleConfirmTrialBooking} style={{ display: "flex", flexDirection: "column", gap: "1rem" }}>
+            {/* Child Name & Instrument */}
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0.85rem" }}>
+              <div style={{ display: "flex", flexDirection: "column", gap: "4px" }}>
+                <label style={{ fontSize: "0.78rem", fontWeight: 700, color: "#334155" }}>
+                  Student / Child Name *
+                </label>
+                <input
+                  type="text"
+                  required
+                  value={trialForm.childName}
+                  onChange={(e) => setTrialForm({ ...trialForm, childName: e.target.value })}
+                  placeholder="e.g. David"
+                  style={{
+                    padding: "8px 11px",
+                    borderRadius: "6px",
+                    border: "1px solid #cbd5e1",
+                    fontSize: "0.86rem",
+                  }}
+                />
+              </div>
+
+              <div style={{ display: "flex", flexDirection: "column", gap: "4px" }}>
+                <label style={{ fontSize: "0.78rem", fontWeight: 700, color: "#334155" }}>
+                  Musical Instrument *
+                </label>
+                <select
+                  required
+                  value={trialForm.instrument}
+                  onChange={(e) => setTrialForm({ ...trialForm, instrument: e.target.value })}
+                  style={{
+                    padding: "8px 11px",
+                    borderRadius: "6px",
+                    border: "1px solid #cbd5e1",
+                    fontSize: "0.86rem",
+                    background: "#ffffff",
+                  }}
+                >
+                  {catalogInstruments.map((inst) => (
+                    <option key={inst} value={inst}>
+                      {inst}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </div>
+
+            {/* Date, Time & Parent Timezone */}
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0.85rem" }}>
+              <div style={{ display: "flex", flexDirection: "column", gap: "4px" }}>
+                <label style={{ fontSize: "0.78rem", fontWeight: 700, color: "#334155" }}>
+                  Assessment Date *
+                </label>
+                <input
+                  type="date"
+                  required
+                  value={trialForm.date}
+                  onChange={(e) => setTrialForm({ ...trialForm, date: e.target.value })}
+                  style={{
+                    padding: "8px 11px",
+                    borderRadius: "6px",
+                    border: "1px solid #cbd5e1",
+                    fontSize: "0.86rem",
+                  }}
+                />
+              </div>
+
+              <div style={{ display: "flex", flexDirection: "column", gap: "4px" }}>
+                <label style={{ fontSize: "0.78rem", fontWeight: 700, color: "#334155" }}>
+                  Assessment Time *
+                </label>
+                <input
+                  type="time"
+                  required
+                  value={trialForm.time}
+                  onChange={(e) => setTrialForm({ ...trialForm, time: e.target.value })}
+                  style={{
+                    padding: "8px 11px",
+                    borderRadius: "6px",
+                    border: "1px solid #cbd5e1",
+                    fontSize: "0.86rem",
+                  }}
+                />
+              </div>
+            </div>
+
+            {/* Teacher & Parent Timezone */}
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0.85rem" }}>
+              <div style={{ display: "flex", flexDirection: "column", gap: "4px" }}>
+                <label style={{ fontSize: "0.78rem", fontWeight: 700, color: "#334155" }}>
+                  Assigned Teacher *
+                </label>
+                <select
+                  required
+                  value={trialForm.teacherName}
+                  onChange={(e) => setTrialForm({ ...trialForm, teacherName: e.target.value })}
+                  style={{
+                    padding: "8px 11px",
+                    borderRadius: "6px",
+                    border: "1px solid #cbd5e1",
+                    fontSize: "0.86rem",
+                    background: "#ffffff",
+                  }}
+                >
+                  <option value="">Select Teacher...</option>
+                  {activeTeachers.map((t) => (
+                    <option key={t.id || t.name} value={t.name}>
+                      {t.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div style={{ display: "flex", flexDirection: "column", gap: "4px" }}>
+                <label style={{ fontSize: "0.78rem", fontWeight: 700, color: "#334155" }}>
+                  Parent / Learner Timezone *
+                </label>
+                <select
+                  required
+                  value={trialForm.timezone}
+                  onChange={(e) => setTrialForm({ ...trialForm, timezone: e.target.value })}
+                  style={{
+                    padding: "8px 11px",
+                    borderRadius: "6px",
+                    border: "1px solid #cbd5e1",
+                    fontSize: "0.86rem",
+                    background: "#ffffff",
+                  }}
+                >
+                  {COMMON_TIMEZONES.map((tz) => (
+                    <option key={tz.value} value={tz.value}>
+                      {tz.label}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </div>
+
+            {/* Meeting Link & Classroom Provider */}
+            <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
+              <label style={{ fontSize: "0.78rem", fontWeight: 700, color: "#334155" }}>
+                Classroom / Meeting Room *
+              </label>
+
+              {/* Provider Selection Cards */}
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0.6rem" }}>
+                <div
+                  onClick={() => handleSelectProvider("inbuilt")}
+                  style={{
+                    border: trialForm.classroomProvider === "inbuilt" ? "2px solid #6366f1" : "1px solid #cbd5e1",
+                    background: trialForm.classroomProvider === "inbuilt" ? "#eef2ff" : "#ffffff",
+                    borderRadius: "8px",
+                    padding: "10px 12px",
+                    cursor: "pointer",
+                    display: "flex",
+                    alignItems: "center",
+                    gap: "8px",
+                    transition: "all 0.15s ease",
+                  }}
+                >
+                  <div
+                    style={{
+                      width: 28,
+                      height: 28,
+                      borderRadius: "6px",
+                      background: "#6366f1",
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      color: "#fff",
+                      flexShrink: 0,
+                    }}
+                  >
+                    <Video size={15} />
+                  </div>
+                  <div>
+                    <div style={{ fontSize: "0.84rem", fontWeight: 700, color: "#1e1b4b" }}>
+                      Inbuilt Video Studio
+                    </div>
+                    <div style={{ fontSize: "0.71rem", color: "#64748b" }}>
+                      Built-in interactive room
+                    </div>
+                  </div>
+                </div>
+
+                <div
+                  onClick={() => handleSelectProvider("google_meet")}
+                  style={{
+                    border: trialForm.classroomProvider === "google_meet" ? "2px solid #059669" : "1px solid #cbd5e1",
+                    background: trialForm.classroomProvider === "google_meet" ? "#ecfdf5" : "#ffffff",
+                    borderRadius: "8px",
+                    padding: "10px 12px",
+                    cursor: "pointer",
+                    display: "flex",
+                    alignItems: "center",
+                    gap: "8px",
+                    transition: "all 0.15s ease",
+                  }}
+                >
+                  <div
+                    style={{
+                      width: 28,
+                      height: 28,
+                      borderRadius: "6px",
+                      background: "#059669",
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      color: "#fff",
+                      flexShrink: 0,
+                    }}
+                  >
+                    <Sparkles size={15} />
+                  </div>
+                  <div>
+                    <div style={{ fontSize: "0.84rem", fontWeight: 700, color: "#064e3b" }}>
+                      Auto-generate Meet
+                    </div>
+                    <div style={{ fontSize: "0.71rem", color: "#64748b" }}>
+                      Creates Google Meet link
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Meeting Link Preview / Customizer */}
+              <div style={{ marginTop: 4 }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                  <input
+                    type="url"
+                    required
+                    value={trialForm.meetUrl}
+                    onChange={(e) => setTrialForm({ ...trialForm, meetUrl: e.target.value })}
+                    placeholder="Meeting URL"
+                    style={{
+                      flex: 1,
+                      padding: "8px 11px",
+                      borderRadius: "6px",
+                      border: "1px solid #cbd5e1",
+                      fontSize: "0.82rem",
+                      fontFamily: "monospace",
+                      background: "#f8fafc",
+                    }}
+                  />
+                  {trialForm.classroomProvider === "google_meet" && (
+                    <button
+                      type="button"
+                      className="btn small ghost"
+                      style={{
+                        padding: "7px 10px",
+                        fontSize: "0.75rem",
+                        display: "inline-flex",
+                        alignItems: "center",
+                        gap: 4,
+                      }}
+                      onClick={() =>
+                        setTrialForm((prev) => ({
+                          ...prev,
+                          meetUrl: generateGoogleMeetLink(),
+                        }))
+                      }
+                      title="Generate a new Google Meet link"
+                    >
+                      <Sparkles size={12} />
+                      Regenerate
+                    </button>
+                  )}
+                </div>
+              </div>
+            </div>
+
+            {/* Optional Notes */}
+            <div style={{ display: "flex", flexDirection: "column", gap: "4px" }}>
+              <label style={{ fontSize: "0.78rem", fontWeight: 700, color: "#334155" }}>
+                Assessment Notes (Optional)
+              </label>
+              <textarea
+                rows={2}
+                value={trialForm.notes}
+                onChange={(e) => setTrialForm({ ...trialForm, notes: e.target.value })}
+                placeholder="e.g. Free 30-min trial assessment. Beginner level."
+                style={{
+                  padding: "7px 10px",
+                  borderRadius: "6px",
+                  border: "1px solid #cbd5e1",
+                  fontSize: "0.84rem",
+                  resize: "vertical",
+                }}
+              />
+            </div>
+
+            {/* WhatsApp Notification Checkbox */}
+            {resolveLeadPhone(trialBookingLead) && (
+              <div
+                style={{
+                  background: "#f0fdf4",
+                  border: "1px solid #bbf7d0",
+                  padding: "8px 12px",
+                  borderRadius: "6px",
+                  display: "flex",
+                  alignItems: "center",
+                  gap: "8px",
+                }}
+              >
+                <input
+                  type="checkbox"
+                  id="send_wa_check"
+                  checked={trialForm.sendWhatsAppConfirmation}
+                  onChange={(e) => setTrialForm({ ...trialForm, sendWhatsAppConfirmation: e.target.checked })}
+                  style={{ cursor: "pointer", width: 16, height: 16 }}
+                />
+                <label
+                  htmlFor="send_wa_check"
+                  style={{ fontSize: "0.78rem", color: "#166534", fontWeight: 600, cursor: "pointer" }}
+                >
+                  Send instant booking confirmation to parent via WhatsApp ({resolveLeadPhone(trialBookingLead)})
+                </label>
+              </div>
+            )}
+
+            {/* Footer Buttons */}
+            <div
+              style={{
+                display: "flex",
+                justifyContent: "flex-end",
+                gap: "8px",
+                marginTop: "0.5rem",
+                borderTop: "1px solid #f1f5f9",
+                paddingTop: "0.85rem",
+              }}
+            >
+              <button
+                type="button"
+                className="btn ghost"
+                disabled={bookingTrialLoading}
+                onClick={() => setTrialBookingLead(null)}
+              >
+                Cancel
+              </button>
+              <button
+                type="submit"
+                className="btn primary"
+                disabled={bookingTrialLoading}
+                style={{
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: 6,
+                  fontWeight: 700,
+                  background: "#15803d",
+                  borderColor: "#166534",
+                }}
+              >
+                {bookingTrialLoading ? (
+                  <>
+                    <RefreshCw size={13} className="spin" />
+                    <span>Booking Assessment...</span>
+                  </>
+                ) : (
+                  <>
+                    <CalendarCheck2 size={14} />
+                    <span>Confirm & Book Trial</span>
+                  </>
+                )}
+              </button>
+            </div>
+          </form>
         )}
       </PortalModal>
     </>

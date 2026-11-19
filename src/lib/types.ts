@@ -129,6 +129,11 @@ export interface Lead {
   campaignName?: string;
   adName?: string;
   customAnswers?: Record<string, string>;
+  trialScheduledAt?: string;
+  trialTeacher?: string;
+  trialTimezone?: string;
+  trialClassroomProvider?: "inbuilt" | "google_meet";
+  trialMeetUrl?: string;
 }
 
 export interface Payment {
